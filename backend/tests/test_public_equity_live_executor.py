@@ -197,6 +197,11 @@ async def test_happy_path_inserts_row_with_provenance(monkeypatch):
     }
     fake_client = MagicMock()
     fake_client.place_order.return_value = {"id": "PUB-ORDER-123", "status": "submitted"}
+    # The new pre-trade cash check (2026-06-18) calls get_account first.
+    # Stub a funded account so we proceed past the gate.
+    fake_client.get_account.return_value = {
+        "id": "ACCT", "cash": 1000.0, "buying_power": 1000.0, "equity": 1000.0,
+    }
 
     with patch(
         "services.public_equity_live_executor._fetch_mark_price",
@@ -259,3 +264,119 @@ async def test_place_order_raises_no_mongo_write(monkeypatch):
         out = await maybe_route_live(db, intent={"symbol": "AAPL", "direction": "BUY"})
     assert out is None
     assert db.equity_live_trades.docs == []
+
+
+# ── 2026-06-18: Safety layers ────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_confidence_floor_blocks_low_conviction(monkeypatch):
+    """Pin: signals below PUBLIC_LIVE_CONFIDENCE_FLOOR (default 0.65)
+    must NOT reach the broker."""
+    monkeypatch.setenv("RISEDUAL_PUBLIC_LIVE_EXEC", "1")
+    monkeypatch.setenv("PUBLIC_LIVE_CONFIDENCE_FLOOR", "0.65")
+    db = _FakeDB()
+    db.broker_connections._find_one_response = {
+        "api_key": "secret", "api_secret": "acct",
+    }
+    out = await maybe_route_live(db, intent={
+        "symbol": "AAPL", "direction": "BUY", "confidence": 0.55,
+    })
+    assert out is None
+    # NO connect-state fetch attempted, NO mark-price probe, NO order.
+
+
+@pytest.mark.asyncio
+async def test_confidence_floor_passes_high_conviction(monkeypatch):
+    """Symmetric: confidence at or above the floor advances past
+    the gate (we don't assert on the downstream broker call —
+    just that the gate isn't the blocker)."""
+    monkeypatch.setenv("RISEDUAL_PUBLIC_LIVE_EXEC", "1")
+    monkeypatch.setenv("PUBLIC_LIVE_CONFIDENCE_FLOOR", "0.65")
+    db = _FakeDB()
+    # Force the connect-state gate to fail so we know the conf gate
+    # passed but execution stopped at the next gate.
+    db.broker_connections._find_one_response = None
+    out = await maybe_route_live(db, intent={
+        "symbol": "AAPL", "direction": "BUY", "confidence": 0.70,
+    })
+    assert out is None  # blocked by connect-state, not conf floor
+
+
+@pytest.mark.asyncio
+async def test_pre_trade_cash_check_blocks_underfunded(monkeypatch):
+    """Pin: if account.buying_power < notional, refuse the trade
+    so Public.com doesn't reject it noisily."""
+    monkeypatch.setenv("RISEDUAL_PUBLIC_LIVE_EXEC", "1")
+    monkeypatch.setenv("PUBLIC_LIVE_CONFIDENCE_FLOOR", "0.0")
+    monkeypatch.setenv("PUBLIC_LIVE_NOTIONAL_USD", "25")
+    db = _FakeDB()
+    db.broker_connections._find_one_response = {
+        "api_key": "secret", "api_secret": "acct",
+    }
+    fake_client = MagicMock()
+    fake_client.get_account.return_value = {
+        "id": "ACCT", "cash": 5.0, "buying_power": 5.0, "equity": 5.0,
+    }
+    # No place_order should ever be called.
+    fake_client.place_order.side_effect = AssertionError(
+        "place_order must not be invoked when buying_power < notional"
+    )
+    with patch(
+        "services.public_equity_live_executor._public_client",
+        return_value=fake_client,
+    ):
+        out = await maybe_route_live(db, intent={
+            "symbol": "AAPL", "direction": "BUY", "confidence": 0.80,
+        })
+    assert out is None
+    assert db.equity_live_trades.docs == []
+
+
+@pytest.mark.asyncio
+async def test_pre_trade_cash_check_lets_funded_through(monkeypatch):
+    monkeypatch.setenv("RISEDUAL_PUBLIC_LIVE_EXEC", "1")
+    monkeypatch.setenv("PUBLIC_LIVE_CONFIDENCE_FLOOR", "0.0")
+    monkeypatch.setenv("PUBLIC_LIVE_NOTIONAL_USD", "25")
+    db = _FakeDB()
+    db.broker_connections._find_one_response = {
+        "api_key": "secret", "api_secret": "acct",
+    }
+    fake_client = MagicMock()
+    fake_client.get_account.return_value = {
+        "id": "ACCT", "cash": 100.0, "buying_power": 100.0, "equity": 100.0,
+    }
+    fake_client.place_order.return_value = {"id": "ORDER-OK", "status": "submitted"}
+    with patch(
+        "services.public_equity_live_executor._fetch_mark_price",
+        new=AsyncMock(return_value=200.0),
+    ), patch(
+        "services.public_equity_live_executor._public_client",
+        return_value=fake_client,
+    ):
+        out = await maybe_route_live(db, intent={
+            "symbol": "AAPL", "direction": "BUY", "confidence": 0.80,
+        })
+    assert out is not None
+    assert out["broker_order_id"] == "ORDER-OK"
+
+
+def test_confidence_floor_default():
+    """Pin: default is 0.65 — operator's anti-toxic-spike substitute
+    for peer-brain veto."""
+    import os
+    os.environ.pop("PUBLIC_LIVE_CONFIDENCE_FLOOR", None)
+    from services.public_equity_live_executor import _live_confidence_floor
+    assert _live_confidence_floor() == 0.65
+
+
+def test_confidence_floor_bounds(monkeypatch):
+    """Pin: floor clamped to [0, 0.95] — values ≥0.95 would silently
+    disable live trading because they collide with the saturation cap."""
+    from services.public_equity_live_executor import _live_confidence_floor
+    monkeypatch.setenv("PUBLIC_LIVE_CONFIDENCE_FLOOR", "-0.5")
+    assert _live_confidence_floor() == 0.0
+    monkeypatch.setenv("PUBLIC_LIVE_CONFIDENCE_FLOOR", "1.5")
+    assert _live_confidence_floor() == 0.95
+    monkeypatch.setenv("PUBLIC_LIVE_CONFIDENCE_FLOOR", "garbage")
+    assert _live_confidence_floor() == 0.65

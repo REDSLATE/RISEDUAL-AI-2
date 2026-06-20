@@ -78,6 +78,31 @@ def _allowed_symbols() -> Optional[set[str]]:
     return {s.strip().upper() for s in raw.split(",") if s.strip()}
 
 
+def _live_confidence_floor() -> float:
+    """Minimum signal confidence for live execution.
+
+    2026-06-18: With peer-brain veto severed (MC2 standalone), the
+    operator wants a hard confidence floor as the cheapest substitute.
+    Default 0.65 — refuse to put real money on signals where Alpha's
+    own conviction is below this line. Operator can tighten via
+    ``PUBLIC_LIVE_CONFIDENCE_FLOOR=0.7`` etc.
+    """
+    raw = (os.environ.get("PUBLIC_LIVE_CONFIDENCE_FLOOR") or "").strip()
+    if not raw:
+        return 0.65
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        return 0.65
+    # Bound to [0, 0.95] — anything ≥0.95 collides with the
+    # toxic-spike saturation cap and silently disables live trading.
+    if v < 0.0:
+        return 0.0
+    if v > 0.95:
+        return 0.95
+    return v
+
+
 # ── Public.com client construction ──────────────────────────────────
 
 
@@ -185,6 +210,21 @@ async def maybe_route_live(
         # spiritual successor (not in scope for this scaffold).
         return None
 
+    # 2026-06-18: Confidence floor gate. Refuses live execution when
+    # Alpha's own conviction is below ``PUBLIC_LIVE_CONFIDENCE_FLOOR``
+    # (default 0.65). With the multi-brain peer veto severed in
+    # standalone mode, this floor is the cheapest substitute. The 95%
+    # saturation cap from earlier today caps the upper end; this
+    # floor sets the lower end.
+    confidence = float(intent.get("confidence") or 0.0)
+    floor = _live_confidence_floor()
+    if confidence < floor:
+        logger.info(
+            "[public-live] symbol=%s SKIPPED — confidence %.2f below floor %.2f",
+            symbol, confidence, floor,
+        )
+        return None
+
     allow = _allowed_symbols()
     if allow is not None and symbol not in allow:
         logger.info(
@@ -203,6 +243,31 @@ async def maybe_route_live(
         )
         return None
     secret_key, account_id = creds
+
+    # 2026-06-18: Pre-trade cash check. Refuses live execution when
+    # account doesn't have enough settled buying power. Prevents
+    # noisy place_order rejections from Public.com when Alpha's
+    # signal fans out faster than settled cash. Best-effort — if
+    # the account-fetch fails for any reason we fall through to the
+    # broker's own rejection (worst case = a logged 4xx).
+    notional = _fixed_notional_usd()
+    try:
+        client_pre = _public_client(secret_key, account_id)
+        if client_pre is not None:
+            acct = client_pre.get_account()
+            if acct is not None:
+                bp = float(acct.get("buying_power") or 0.0)
+                if bp < notional:
+                    logger.warning(
+                        "[public-live] symbol=%s SKIPPED — buying_power $%.2f "
+                        "< notional $%.2f", symbol, bp, notional,
+                    )
+                    return None
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(
+            "[public-live] pre-trade account check failed (non-fatal): %s",
+            exc,
+        )
 
     # Idempotency gate: refuse to open a duplicate live row.
     if db is not None:
@@ -225,7 +290,7 @@ async def maybe_route_live(
     if not mark or mark <= 0:
         logger.warning("[public-live] symbol=%s SKIPPED — no mark price", symbol)
         return None
-    notional = _fixed_notional_usd()
+    # ``notional`` already computed above (pre-trade cash check).
     qty = round(notional / mark, 4)
     if qty <= 0:
         logger.warning(

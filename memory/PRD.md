@@ -4,6 +4,81 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
+## Latest Update — 2026-06-20 (Monday-ready: preview armed end-to-end)
+
+### 🎯 Alpha is wired to trade Monday morning on preview
+
+**What landed**:
+1. **Preview env armed** — `RISEDUAL_STANDALONE_MODE=1` +
+   `RISEDUAL_PUBLIC_LIVE_EXEC=1` + tight risk caps
+   (`PUBLIC_LIVE_NOTIONAL_USD=1`, allowlist `AAPL,MSFT,SPY,QQQ`).
+   Alpaca trading forced OFF, paper trading sealed, crypto live
+   explicitly OFF for Monday's canary.
+
+2. **Public.com vault upsert + live JWT exchange verified** —
+   credentials for account `5LG34065` (cash brokerage, $244 buying
+   power, $42.41 SPCX position) stored encrypted. JWT auth-exchange
+   path works end-to-end.
+
+3. **`PublicTradingService.get_account` + `get_positions` fixed** —
+   they were hitting `/trading/account` (which actually returns a
+   LIST of accounts, not balances). Correct endpoint is
+   `/trading/{accountId}/portfolio/v2`. Now parses the nested
+   `buyingPower` dict + `equity` list correctly.
+
+4. **Two safety layers wired (operator directive "C")**:
+   - **Pre-trade cash check** — `maybe_route_live` calls
+     `get_account()` first, refuses if buying_power < notional.
+     Prevents noisy Public.com rejection logs.
+   - **Confidence floor for live execution** — env knob
+     `PUBLIC_LIVE_CONFIDENCE_FLOOR` (default 0.65). Refuses signals
+     below the floor. Substitute for peer-brain veto (severed in
+     MC2 standalone mode). Clamped to [0, 0.95] so values colliding
+     with the toxic-spike saturation cap can't silently disable
+     live trading.
+
+5. **6 new tripwires** in `tests/test_public_equity_live_executor.py`
+   pin every gate.
+
+**End-to-end verification** (preview):
+| Layer | State |
+|---|---|
+| Standalone mode | ✅ active |
+| Public live executor | ✅ armed |
+| Vault | ✅ connected, JWT exchange working |
+| Account read | ✅ $244.09 cash, 2 positions visible |
+| Conf floor block (0.55 < 0.65) | ✅ verified |
+| Allowlist block (TSLA blocked) | ✅ verified |
+
+**Tests**: 4,322 → 4,328 passing (+6 safety layer pins, zero
+regressions). Backend healthy on preview, 635 routes.
+
+### Activation steps for prod (Monday-ready)
+
+1. Redeploy preview → prod.
+2. Mirror env flags on prod's `backend/.env`:
+   ```
+   RISEDUAL_STANDALONE_MODE=1
+   RISEDUAL_PUBLIC_LIVE_EXEC=1
+   PUBLIC_LIVE_NOTIONAL_USD=1
+   PUBLIC_LIVE_SYMBOLS=AAPL,MSFT,SPY,QQQ
+   PUBLIC_LIVE_CONFIDENCE_FLOOR=0.65
+   BROKER_ALPACA_TRADING_ENABLED=false
+   PAPER_TRADING_ENABLED=false
+   RISEDUAL_CRYPTO_LIVE_EXEC=0
+   ```
+3. Upsert Public.com credentials into prod's
+   `broker_connections` (via UI panel or matching one-liner script).
+4. Restart prod backend.
+5. Run toxic-purge + backfill on prod:
+   ```
+   POST /api/admin/toxic-purge/all?confidence_floor=80
+   python3 -m scripts.backfill_grade_misses
+   ```
+6. Monday morning before open — confirm `/api/admin/mc2/state` shows
+   standalone active + no outbound to mission.risedual.ai in logs.
+
+
 ## Latest Update — 2026-06-18 (Saturation root cause found + backfill complete)
 
 ### 🎯 RCA closed — found the upstream 100%-confidence source
