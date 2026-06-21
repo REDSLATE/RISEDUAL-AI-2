@@ -764,6 +764,21 @@ async def place_order(broker_id: str, req: PlaceOrderRequest, request: Request):
     rejected with 403 + a structured `detail.code = "wrong_mode"` so
     the frontend can render a "Switch to LIVE" CTA.
     """
+    # 2026-06-20: Operator directive — Alpaca removed from the site.
+    # Hard refusal at the route boundary so no order can route to
+    # Alpaca regardless of UI state, env flags, or stale connections.
+    if (broker_id or "").lower() == "alpaca":
+        raise HTTPException(
+            status_code=410,
+            detail={
+                "code": "alpaca_retired",
+                "message": (
+                    "Alpaca trading has been retired. Public.com is the "
+                    "active broker. Connect Public.com to place orders."
+                ),
+            },
+        )
+
     from services.trading_mode_guards import require_live_mode
     await require_live_mode(request)
     if not await _is_execution_allowed(request):
