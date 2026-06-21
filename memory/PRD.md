@@ -4,7 +4,31 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
-## Latest Update — 2026-06-20 (Monday-ready: preview armed end-to-end)
+## Latest Update — 2026-06-21 (Public.com is primary; Alpaca demoted to placeholder)
+
+### 🎯 Alpha trades on Public.com — Alpaca preserved for BYO-key customers
+
+**Operator directive**: "Just wire Public. I'm not using Alpaca. It can be a
+placeholder if a future customer has their keys. I just want Alpha trading
+on Public."
+
+**What changed**:
+1. **Removed the Alpaca hard-refusal (410) at `POST /api/broker/order/{broker_id}`** — `/app/backend/routes/broker.py`. Alpaca orders now flow through the standard mode/connection guards just like any other broker, so a future customer with their own Alpaca keys can still place trades without site-level blocking.
+2. **`POST /api/broker/order/alpaca`** previously returned `410 alpaca_retired`; now returns the same `403 wrong_mode` / `404 not_connected` paths as every other broker. Verified by curl.
+3. **Options trading default broker flipped** in `/app/backend/routes/options_trading.py::_user_provider` — fallback is now `public` (was `alpaca`).
+4. **`QuickTrade.jsx`** — default `broker` state changed from `'alpaca'` → `'public'`, broker `<Select>` now lists **Public.com** first and **Alpaca (BYO keys)** as a dimmed secondary option.
+5. **`BrokerConnect.jsx`** — `recommended: true` moved from Alpaca → Public.com so the connection UI highlights Public as the primary broker.
+6. **Bonus deliverable**: `/app/alpha_standalone.py` — a self-contained, copy-pasteable distillation of Alpha's Bull/Bear/Commander decision engine for use as a brain in the new multi-brain stack. Pure Python stdlib, no Mongo/FastAPI deps. MIT.
+
+**Verification**:
+- `POST /api/broker/order/alpaca` → `403 wrong_mode` (not 410) ✅
+- `POST /api/broker/order/public` → `403 wrong_mode` (identical path) ✅
+- Backend boots clean (635 routes registered, no errors)
+- Lint clean on all modified files
+- Standalone Alpha engine runs end-to-end (LONG / SHORT_OR_AVOID / NO_TRADE all verified)
+
+
+## Previous Update — 2026-06-20 (Monday-ready: preview armed end-to-end)
 
 ### 🎯 Alpha is wired to trade Monday morning on preview
 

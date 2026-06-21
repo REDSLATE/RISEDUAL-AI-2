@@ -763,22 +763,13 @@ async def place_order(broker_id: str, req: PlaceOrderRequest, request: Request):
     Mode guard: caller must be in LIVE trading mode. PAPER users are
     rejected with 403 + a structured `detail.code = "wrong_mode"` so
     the frontend can render a "Switch to LIVE" CTA.
-    """
-    # 2026-06-20: Operator directive — Alpaca removed from the site.
-    # Hard refusal at the route boundary so no order can route to
-    # Alpaca regardless of UI state, env flags, or stale connections.
-    if (broker_id or "").lower() == "alpaca":
-        raise HTTPException(
-            status_code=410,
-            detail={
-                "code": "alpaca_retired",
-                "message": (
-                    "Alpaca trading has been retired. Public.com is the "
-                    "active broker. Connect Public.com to place orders."
-                ),
-            },
-        )
 
+    2026-06-21: Public.com is Alpha's primary execution venue. Alpaca
+    remains a placeholder for future customers who bring their own
+    keys — no hard refusal at the route boundary. If the broker isn't
+    connected for this user, the standard `_get_user_broker` 404 fires
+    downstream with a clean "connect first" message.
+    """
     from services.trading_mode_guards import require_live_mode
     await require_live_mode(request)
     if not await _is_execution_allowed(request):

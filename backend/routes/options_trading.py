@@ -210,13 +210,12 @@ class ODDAcceptRequest(BaseModel):
 def _user_provider(user: dict) -> str:
     """Pick which broker this user's live options orders route to.
 
-    Phase 1 reads from `user.broker.options_provider` with a fallback
-    to `alpaca` for back-compat with existing accounts. Users will
-    later pick their provider in a settings modal; for now Alpaca is
-    the default because it's the only live adapter.
+    Reads from `user.broker.options_provider` with a fallback to
+    `public` — Public.com is Alpha's primary execution venue. Users
+    on legacy/other brokers can override via their settings.
     """
     broker_prefs = user.get("broker") or {}
-    return (broker_prefs.get("options_provider") or "alpaca").lower()
+    return (broker_prefs.get("options_provider") or "public").lower()
 
 
 def _ensure_odd_accepted(user: dict) -> None:

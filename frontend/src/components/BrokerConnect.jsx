@@ -29,7 +29,7 @@ const BROKERS = [
     docsUrl: 'https://alpaca.markets/docs/trading',
     signupUrl: 'https://app.alpaca.markets/signup',
     color: '#F7D046',
-    recommended: true,
+    recommended: false,
   },
   {
     id: 'schwab',
@@ -107,7 +107,7 @@ const BROKERS = [
     docsUrl: 'https://public.com/api/docs',
     signupUrl: 'https://public.com/api',
     color: '#000000',
-    recommended: false,
+    recommended: true,
   },
   {
     id: 'kraken',

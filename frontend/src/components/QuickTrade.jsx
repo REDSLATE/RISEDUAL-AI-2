@@ -18,7 +18,7 @@ const QuickTrade = ({ symbol, currentPrice }) => {
     quantity: 1,
     type: 'market',
     limitPrice: '',
-    broker: 'alpaca'
+    broker: 'public'
   });
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -191,7 +191,8 @@ const QuickTrade = ({ symbol, currentPrice }) => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-[#060E1F] border-slate-600 shadow-2xl shadow-black/60">
-                    <SelectItem value="alpaca" className="text-white">Alpaca</SelectItem>
+                    <SelectItem value="public" className="text-white">Public.com</SelectItem>
+                    <SelectItem value="alpaca" className="text-slate-400">Alpaca (BYO keys)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
