@@ -44,6 +44,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from local_state import LocalState  # noqa: E402
 from mc_client import MCClient, MCClientError  # noqa: E402
+from local_mc_client import LocalMCClient, is_standalone_mode  # noqa: E402
 from wild_adaptive_core_v2 import (  # noqa: E402
     asdict,
     default_weights,
@@ -108,7 +109,13 @@ class SovereignSidecar:
         if not self.state.weights:
             self.state.set_weights(default_weights())
             self.state.save()
-        self.client = MCClient(
+        # 2026-06-23 — closed-loop standalone: when
+        # ``RISEDUAL_STANDALONE_MODE=1`` (or ``MC_BASE_URL`` empty /
+        # ``local://...``) every outbound MC call lands in local
+        # Mongo via :class:`LocalMCClient`. The two clients share an
+        # identical surface so the rest of the sidecar is unchanged.
+        _ClientCls = LocalMCClient if is_standalone_mode() else MCClient
+        self.client = _ClientCls(
             base_url=mc_base_url, brain=brain, runtime_token=runtime_token,
         )
         self.symbols = symbols
@@ -130,7 +137,9 @@ class SovereignSidecar:
         # Independent heartbeat client so the heartbeat path can never
         # be starved by a hung contribution POST sharing the same
         # connection pool. (Distinct httpx.Client = distinct pool.)
-        self._hb_client = MCClient(
+        # Same standalone switch — when local, both clients write to
+        # the same Mongo, but the indirection is kept for symmetry.
+        self._hb_client = _ClientCls(
             base_url=mc_base_url, brain=brain, runtime_token=runtime_token,
         )
         # External liveness file path — see MC's 2026-05-14 hardening
@@ -418,10 +427,14 @@ def _build_from_argv() -> SovereignSidecar:
             f"missing env var {args.brain.upper()}_INGEST_TOKEN — "
             "see README.md for required envs."
         )
-    if not args.mc_url:
+    # 2026-06-23 — standalone mode no longer needs a remote MC URL.
+    # We still accept one (and store it for diagnostics) but the
+    # LocalMCClient ignores its value entirely.
+    if not args.mc_url and not is_standalone_mode():
         raise SystemExit(
             "missing --mc-url (or MC_BASE_URL env var). Example: "
-            "https://mc.risedual.io"
+            "https://mc.risedual.io — or set RISEDUAL_STANDALONE_MODE=1 "
+            "for closed-loop local operation."
         )
 
     return SovereignSidecar(

@@ -4,7 +4,38 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
-## Latest Update — 2026-06-21 (Public.com is primary; Alpaca demoted to placeholder)
+## Latest Update — 2026-06-23 (Alpha is fully closed-loop / Public.com primary)
+
+### 🎯 Sovereign sidecar severed from remote MC — now writes to local Mongo
+
+**Problem found**: The supervisor-level `alpha-sidecar` process (separate from the backend's in-process MC2 layer) was still POSTing every heartbeat / contribution / stance to `https://mission.risedual.ai`. The remote MC was severed weeks ago and no longer recognises "alpha" — every call had been 400/404-ing, the err log had grown to 5.4 MB, and the watchdog was respawning the sidecar every ~2 minutes. `RISEDUAL_STANDALONE_MODE=1` had only severed the in-process paths; this supervisor process was untouched.
+
+**Fix landed**:
+1. **`/app/backend/sovereign/local_mc_client.py`** — new sync `LocalMCClient` that mirrors the exact public surface of `MCClient` (`heartbeat`, `post_contribution`, `post_stance`, `post_intent`, `close`) but writes to local Mongo collections instead of HTTP. Validates payloads with the same `build_*` helpers so any malformed contribution still fails fast.
+2. **`/app/backend/sovereign/sidecar.py`** — boots `LocalMCClient` when `is_standalone_mode()` is true (env flag or `MC_BASE_URL=local://*` or empty). Identical surface, single import switch. Both main client and independent heartbeat client swap together.
+3. **`/app/backend/.env`** — `MC_BASE_URL`, `MONOREPO_BASE_URL`, `RISEDUAL_MC_URL` all set to `local://standalone`.
+4. **`/etc/supervisor/conf.d/alpha-sidecar.conf`** — env block updated: `MC_BASE_URL=local://standalone` and `RISEDUAL_STANDALONE_MODE=1` added.
+
+**Collections written by the local sidecar (every tick)**:
+- `mc2_heartbeats` — one doc per 30s
+- `mc2_contributions` — one doc per 60s (mode, weights, lr, recent_outcomes, notes)
+- `mc2_stances` — only when there's an open position to vote on
+- `mc2_intents` — already shared with the async backend; sidecar can write here too
+
+**Verification (29 post-restart log lines)**:
+| Metric | Value |
+|---|---|
+| Local writes (`mc2_*`) | 16 |
+| Remote calls to `mission.risedual.ai` | **0** |
+| Any httpx HTTP calls | **0** |
+| Ticks completed | 5 (every 60s, cadence preserved) |
+| Heartbeat thread errors | 0 (was: 1/tick × 90+/h) |
+| Err log growth rate | flat (was: ~2 MB/day) |
+
+**Other outbound paths confirmed already gated by `is_standalone()`** (no code change needed): `services/mc_inbox_poller.py`, `services/risedual_monorepo_client.py`, `services/mc_checkin/__init__.py`, `services/crypto_mc_intent_emitter.py`.
+
+
+## Previous Update — 2026-06-21 (Public.com is primary; Alpaca demoted to placeholder)
 
 ### 🎯 Alpha trades on Public.com — Alpaca preserved for BYO-key customers
 
