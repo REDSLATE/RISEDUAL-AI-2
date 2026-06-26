@@ -1,6 +1,7 @@
 import os
 import logging
 import time
+import uuid
 from typing import Optional, Any
 from dataclasses import dataclass
 import requests
@@ -1073,33 +1074,94 @@ class PublicTradingService:
     def place_order(self, symbol: str, qty: float, side: str, order_type: str = "market",
                     time_in_force: str = "day", limit_price: Optional[float] = None,
                     stop_price: Optional[float] = None) -> Optional[dict]:
+        """Place a Public.com equity order.
+
+        Discovered via live API probing (2026-06-26 — Friday open).
+        The earlier flat-symbol/snake-case shape returned 400; this
+        is the actual accepted request body shape:
+
+            {
+              "instrument": {"symbol": "...", "type": "EQUITY"},
+              "orderSide": "BUY" | "SELL",
+              "orderType": "MARKET" | "LIMIT" | ...,
+              "quantity": "<string>",                 # fractional ok
+              "expiration": {"timeInForce": "DAY" | "GTC" | "GTD"},
+              "orderId": "<client UUID>",             # idempotency key
+              "limitPrice": "<string>",              # only for LIMIT
+              "stopPrice": "<string>",               # only for STOP variants
+            }
+
+        Minimum notional: **$1.00**. Caller must size accordingly —
+        Public rejects sub-dollar orders with HTTP 400 code 128.
+
+        Returns ``{"id": orderId, "status": "submitted", "symbol": ...}``
+        on success, ``None`` on any failure (auth, HTTP, broker
+        rejection). Errors are logged with the broker's response body
+        so operators can see exactly why a fill was rejected.
+        """
         try:
             headers = self._auth_headers()
             if headers is None:
                 return None
+            headers["User-Agent"] = "public-dev-docs"
             acc_id = self.account_id
-            data = {
-                "symbol": symbol.upper(),
-                "side": side.upper(),
-                "type": order_type.upper(),
-                "quantity": str(qty),
-                "timeInForce": time_in_force.upper(),
+            client_order_id = str(uuid.uuid4())
+            # Map TIF aliases → Public.com enum.
+            tif_raw = (time_in_force or "day").upper()
+            tif_map = {
+                "DAY": "DAY",
+                "GTC": "GTC",
+                "GOOD_TILL_CANCEL": "GTC",
+                "GTD": "GTD",
+                "GOOD_TILL_DATE": "GTD",
             }
-            if limit_price and order_type != "market":
+            tif = tif_map.get(tif_raw, "DAY")
+            data: dict[str, Any] = {
+                "instrument": {
+                    "symbol": symbol.upper(),
+                    "type": "EQUITY",
+                },
+                "orderSide": (side or "").upper(),
+                "orderType": (order_type or "MARKET").upper(),
+                "quantity": str(qty),
+                "expiration": {"timeInForce": tif},
+                "orderId": client_order_id,
+            }
+            if limit_price and (order_type or "").upper() != "MARKET":
                 data["limitPrice"] = str(limit_price)
             if stop_price:
                 data["stopPrice"] = str(stop_price)
-            r = requests.post(f"{self.base_url}/trading/{acc_id}/order",
-                              headers=headers, json=data, timeout=10)
-            r.raise_for_status()
-            result = r.json()
-            return {"id": result.get("orderId", ""), "status": "submitted", "symbol": symbol}
+            r = requests.post(
+                f"{self.base_url}/trading/{acc_id}/order",
+                headers=headers, json=data, timeout=10,
+            )
+            if r.status_code >= 400:
+                # Surface the broker's exact reason so operators can
+                # see WHY a fill was rejected (sub-minimum notional,
+                # market closed, instrument not tradable, etc.).
+                body = (r.text or "")[:400]
+                logger.warning(
+                    "[broker_public] place_order %s %s qty=%s rejected "
+                    "%d: %s", symbol, side, qty, r.status_code, body,
+                )
+                return None
+            result = r.json() if r.content else {}
+            # Response shape: ``orderId`` is the broker-side id, but
+            # we also fall back to our client id so the caller always
+            # has something to track.
+            return {
+                "id": result.get("orderId") or client_order_id,
+                "status": "submitted",
+                "symbol": symbol.upper(),
+                "broker_response": result,
+            }
         except Exception as e:
             log_error(logger, {
                 "error": str(e),
                 "type": type(e).__name__,
                 "context": "broker_public",
                 "method": "place_order",
+                "symbol": symbol,
             })
             return None
 

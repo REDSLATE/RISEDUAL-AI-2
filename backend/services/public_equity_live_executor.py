@@ -338,7 +338,12 @@ async def maybe_route_live(
             return None
 
     # Sizing.
-    # OPEN_LONG: use $1 notional → qty = notional / mark.
+    # OPEN_LONG: Use $notional → qty = ceil(notional / mark, 4 dp).
+    #   Public.com enforces a $1.00 minimum order amount. Plain
+    #   ``round()`` can produce ``qty * mark < $1.00`` when the
+    #   fractional rounding truncates downward (e.g. $1.00 / $332.69
+    #   = 0.003006 rounded to 0.003 = $0.998 — rejected). We round UP
+    #   to the nearest 0.0001 share to guarantee we clear the floor.
     # CLOSE_LONG: sell the full current position (qty already known
     # from the broker positions check above).
     mark = await _fetch_mark_price(symbol)
@@ -348,7 +353,10 @@ async def maybe_route_live(
     if intent_kind == "close_long":
         qty = current_qty
     else:
-        qty = round(notional / mark, 4)
+        # math.ceil to 4 dp ensures qty * mark > notional (clears
+        # Public.com's $1.00 minimum even after fractional rounding).
+        import math
+        qty = math.ceil((notional / mark) * 10000.0) / 10000.0
     if qty <= 0:
         logger.warning(
             "[public-live] symbol=%s SKIPPED — computed qty %.6f ≤ 0",
