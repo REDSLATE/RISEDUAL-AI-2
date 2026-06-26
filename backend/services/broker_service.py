@@ -1157,6 +1157,7 @@ class PublicTradingService:
             headers = self._auth_headers()
             if headers is None:
                 return None
+            headers["User-Agent"] = "public-dev-docs"
             r = requests.post(
                 f"{self.base_url}/marketdata/{self.account_id}/quotes",
                 headers=headers,
@@ -1212,37 +1213,49 @@ class PublicTradingService:
     ) -> Optional[list[dict]]:
         """OHLCV daily bars for a single equity symbol, newest-first.
 
-        Uses Public.com's v2 bars endpoint. Returns a list shaped to
-        match AlphaVantage's daily output (``date``, ``open``,
+        Uses Public.com's ``historicdata`` endpoint discovered via the
+        operator's portfolio page (2026-06-26). Returns a list shaped
+        to match AlphaVantage's daily output (``date``, ``open``,
         ``high``, ``low``, ``close``, ``volume``) so downstream
         technical analysis works without branching on source.
+
+        Endpoint shape:
+            GET /userapigateway/historicdata/{type}/{symbol}/{period}/{aggregation}
+
+        Note: this path is account-agnostic (no ``{accountId}`` in
+        the URL), unlike trading endpoints. ``type=EQUITY`` is the
+        instrument type; ``aggregation=ONE_DAY`` for daily bars;
+        ``period`` is mapped from the requested day count.
         """
         try:
             headers = self._auth_headers()
             if headers is None:
                 return None
-            # Period mapping: anything ≤30d uses ONE_MONTH; ≤90d
-            # uses THREE_MONTHS; ≤365d uses ONE_YEAR; else FIVE_YEARS.
-            # Public's enum is documented in the 2026 changelog.
-            if days <= 30:
-                period = "ONE_MONTH"
+            # 2026-06-26 — Public.com's API requires this UA when
+            # hitting historicdata; without it the endpoint silently
+            # responds with an empty body / 404. Discovered by
+            # inspecting their portfolio page's network calls.
+            headers["User-Agent"] = "public-dev-docs"
+            # Map requested days → Public.com ``period`` enum.
+            if days <= 7:
+                period = "WEEK"
+            elif days <= 30:
+                period = "MONTH"
             elif days <= 90:
-                period = "THREE_MONTHS"
+                period = "QUARTER"
+            elif days <= 180:
+                period = "HALF_YEAR"
             elif days <= 365:
-                period = "ONE_YEAR"
-            else:
+                period = "YEAR"
+            elif days <= 365 * 5:
                 period = "FIVE_YEARS"
-            r = requests.get(
-                f"{self.base_url}/marketdata/{self.account_id}/bars/v2",
-                headers=headers,
-                params={
-                    "instrumentSymbol": symbol.upper(),
-                    "instrumentType": "EQUITY",
-                    "period": period,
-                    "interval": "ONE_DAY",
-                },
-                timeout=15,
+            else:
+                period = "TEN_YEARS"
+            url = (
+                f"{self.base_url}/historicdata/EQUITY/{symbol.upper()}/"
+                f"{period}/ONE_DAY"
             )
+            r = requests.get(url, headers=headers, timeout=15)
             if r.status_code >= 400:
                 logger.warning(
                     "[broker_public] get_daily_bars %s returned %d: %s",
@@ -1250,17 +1263,29 @@ class PublicTradingService:
                 )
                 return None
             data = r.json() if r.content else {}
-            bars = data.get("bars") or data.get("data") or []
+            # Public.com nests bars under three session buckets:
+            # ``preMarket.bars`` / ``regularMarket.bars`` /
+            # ``afterMarket.bars``. For daily OHLCV we want the
+            # regular-session bars. Values come back as strings; cast
+            # to float here so downstream consumers (RSI/MACD/EMA)
+            # don't have to.
+            reg = data.get("regularMarket") or {}
+            bars = reg.get("bars") or []
+            if not bars:
+                # Fallback: try a flat ``bars`` key, in case the
+                # response shape diverges in the future.
+                bars = data.get("bars") or data.get("data") or []
             if not bars:
                 return None
             rows = []
             for b in bars:
                 try:
+                    ts = b.get("timestamp") or b.get("date") or ""
+                    # Truncate to YYYY-MM-DD for compat with the rest
+                    # of the pool (AlphaVantage et al return dates).
+                    date = ts[:10] if isinstance(ts, str) else str(ts)[:10]
                     rows.append({
-                        "date": (
-                            b.get("date") or b.get("timestamp")
-                            or b.get("startTime") or ""
-                        ),
+                        "date": date,
                         "open": float(b.get("open") or 0.0),
                         "high": float(b.get("high") or 0.0),
                         "low": float(b.get("low") or 0.0),
