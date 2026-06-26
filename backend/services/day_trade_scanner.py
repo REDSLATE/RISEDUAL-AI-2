@@ -125,7 +125,21 @@ async def scan_universe(
     ).isoformat()
     pipe = [
         {"$match": {
-            "feature": "paper_trading",
+            # 2026-06-26 — Alpha emits predictions tagged
+            # ``feature: "signal_dispatcher"`` from
+            # ``trading_bot_service.py``. The legacy ``paper_trading``
+            # tag stopped being written when ``PAPER_TRADING_ENABLED=
+            # false`` was flipped, which silently starved the scanner
+            # (3,229 fresh signal_dispatcher predictions vs. zero
+            # paper_trading predictions). Accept BOTH so a future re-
+            # enable of paper trading slots back in cleanly.
+            "feature": {"$in": ["signal_dispatcher", "paper_trading"]},
+            # ``timestamp`` is the prediction's first-seen time and is
+            # the canonical TTL window (15 min × 3 recalls — designed
+            # to throttle market-data provider hits). DO NOT filter on
+            # ``last_seen_at`` — that would extend stale signals past
+            # their intended cache lifetime and defeat the producer's
+            # rate-limiting contract.
             "timestamp": {"$gte": since},
         }},
         {"$sort": {"timestamp": -1}},
@@ -438,6 +452,59 @@ async def run_scan(db: Any, asset_class: AssetClass) -> ScanResult:
     # Phase 4: write the target (only if a winner exists).
     if chosen is not None:
         await _write_target(db, chosen, scan_id)
+
+        # 2026-06-26 — Phase 4b: actually fire the trade. Historically
+        # the scanner only wrote ``day_trade_targets`` rows on the
+        # assumption a separate executor would consume them, but no
+        # such executor exists in this codebase. We route the winner
+        # straight to the Public.com live executor here. The executor
+        # owns ALL the safety gates (env disable, confidence floor,
+        # cash check, allowlist, daily caps, dedup, etc.) so calling
+        # it is always safe — when any gate trips it short-circuits
+        # to a clean ``None`` and the scan continues.
+        if asset_class == "equity":
+            try:
+                from services.public_equity_live_executor import (
+                    maybe_route_live as _public_route_live,
+                )
+                _direction = (chosen.direction or "").upper()
+                # Convert STRONG_BUY/BUY/UP → BUY; STRONG_SELL/SELL/
+                # DOWN/SHORT → SELL. Anything else is filtered by
+                # ``apply_gates`` already (non_directional_prediction).
+                _side = (
+                    "BUY" if _direction in {"BUY", "STRONG_BUY", "WEAK_BUY", "UP", "BULLISH"}
+                    else "SELL"
+                )
+                _intent = {
+                    "symbol": chosen.symbol,
+                    "direction": _side,
+                    "confidence": float(chosen.score),
+                    "source_signal": "alpha:day_trade_scanner:v1",
+                    "scan_id": scan_id,
+                    "prediction_id": chosen.prediction_id,
+                }
+                _row = await _public_route_live(db, intent=_intent)
+                if _row:
+                    logger.info(
+                        "[day_trade_scan] EXECUTED %s %s conf=%.3f "
+                        "broker_order_id=%s",
+                        chosen.symbol, _side, chosen.score,
+                        _row.get("broker_order_id"),
+                    )
+                else:
+                    logger.info(
+                        "[day_trade_scan] %s %s conf=%.3f — executor "
+                        "returned None (gate skip; see public_live_decisions)",
+                        chosen.symbol, _side, chosen.score,
+                    )
+            except Exception as _exec_exc:  # noqa: BLE001
+                # Never let an executor failure poison the scan. The
+                # target row is already persisted; a later run will
+                # retry on the next chosen candidate.
+                logger.warning(
+                    "[day_trade_scan] Public.com route failed for "
+                    "%s: %s", chosen.symbol, _exec_exc,
+                )
 
     finished = datetime.now(timezone.utc)
     result = ScanResult(
