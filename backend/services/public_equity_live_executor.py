@@ -185,10 +185,8 @@ async def maybe_route_live(
 ) -> Optional[dict[str, Any]]:
     """Place a Public.com live equity order if all gates pass.
 
-    Called from Alpha's equity decision path (the same place
-    Alpaca's ``maybe_execute_live`` used to be wired). Best-effort
-    by doctrine — returns ``None`` for every skip case below and
-    NEVER raises out:
+    Called from Alpha's equity decision path. Best-effort by doctrine
+    — returns ``None`` for every skip case below and NEVER raises out:
 
       * ``RISEDUAL_PUBLIC_LIVE_EXEC`` unset
       * Operator hasn't connected Public yet
@@ -196,6 +194,15 @@ async def maybe_route_live(
       * Quote provider unavailable
       * Public.com auth fails (PublicTradingService swallows + returns None)
       * Duplicate open row for this symbol (idempotency)
+
+    Two-sided routing (2026-06-26 — Alpaca removed from the stack):
+
+      * **BUY/LONG** signal + no current position → OPEN long
+      * **BUY/LONG** signal + already long → idempotency skip (dedup)
+      * **SELL/SHORT** signal + currently long → CLOSE long (sell qty)
+      * **SELL/SHORT** signal + no position → SKIP (Public is a cash
+        broker — opening new shorts requires margin/locate which the
+        $194 cash buying-power account doesn't support today)
 
     On success, returns the inserted ``equity_live_trades`` row dict
     (with the Public order id) so the orchestrator can log lineage.
@@ -205,9 +212,20 @@ async def maybe_route_live(
 
     symbol = (intent.get("symbol") or "").upper()
     direction = (intent.get("direction") or intent.get("action") or "").upper()
-    if not symbol or direction not in ("BUY", "LONG"):
-        # LONG-only; SELL closes go through alpaca_position_closer's
-        # spiritual successor (not in scope for this scaffold).
+    if not symbol:
+        return None
+
+    # Direction classification → side + intent_kind.
+    if direction in ("BUY", "LONG", "STRONG_BUY", "WEAK_BUY", "UP", "BULLISH"):
+        intent_kind = "open_long"
+    elif direction in ("SELL", "SHORT", "STRONG_SELL", "WEAK_SELL",
+                       "DOWN", "BEARISH"):
+        intent_kind = "close_long"
+    else:
+        logger.info(
+            "[public-live] symbol=%s SKIPPED — non-directional signal: %r",
+            symbol, direction,
+        )
         return None
 
     # 2026-06-18: Confidence floor gate. Refuses live execution when
@@ -269,29 +287,68 @@ async def maybe_route_live(
             exc,
         )
 
-    # Idempotency gate: refuse to open a duplicate live row.
+    # Idempotency / direction-aware position check.
+    # For OPEN_LONG: refuse to open a duplicate live row.
+    # For CLOSE_LONG: require an actual open long position to close
+    # (either tracked by us in ``equity_live_trades`` OR live on the
+    # broker — operator may have manually bought a position).
+    current_qty = 0.0
+    existing_row = None
     if db is not None:
         try:
-            existing = await db.equity_live_trades.find_one(
+            existing_row = await db.equity_live_trades.find_one(
                 {"symbol": symbol, "status": "open", "broker_id": "public"},
-                {"_id": 1},
+                {"_id": 1, "size": 1, "trade_id": 1},
             )
-            if existing:
-                logger.info(
-                    "[public-live] symbol=%s already has open live row — skip",
-                    symbol,
-                )
-                return None
         except Exception as exc:  # noqa: BLE001
             logger.warning("[public-live] idempotency check failed: %s", exc)
 
-    # Sizing
+    if intent_kind == "open_long" and existing_row is not None:
+        logger.info(
+            "[public-live] symbol=%s already has open live row — skip dupe",
+            symbol,
+        )
+        return None
+
+    if intent_kind == "close_long":
+        # Ask the broker for the current position. Don't rely on the
+        # Mongo row alone — the operator may have an untracked
+        # position from before tracking started (SPCX/VRPX-style).
+        try:
+            client_pos = _public_client(secret_key, account_id)
+            if client_pos is not None:
+                positions = client_pos.get_positions() or []
+                for p in positions:
+                    if (p.get("symbol") or "").upper() == symbol:
+                        try:
+                            current_qty = float(p.get("qty") or 0.0)
+                        except (TypeError, ValueError):
+                            current_qty = 0.0
+                        break
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "[public-live] positions lookup failed (non-fatal): %s", exc,
+            )
+        if current_qty <= 0:
+            logger.info(
+                "[public-live] symbol=%s SKIPPED — SELL signal but no "
+                "long position to close (Public cash account; opening "
+                "new shorts not supported)", symbol,
+            )
+            return None
+
+    # Sizing.
+    # OPEN_LONG: use $1 notional → qty = notional / mark.
+    # CLOSE_LONG: sell the full current position (qty already known
+    # from the broker positions check above).
     mark = await _fetch_mark_price(symbol)
     if not mark or mark <= 0:
         logger.warning("[public-live] symbol=%s SKIPPED — no mark price", symbol)
         return None
-    # ``notional`` already computed above (pre-trade cash check).
-    qty = round(notional / mark, 4)
+    if intent_kind == "close_long":
+        qty = current_qty
+    else:
+        qty = round(notional / mark, 4)
     if qty <= 0:
         logger.warning(
             "[public-live] symbol=%s SKIPPED — computed qty %.6f ≤ 0",
@@ -303,14 +360,15 @@ async def maybe_route_live(
     client = _public_client(secret_key, account_id)
     if client is None:
         return None
+    order_side = "buy" if intent_kind == "open_long" else "sell"
     try:
         resp = client.place_order(
-            symbol=symbol, qty=qty, side="buy", order_type="market",
+            symbol=symbol, qty=qty, side=order_side, order_type="market",
         )
     except Exception as exc:  # noqa: BLE001
         logger.error(
-            "[public-live] CRITICAL — place_order raised symbol=%s: %s",
-            symbol, exc,
+            "[public-live] CRITICAL — place_order raised symbol=%s "
+            "kind=%s: %s", symbol, intent_kind, exc,
         )
         return None
     if not resp:
@@ -323,12 +381,58 @@ async def maybe_route_live(
 
     order_id = resp.get("id") or ""
     trade_id = str(uuid.uuid4())
+    if intent_kind == "close_long":
+        # CLOSE: update the existing open row (if any) to ``closed``.
+        # If there was no Mongo row but the position was real, still
+        # log a synthetic close row so PnL can be reconciled later.
+        close_doc = {
+            "closed_at": datetime.now(timezone.utc),
+            "close_price": mark,
+            "close_order_id": order_id,
+            "status": "closed",
+            "close_reason": "alpha_sell_signal",
+        }
+        if db is not None and existing_row is not None:
+            try:
+                await db.equity_live_trades.update_one(
+                    {"_id": existing_row["_id"]},
+                    {"$set": close_doc},
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "[public-live] CRITICAL — sell order placed but Mongo "
+                    "close-update failed symbol=%s order_id=%s: %s",
+                    symbol, order_id, exc,
+                )
+        logger.info(
+            "[public-live] CLOSE symbol=%s qty=%.6f @ $%.2f order_id=%s "
+            "(SELL signal — closed long position)",
+            symbol, qty, mark, order_id,
+        )
+        return {
+            "trade_id": existing_row.get("trade_id") if existing_row else trade_id,
+            "broker_id": "public",
+            "symbol": symbol,
+            "direction": "LONG",
+            "side": "SELL",
+            "intent_kind": "close_long",
+            "size": qty,
+            "close_price": mark,
+            "status": "closed",
+            "broker_order_id": order_id,
+            "closed_at": datetime.now(timezone.utc),
+            "confidence": float(intent.get("confidence") or 0.0),
+            "source_signal": intent.get("source_signal"),
+        }
+
+    # OPEN_LONG path — original behaviour preserved.
     row = {
         "trade_id": trade_id,
         "broker_id": "public",
         "symbol": symbol,
         "direction": "LONG",
         "side": "BUY",
+        "intent_kind": "open_long",
         "size": qty,
         "live_notional_usd": notional,
         "entry_price": mark,

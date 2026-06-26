@@ -248,17 +248,11 @@ async def apply_gates(
     if direction in ("HOLD", "NEUTRAL", "UNKNOWN", ""):
         return False, "non_directional_prediction", inputs
 
-    # 2026-06-26 — Reject SHORT/SELL candidates at the scanner level.
-    # The Public.com live executor is LONG-only by current doctrine
-    # (see ``services/public_equity_live_executor.py::maybe_route_live``),
-    # so a winning SELL signal would silently skip downstream and
-    # waste the scan cycle. Filtering here lets the ranker focus on
-    # actionable BUYs only and keeps every scan productive.
-    # Remove this gate once short-side execution is wired (see
-    # backlog item "wire shorts in maybe_route_live").
-    if direction in ("SHORT", "SELL", "STRONG_SELL", "WEAK_SELL",
-                     "DOWN", "BEARISH"):
-        return False, "short_not_supported_by_executor", inputs
+    # NOTE (2026-06-26): SELL/SHORT signals are no longer filtered at
+    # the scanner level. The Public.com live executor now handles
+    # both sides — BUY → open long, SELL → close existing long. When
+    # the symbol isn't held, the executor short-circuits to a clean
+    # skip (cash account; can't open new shorts without margin).
 
     # Ticker abandonment.
     try:
