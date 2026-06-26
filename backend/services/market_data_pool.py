@@ -26,6 +26,93 @@ market_pool = ProviderPool(get_market_data_provider_pool(), name="MARKET_DATA_PR
 # Module-level db reference
 _db: Any = None
 
+# ─────────────────────────────────────────────
+#  PUBLIC.COM — lazy-init client + lookup
+# ─────────────────────────────────────────────
+#
+# Public.com requires JWT exchange (secret → access token) before any
+# call. We cache one ``PublicTradingService`` instance per process so
+# every quote/daily call reuses the same JWT for ~60min before
+# refreshing transparently. Credentials are resolved in this order:
+#
+#   1. Env: ``PUBLIC_API_KEY`` + ``PUBLIC_ACCOUNT_ID``
+#   2. ``broker_connections`` row where ``broker_id="public"`` and
+#      ``status="connected"`` (written by the broker-connect UI)
+#
+# If neither is available the provider entry silently returns ``None``
+# and the pool fails over to AlphaVantage/Finnhub/etc.
+_public_client: Any = None
+_public_client_loaded: bool = False
+
+
+async def _resolve_public_client() -> Any:
+    """Resolve and cache a ``PublicTradingService`` instance.
+
+    Returns ``None`` if no credentials can be found.
+    """
+    global _public_client, _public_client_loaded
+    if _public_client_loaded:
+        return _public_client
+    _public_client_loaded = True
+    api_key = os.environ.get("PUBLIC_API_KEY", "").strip()
+    account_id = os.environ.get("PUBLIC_ACCOUNT_ID", "").strip()
+    if not (api_key and account_id) and _db is not None:
+        try:
+            doc = await _db.broker_connections.find_one(
+                {"broker_id": "public", "status": "connected"},
+            )
+            if doc:
+                api_key = api_key or (doc.get("api_key") or "").strip()
+                account_id = account_id or (doc.get("api_secret") or "").strip()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[broker_public] broker_connections lookup failed: %s", exc,
+            )
+    if not (api_key and account_id):
+        logger.info(
+            "[broker_public] no credentials in env or broker_connections; "
+            "Public.com provider disabled (pool falls back to AV/Finnhub).",
+        )
+        _public_client = None
+        return None
+    try:
+        from services.broker_service import PublicTradingService
+        _public_client = PublicTradingService(api_key, account_id)
+        logger.info(
+            "[broker_public] market-data client cached: account=%s "
+            "(JWT exchange on first call)", account_id,
+        )
+        return _public_client
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[broker_public] client init failed: %s", exc)
+        _public_client = None
+        return None
+
+
+async def _public_quote_async(symbol: str) -> Optional[dict]:
+    """Quote via Public.com market-data API. Returns None on any
+    failure so the pool can fail over cleanly."""
+    client = await _resolve_public_client()
+    if client is None:
+        raise RuntimeError("Public.com credentials unavailable")
+    result = await asyncio.to_thread(client.get_quote, symbol)
+    if not result:
+        raise RuntimeError(f"Public.com quote returned empty for {symbol}")
+    return result
+
+
+async def _public_daily_async(
+    symbol: str, days: int = 90,
+) -> Optional[list[dict]]:
+    """Daily OHLCV bars via Public.com. Returns None on failure."""
+    client = await _resolve_public_client()
+    if client is None:
+        raise RuntimeError("Public.com credentials unavailable")
+    result = await asyncio.to_thread(client.get_daily_bars, symbol, days=days)
+    if not result:
+        raise RuntimeError(f"Public.com daily returned empty for {symbol}")
+    return result
+
 
 def set_db(database: Any) -> None:
     global _db
@@ -405,7 +492,9 @@ async def _polygon_daily(api_key: str, symbol: str, days: int = 90) -> Optional[
 # ─────────────────────────────────────────────
 
 async def _dispatch_quote(provider: ProviderEntry, symbol: str) -> dict:
-    if provider.provider == "alphavantage":
+    if provider.provider == "public":
+        result = await _public_quote_async(symbol)
+    elif provider.provider == "alphavantage":
         result = await asyncio.to_thread(_av_quote_sync, provider.api_key, symbol)
     elif provider.provider == "finnhub":
         result = await _finnhub_quote(provider.api_key, symbol)
@@ -424,7 +513,10 @@ async def _dispatch_quote(provider: ProviderEntry, symbol: str) -> dict:
 
 
 async def _dispatch_daily(provider: ProviderEntry, symbol: str, outputsize: str) -> list[dict]:
-    if provider.provider == "alphavantage":
+    if provider.provider == "public":
+        days = 365 if outputsize == "full" else 90
+        result = await _public_daily_async(symbol, days)
+    elif provider.provider == "alphavantage":
         result = await asyncio.to_thread(_av_daily_sync, provider.api_key, symbol, outputsize)
     elif provider.provider == "finnhub":
         days = 365 if outputsize == "full" else 90

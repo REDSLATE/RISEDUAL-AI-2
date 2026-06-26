@@ -1139,6 +1139,149 @@ class PublicTradingService:
             })
             return False
 
+    # ── Market data ──────────────────────────────────────────────────
+    # 2026-06-26 — Public.com offers real-time quotes + historical bars
+    # under the same JWT auth as trading. Surfacing them here lets the
+    # ``market_data_pool`` use Public as the operator's primary price
+    # source (consistent with what Alpha actually trades on), with
+    # AlphaVantage / Finnhub / etc. as deeper failover.
+
+    def get_quote(self, symbol: str) -> Optional[dict]:
+        """Real-time quote for a single equity symbol.
+
+        Returns a dict shaped like the rest of the market_data_pool
+        (``symbol``, ``price``, ``bid``, ``ask``, ``source``) or
+        ``None`` on auth/network/empty failure.
+        """
+        try:
+            headers = self._auth_headers()
+            if headers is None:
+                return None
+            r = requests.post(
+                f"{self.base_url}/marketdata/{self.account_id}/quotes",
+                headers=headers,
+                json={"instruments": [{"symbol": symbol.upper(), "type": "EQUITY"}]},
+                timeout=10,
+            )
+            if r.status_code >= 400:
+                logger.warning(
+                    "[broker_public] get_quote %s returned %d: %s",
+                    symbol, r.status_code, r.text[:200],
+                )
+                return None
+            data = r.json() if r.content else {}
+            quotes = data.get("quotes") or []
+            if not quotes:
+                return None
+            q = quotes[0]
+            try:
+                last = float(q.get("last") or 0.0)
+            except (TypeError, ValueError):
+                last = 0.0
+            if last <= 0.0:
+                return None
+            try:
+                bid = float(q.get("bid") or 0.0)
+            except (TypeError, ValueError):
+                bid = 0.0
+            try:
+                ask = float(q.get("ask") or 0.0)
+            except (TypeError, ValueError):
+                ask = 0.0
+            return {
+                "symbol": symbol.upper(),
+                "price": last,
+                "bid": bid,
+                "ask": ask,
+                "last": last,
+                "timestamp": q.get("lastTimestamp"),
+                "source": "public",
+            }
+        except Exception as e:
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_public",
+                "method": "get_quote",
+                "symbol": symbol,
+            })
+            return None
+
+    def get_daily_bars(
+        self, symbol: str, *, days: int = 90,
+    ) -> Optional[list[dict]]:
+        """OHLCV daily bars for a single equity symbol, newest-first.
+
+        Uses Public.com's v2 bars endpoint. Returns a list shaped to
+        match AlphaVantage's daily output (``date``, ``open``,
+        ``high``, ``low``, ``close``, ``volume``) so downstream
+        technical analysis works without branching on source.
+        """
+        try:
+            headers = self._auth_headers()
+            if headers is None:
+                return None
+            # Period mapping: anything ≤30d uses ONE_MONTH; ≤90d
+            # uses THREE_MONTHS; ≤365d uses ONE_YEAR; else FIVE_YEARS.
+            # Public's enum is documented in the 2026 changelog.
+            if days <= 30:
+                period = "ONE_MONTH"
+            elif days <= 90:
+                period = "THREE_MONTHS"
+            elif days <= 365:
+                period = "ONE_YEAR"
+            else:
+                period = "FIVE_YEARS"
+            r = requests.get(
+                f"{self.base_url}/marketdata/{self.account_id}/bars/v2",
+                headers=headers,
+                params={
+                    "instrumentSymbol": symbol.upper(),
+                    "instrumentType": "EQUITY",
+                    "period": period,
+                    "interval": "ONE_DAY",
+                },
+                timeout=15,
+            )
+            if r.status_code >= 400:
+                logger.warning(
+                    "[broker_public] get_daily_bars %s returned %d: %s",
+                    symbol, r.status_code, r.text[:200],
+                )
+                return None
+            data = r.json() if r.content else {}
+            bars = data.get("bars") or data.get("data") or []
+            if not bars:
+                return None
+            rows = []
+            for b in bars:
+                try:
+                    rows.append({
+                        "date": (
+                            b.get("date") or b.get("timestamp")
+                            or b.get("startTime") or ""
+                        ),
+                        "open": float(b.get("open") or 0.0),
+                        "high": float(b.get("high") or 0.0),
+                        "low": float(b.get("low") or 0.0),
+                        "close": float(b.get("close") or 0.0),
+                        "volume": int(float(b.get("volume") or 0)),
+                    })
+                except (TypeError, ValueError):
+                    continue
+            # Newest-first to match the other providers.
+            rows.sort(key=lambda r: r.get("date") or "", reverse=True)
+            return rows[:days] if rows else None
+        except Exception as e:
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_public",
+                "method": "get_daily_bars",
+                "symbol": symbol,
+            })
+            return None
+
 
 class KrakenTradingService:
     """Kraken — Crypto exchange REST API. Uses API-Key + API-Sign (HMAC-SHA512)."""

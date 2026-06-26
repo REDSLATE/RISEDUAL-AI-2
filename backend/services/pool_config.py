@@ -68,13 +68,50 @@ def get_market_data_provider_pool() -> list[dict]:
         return pool
 
     fallback = []
+    # 2026-06-26 — Public.com is the operator's primary equity broker.
+    # When credentials are present, prefer it as the market-data
+    # primary too: same JWT, same source-of-truth for prices Alpha
+    # actually trades on, no extra rate-limit budget burned. Falls back
+    # to AlphaVantage / Finnhub / etc. when Public is down or for
+    # symbols it doesn't cover.
+    #
+    # Credentials live in either env vars (preferred for service-level
+    # config) or the ``broker_connections`` row written by the
+    # broker-connect UI. The market-data dispatcher resolves the row
+    # lazily on first call — see ``_public_quote_async`` in
+    # ``market_data_pool.py``.
+    public_key = os.environ.get("PUBLIC_API_KEY", "")
+    public_account = os.environ.get("PUBLIC_ACCOUNT_ID", "")
+    # Sentinel allows the dispatcher to load creds from
+    # ``broker_connections`` if env is unset but the broker is
+    # connected. ``api_key`` must be truthy for ProviderPool to keep
+    # the entry, so we use a sentinel string the dispatcher recognises.
+    if public_key or public_account:
+        fallback.append({
+            "name": "public-primary",
+            "provider": "public",
+            "api_key": public_key or "__from_db__",
+            "account_id": public_account,
+            "priority": 1,
+        })
+    else:
+        # No env override — try the broker-connect row. Sentinel value
+        # tells the dispatcher to lazy-load from Mongo on first call.
+        fallback.append({
+            "name": "public-primary",
+            "provider": "public",
+            "api_key": "__from_db__",
+            "account_id": "",
+            "priority": 1,
+        })
+
     av = os.environ.get("ALPHAVANTAGEAPIKEY")
     if av:
         fallback.append({
-            "name": "alphavantage-primary",
+            "name": "alphavantage-backup",
             "provider": "alphavantage",
             "api_key": av,
-            "priority": 1,
+            "priority": 2,
         })
 
     finnhub = os.environ.get("FINNHUB_API_KEY")
@@ -83,7 +120,7 @@ def get_market_data_provider_pool() -> list[dict]:
             "name": "finnhub-backup",
             "provider": "finnhub",
             "api_key": finnhub,
-            "priority": 2,
+            "priority": 3,
         })
 
     ms = os.environ.get("MARKETSTACK_API_KEY")
@@ -92,20 +129,20 @@ def get_market_data_provider_pool() -> list[dict]:
             "name": "marketstack-backup",
             "provider": "marketstack",
             "api_key": ms,
-            "priority": 3,
+            "priority": 4,
         })
 
-    # Polygon — optional A/B challenger to Finnhub. Default
-    # priority puts it just below the existing fallbacks (so it
-    # only fires when the others are exhausted), but operators
-    # can override via MARKET_DATA_POLYGON_PRIORITY=1 to make it
-    # the primary. Disabled when POLYGON_API_KEY is unset.
+    # Polygon — optional A/B challenger. Default priority puts it last
+    # in the chain; operators can override via
+    # MARKET_DATA_POLYGON_PRIORITY=1 to make it the primary, but with
+    # Public taking primary now Polygon is typically the deepest
+    # backup. Disabled when POLYGON_API_KEY is unset.
     polygon = os.environ.get("POLYGON_API_KEY")
     if polygon:
         try:
-            poly_priority = int(os.environ.get("MARKET_DATA_POLYGON_PRIORITY", "4"))
+            poly_priority = int(os.environ.get("MARKET_DATA_POLYGON_PRIORITY", "5"))
         except ValueError:
-            poly_priority = 4
+            poly_priority = 5
         fallback.append({
             "name": "polygon-ab",
             "provider": "polygon",
