@@ -4,7 +4,32 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
-## Latest Update — 2026-06-23 (Alpha is fully closed-loop / Public.com primary)
+## Latest Update — 2026-06-26 (Alpha armed for Friday open — full BUY/SELL via Public.com)
+
+### 🎯 Five blockers cleared in one session — Alpha now trades both sides
+
+1. **Scanner feature-tag mismatch fixed** — `day_trade_scanner.py` was hunting for `feature: "paper_trading"` predictions (zero matches since paper was disabled). Alpha emits `feature: "signal_dispatcher"` (3k+ fresh). Filter widened to `$in [signal_dispatcher, paper_trading]`.
+2. **Scanner → executor wiring (Phase 4b)** — scanner now calls `public_equity_live_executor.maybe_route_live(...)` on the chosen winner. Previously wrote `day_trade_targets` rows that nothing consumed.
+3. **Public.com primary market-data provider** — added `get_quote()` + `get_daily_bars()` to `PublicTradingService`. Pool reordered: Public p1, AV p2, Finnhub p3, Polygon p5. Discovered correct historic-data endpoint from operator's Portfolio.mht: `GET /userapigateway/historicdata/{type}/{symbol}/{period}/{aggregation}` with `User-Agent: public-dev-docs` header, response under `regularMarket.bars`. Verified for AAPL/JPM/BAC/UNH/MSFT.
+4. **Sovereign sidecar closed-loop** — supervisor-level `alpha-sidecar` was still POSTing to severed `mission.risedual.ai`. New `LocalMCClient` writes to local Mongo (`mc2_heartbeats`, `mc2_contributions`, `mc2_stances`, `mc2_intents`). Sidecar identical surface, single-line import switch when `is_standalone_mode()`. Watchdog respawn loop killed. Log err growth went from ~2 MB/day to flat.
+5. **Executor now handles BOTH sides** — removed dead "alpaca_position_closer" doctrine. New behavior:
+   - BUY/STRONG_BUY + not held → open $1 long
+   - BUY + already long → idempotency skip
+   - SELL/STRONG_SELL + long held → **close the long** (via Public.com sell)
+   - SELL + not held → clean skip (cash account; no margin shorts)
+
+**Final state heading into Friday open**:
+- Public.com: $194.09 buying power, $277.54 equity, account `5LG34065`, JWT auth verified
+- All four executor branches tested with synthetic intents (markets-closed 400s confirmed wiring reaches `place_order`)
+- Pool: Public primary for quotes + bars, AV/Finnhub/Polygon as backup
+- Sidecar: closed-loop, 60s tick cadence to local Mongo
+- All MC outbound paths severed (`mission.risedual.ai` returns zero hits in any service)
+- Scheduler heartbeat: 11k+ beats, alive
+- Confidence floor 0.55 / $1 notional / no symbol allowlist
+- First expected fill: BAC STRONG_BUY @ 9:35 ET if it survives 15-min TTL
+
+
+## Previous Update — 2026-06-23 (Alpha is fully closed-loop / Public.com primary)
 
 ### 🎯 Sovereign sidecar severed from remote MC — now writes to local Mongo
 
