@@ -303,8 +303,16 @@ async def apply_gates(
         # Also block if a target was already queued and not yet
         # consumed by the executor — prevents re-queuing on the next
         # 5-min tick before the executor has fired.
+        # 2026-06-26 — Only block on RECENT pending rows (last 10 min)
+        # so a stuck row never permanently kills a symbol. Phase 4b
+        # transitions the row to ``routed``/``executor_skipped`` post-
+        # call, but this is the belt-and-suspenders backstop in case
+        # that transition fails (Mongo write error, process crash mid-
+        # scan, etc.).
+        recent_cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
         pending = await db[TARGETS_COLLECTION].count_documents({
             "symbol": candidate.symbol, "status": "pending",
+            "queued_at": {"$gte": recent_cutoff},
         })
         if pending > 0:
             return False, "target_pending", inputs
@@ -395,9 +403,14 @@ async def run_scan(db: Any, asset_class: AssetClass) -> ScanResult:
     # Phase 2: rank.
     ranked = rank_candidates(candidates)
 
-    # Phase 3: gates. Walk in rank order, first survivor wins.
+    # Phase 3: gates. Walk in rank order — collect ALL survivors so
+    # Phase 4b can fall through to the next one if the executor
+    # skips the top winner (e.g. SELL signal on unheld symbol on a
+    # cash account). ``chosen`` stays = top survivor for back-compat
+    # with the scan_log + ADL receipt fields.
     blocked = 0
     chosen: ScanCandidate | None = None
+    survivors: list[ScanCandidate] = []
     for c in ranked:
         passed, blocker, gate_inputs = await apply_gates(db, c)
         c.gate_inputs = gate_inputs
@@ -408,11 +421,9 @@ async def run_scan(db: Any, asset_class: AssetClass) -> ScanResult:
         else:
             c.gate_passed = True
             c.gate_blocker = None
+            survivors.append(c)
             if chosen is None:
                 chosen = c
-            # Continue iterating so every candidate has its gate
-            # verdict recorded in the scan log — but only ONE is
-            # chosen.
 
         # ── ADL-3: Shadow receipt (fire-and-forget) ──────────────
         # Every candidate gets one alpha_decision_log receipt
@@ -455,61 +466,88 @@ async def run_scan(db: Any, asset_class: AssetClass) -> ScanResult:
                 c.symbol, _adl_exc,
             )
 
-    # Phase 4: write the target (only if a winner exists).
+    # Phase 4: write the target row for the top survivor (kept for
+    # audit / back-compat). Then Phase 4b iterates ALL survivors in
+    # rank order and routes the FIRST one the executor accepts. This
+    # avoids losing a scan cycle when the top winner is unactionable
+    # (e.g. STRONG_SELL on a symbol we don't hold — cash account
+    # can't open short, so the executor correctly skips).
     if chosen is not None:
         await _write_target(db, chosen, scan_id)
 
-        # 2026-06-26 — Phase 4b: actually fire the trade. Historically
-        # the scanner only wrote ``day_trade_targets`` rows on the
-        # assumption a separate executor would consume them, but no
-        # such executor exists in this codebase. We route the winner
-        # straight to the Public.com live executor here. The executor
-        # owns ALL the safety gates (env disable, confidence floor,
-        # cash check, allowlist, daily caps, dedup, etc.) so calling
-        # it is always safe — when any gate trips it short-circuits
-        # to a clean ``None`` and the scan continues.
+        # 2026-06-26 — Phase 4b: actually fire the trade.
         if asset_class == "equity":
-            try:
-                from services.public_equity_live_executor import (
-                    maybe_route_live as _public_route_live,
-                )
-                _direction = (chosen.direction or "").upper()
-                # Convert STRONG_BUY/BUY/UP → BUY; STRONG_SELL/SELL/
-                # DOWN/SHORT → SELL. Anything else is filtered by
-                # ``apply_gates`` already (non_directional_prediction).
-                _side = (
-                    "BUY" if _direction in {"BUY", "STRONG_BUY", "WEAK_BUY", "UP", "BULLISH"}
-                    else "SELL"
-                )
-                _intent = {
-                    "symbol": chosen.symbol,
-                    "direction": _side,
-                    "confidence": float(chosen.score),
-                    "source_signal": "alpha:day_trade_scanner:v1",
-                    "scan_id": scan_id,
-                    "prediction_id": chosen.prediction_id,
-                }
-                _row = await _public_route_live(db, intent=_intent)
-                if _row:
-                    logger.info(
-                        "[day_trade_scan] EXECUTED %s %s conf=%.3f "
-                        "broker_order_id=%s",
-                        chosen.symbol, _side, chosen.score,
-                        _row.get("broker_order_id"),
+            executed = False
+            for candidate in survivors:
+                try:
+                    from services.public_equity_live_executor import (
+                        maybe_route_live as _public_route_live,
                     )
-                else:
-                    logger.info(
-                        "[day_trade_scan] %s %s conf=%.3f — executor "
-                        "returned None (gate skip; see public_live_decisions)",
-                        chosen.symbol, _side, chosen.score,
+                    _direction = (candidate.direction or "").upper()
+                    _side = (
+                        "BUY" if _direction in {
+                            "BUY", "STRONG_BUY", "WEAK_BUY", "UP", "BULLISH",
+                        }
+                        else "SELL"
                     )
-            except Exception as _exec_exc:  # noqa: BLE001
-                # Never let an executor failure poison the scan. The
-                # target row is already persisted; a later run will
-                # retry on the next chosen candidate.
-                logger.warning(
-                    "[day_trade_scan] Public.com route failed for "
-                    "%s: %s", chosen.symbol, _exec_exc,
+                    _intent = {
+                        "symbol": candidate.symbol,
+                        "direction": _side,
+                        "confidence": float(candidate.score),
+                        "source_signal": "alpha:day_trade_scanner:v1",
+                        "scan_id": scan_id,
+                        "prediction_id": candidate.prediction_id,
+                    }
+                    _row = await _public_route_live(db, intent=_intent)
+                    # For the WINNER, transition the target row out
+                    # of ``pending`` so future scans can re-evaluate.
+                    # For non-winner candidates (those we tried via
+                    # the fallback), no target row exists — skip the
+                    # transition write.
+                    _final_status = "routed" if _row else "executor_skipped"
+                    if candidate is chosen:
+                        try:
+                            await db[TARGETS_COLLECTION].update_one(
+                                {"scan_id": scan_id, "symbol": candidate.symbol},
+                                {"$set": {
+                                    "status": _final_status,
+                                    "routed_at": datetime.now(timezone.utc),
+                                    "broker_order_id": (_row or {}).get("broker_order_id"),
+                                    "executor_returned_row": bool(_row),
+                                }},
+                            )
+                        except Exception as _upd_exc:  # noqa: BLE001
+                            logger.warning(
+                                "[day_trade_scan] target status update "
+                                "failed for %s: %s",
+                                candidate.symbol, _upd_exc,
+                            )
+                    if _row:
+                        logger.info(
+                            "[day_trade_scan] EXECUTED %s %s conf=%.3f "
+                            "broker_order_id=%s%s",
+                            candidate.symbol, _side, candidate.score,
+                            _row.get("broker_order_id"),
+                            "" if candidate is chosen else " (fallback)",
+                        )
+                        executed = True
+                        break  # Stop on first successful route.
+                    else:
+                        logger.info(
+                            "[day_trade_scan] %s %s conf=%.3f — "
+                            "executor returned None (try next)",
+                            candidate.symbol, _side, candidate.score,
+                        )
+                except Exception as _exec_exc:  # noqa: BLE001
+                    logger.warning(
+                        "[day_trade_scan] Public.com route failed "
+                        "for %s: %s", candidate.symbol, _exec_exc,
+                    )
+            if not executed and survivors:
+                logger.info(
+                    "[day_trade_scan] no actionable candidate this "
+                    "scan — %d survivor(s) all skipped by executor",
+                    len(survivors),
                 )
 
     finished = datetime.now(timezone.utc)
