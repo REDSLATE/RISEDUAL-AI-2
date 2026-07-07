@@ -1,7 +1,41 @@
 # RISEDUAL AI — PRD
 
+## Multi-Trader Scaling Model (decided 2026-07-07)
+
+**Model chosen: BYO API keys (Option A)** — each trader connects their own Public.com / Kraken / broker keys via the BrokerConnect UI. RISEDUAL only orchestrates signals, decision logic, and UX. Traders own their capital and broker relationship end-to-end.
+
+Rationale:
+- **Zero custody risk** — RISEDUAL never touches customer funds. Removes need for broker-dealer registration (SEC/FINRA), state money-transmitter licences, AML/KYC-at-scale, or FDIC/SIPC insurance.
+- **No PDT bottleneck on RISEDUAL** — pattern-day-trading caps apply per-user's own broker account, not the platform.
+- **Clean scaling primitive** — the existing `broker_connections` collection is already keyed by `(user_id, broker_id)`; every service (executor, watchlist merge, portfolio sync) already looks up the requesting user's keys. Nothing structural needs to change.
+- **Regulatory model is well-understood** — RISEDUAL is a "signal service / trade automation tool", not an advisor or broker. Terms of service can require users to acknowledge they're operating their own account and RISEDUAL is not providing investment advice.
+
+Future path (hybrid Prime tier):
+- If a Prime/VIP tier is ever offered where users want RISEDUAL to trade on their behalf, that requires an RIA (Registered Investment Advisor) shell entity + signed advisory agreement per user + custody via a qualified custodian (never on RISEDUAL infra). Deferred until product-market fit at retail is proven.
+
+
+
 ## Original Problem Statement
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
+
+
+## Latest Update — 2026-07-07 (Sort + Watchlist bug fixes)
+
+### 🐛→✅ Broker Positions/Orders sort + Watchlist auto-merge
+
+**Bug 1 — Trades not alphabetical**: `/api/broker/positions/{broker_id}` and `/api/broker/orders/{broker_id}` returned rows in broker's native order. Fixed with `formatted.sort(key=symbol)` in both endpoints; orders break ties on `submitted_at`.
+
+**Bug 2 — Watchlist ignored broker accounts** (root cause): `_sync_watchlist()` in `broker.py` wrote to `db.watchlists.symbols` while every reader (and the manual add/remove routes) uses `db.watchlists.tickers`. Field-name mismatch = watchlist appeared empty even when portfolio-sync had run. Fixed:
+1. `_sync_watchlist` rewritten to `$addToSet` into `tickers` (canonical field).
+2. New `_merge_broker_holdings` helper in `workspace.py` — `GET /api/workspace/watchlist` now unions live broker positions on every read + persists new symbols back. Fails silently on broker error (returns manual list).
+
+**Perf indexes added** (`routes/auth.py::create_indexes`):
+- `trade_orders.symbol`, `trade_orders (user_id, symbol)`
+- `paper_trades.symbol`, `paper_trades.ticker`
+- `watchlists.user_id`
+
+**Validation** (testing_agent iteration_181, 14/14 passed): sort logic verified against stubbed broker clients; watchlist merge tested with legacy `symbols`+`tickers` shape; index presence confirmed at startup.
+
 
 
 ## Latest Update — 2026-07-07 (P0 Search War Room 520 fix)
