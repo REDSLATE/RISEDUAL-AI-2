@@ -4,6 +4,27 @@
 Build a functional clone of a trading app named **RISEDUAL AI**. Multi-model AI consensus, Realtime P&L Tracker, Thread-Safe Native Multi-Agent Engine, Live Order Flow Heatmaps, Paper Trading capabilities, Global Safety Kill-Switch System, Multi-broker Live Options Trading flow, advanced Research Shadow Layer for ML adaptation, "Dual-Stack Architecture", and a "Market State Awareness" Terminal UI.
 
 
+## Latest Update — 2026-07-07 (P0 Search War Room 520 fix)
+
+### 🔴→✅ Search War Room no longer times out on production
+
+**Problem**: `/api/web-intel/war-room` was taking ~17-19s (AI_ANALYSIS_TIMEOUT=18s + parallel provider phase with individual timeouts up to 15s), triggering Cloudflare/ingress 520 errors.
+
+**Fix landed**:
+1. `/app/backend/services/search_war_room/orchestrator.py` — `AI_ANALYSIS_TIMEOUT` reduced 18 → 5s; new `PROVIDER_PHASE_TIMEOUT = 5.5s` wraps `asyncio.gather` with graceful partial-result collection on timeout (pending tasks are cancelled and marked `status="timeout"` in the response instead of hanging the whole request).
+2. `/app/backend/services/search_war_room/registry.py` — individual provider timeouts capped 4-6s (was 10-15s): sec 8→6, stockfit 12→6, tavily 10→6, av_news 12→6, finnhub_news 10→6, ddg/ddg_news 7→5, newsapi 15→6.
+3. `/app/backend/services/search_war_room/adapters/ai_analysis.py` — `max_tokens` reduced 600 → 400 for faster AI turns.
+
+**Validation** (testing_agent iteration_180, 9/9 backend tests passed):
+- TSLA outlook: 10.70s | AAPL fundamentals: 11.04s | MSFT earnings: 12.76s | GOOGL news: 11.65s | Fed rate decision: 10.39s | Phase-cap hang guard: 11.32s
+- All responses HTTP 200 with valid payload (brief/engine_results/warnings)
+- AI analysis engine still returns `status="ok"` on typical queries
+- Total worst-case wall-clock now ~11-13s (was ~19s+) — safely under Cloudflare ingress limit
+
+**Deployment note**: Fix is on Preview only. User needs to hit Deploy for it to reach Production.
+
+
+
 ## Latest Update — 2026-06-26 (Alpha armed for Friday open — full BUY/SELL via Public.com)
 
 ### 🎯 Five blockers cleared in one session — Alpha now trades both sides
