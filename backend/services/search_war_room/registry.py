@@ -117,43 +117,43 @@ def _bootstrap() -> None:
         name="sec", source_type="filing",
         modes={"company", "filing"},
         run_fn=sec.run,
-        timeout=8.0, critical=True,
+        timeout=6.0, critical=True,
     ))
     register(ProviderEntry(
         name="stockfit", source_type="fundamental",
         modes={"company", "filing", "news"},
         run_fn=stockfit.run, env_key="STOCKFIT_API_KEY",
-        timeout=12.0,
+        timeout=6.0,
     ))
     register(ProviderEntry(
         name="tavily", source_type="search",
         modes={"company", "filing", "news", "macro", "general"},
         run_fn=lambda q, s=None: tavily.run(f"{s or q} stock analysis financial" if s else q),
-        env_key="TAVILY_API_KEY", timeout=10.0,
+        env_key="TAVILY_API_KEY", timeout=6.0,
     ))
     register(ProviderEntry(
         name="av_news", source_type="news",
         modes=_ALL_COMPANY,
         run_fn=av_news.run, env_key="ALPHA_VANTAGE_API_KEY",
-        timeout=12.0,
+        timeout=6.0,
     ))
     register(ProviderEntry(
         name="finnhub_news", source_type="news",
         modes=_ALL_COMPANY,
         run_fn=finnhub_news.run, env_key="FINNHUB_API_KEY",
-        timeout=10.0,
+        timeout=6.0,
     ))
     register(ProviderEntry(
         name="ddg", source_type="search",
         modes={"company", "filing", "news", "macro", "general"},
         run_fn=lambda q, s=None: ddg.run(q),
-        timeout=7.0,
+        timeout=5.0,
     ))
     register(ProviderEntry(
         name="ddg_news", source_type="news",
         modes={"company", "filing", "news"},
         run_fn=lambda q, s=None: ddg.run_news(f"{s or q} stock news" if s else q),
-        timeout=7.0,
+        timeout=5.0,
     ))
     register(ProviderEntry(
         name="yahoo", source_type="market",
@@ -171,7 +171,7 @@ def _bootstrap() -> None:
         name="newsapi", source_type="news",
         modes={"company", "filing", "news"},
         run_fn=newsapi.run, env_key="NEWSAPI_API_KEY",
-        timeout=15.0,
+        timeout=6.0,
     ))
 
     logger.info(f"War Room registry: {len(_REGISTRY)} providers registered")

@@ -12,7 +12,10 @@ from services.search_war_room.synthesizer import build_brief
 
 logger = logging.getLogger(__name__)
 
-AI_ANALYSIS_TIMEOUT = 18.0
+# Timeouts tuned to stay well under Cloudflare/ingress proxy limits (~15-30s).
+# Providers fire in parallel, so total wall-clock ≈ max(provider_timeout) + AI_ANALYSIS_TIMEOUT + overhead.
+AI_ANALYSIS_TIMEOUT = 5.0
+PROVIDER_PHASE_TIMEOUT = 5.5  # hard cap on the entire parallel provider phase
 
 
 def classify_mode(query: str, mode: str) -> str:
@@ -49,10 +52,35 @@ async def _run_provider(provider: ProviderEntry, query: str, symbol: str | None)
 async def run_search(query: str, symbol: str | None = None, mode: str = "auto") -> SearchWarRoomResponse:
     resolved = classify_mode(query, mode)
 
-    # Phase 1: Get all enabled providers for this mode and fire in parallel
+    # Phase 1: Get all enabled providers for this mode and fire in parallel.
+    # A global PROVIDER_PHASE_TIMEOUT wraps the whole parallel batch so a single
+    # slow provider (even one with a higher per-provider timeout) cannot block the response.
     providers = get_enabled_providers(resolved, symbol)
     tasks = [asyncio.create_task(_run_provider(p, query, symbol)) for p in providers]
-    results = await asyncio.gather(*tasks, return_exceptions=False)
+
+    results: list[EngineResult] = []
+    try:
+        async with asyncio.timeout(PROVIDER_PHASE_TIMEOUT):
+            results = await asyncio.gather(*tasks, return_exceptions=False)
+    except asyncio.TimeoutError:
+        logger.warning(
+            f"War Room provider phase exceeded {PROVIDER_PHASE_TIMEOUT}s — collecting partials"
+        )
+        for task, provider in zip(tasks, providers):
+            if task.done() and not task.cancelled():
+                try:
+                    results.append(task.result())
+                except Exception as exc:
+                    results.append(EngineResult(
+                        engine=provider.name, status="error", source_type=provider.source_type,
+                        query=query, summary=f"{provider.name} failed", error=str(exc)[:200],
+                    ))
+            else:
+                task.cancel()
+                results.append(EngineResult(
+                    engine=provider.name, status="timeout", source_type=provider.source_type,
+                    query=query, summary=f"{provider.name} timed out (phase cap)", error="phase_timeout",
+                ))
 
     # Normalize results
     normalized = []

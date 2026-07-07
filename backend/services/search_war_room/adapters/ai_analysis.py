@@ -38,7 +38,7 @@ async def run(query: str, engine_results: list) -> EngineResult:
 
     try:
         from services.ai_pool import ai_complete_json, ai_pool
-        result = await ai_complete_json(SYSTEM_PROMPT, prompt, temperature=0.3, max_tokens=600)
+        result = await ai_complete_json(SYSTEM_PROMPT, prompt, temperature=0.3, max_tokens=400)
 
         # Determine which provider was used
         providers = ai_pool.get_healthy_providers()

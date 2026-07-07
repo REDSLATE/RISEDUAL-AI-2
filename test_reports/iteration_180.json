@@ -1,0 +1,38 @@
+{
+  "summary": "Validated P0 fix for Search War Room 520 errors. All 9 backend tests passed. POST /api/web-intel/war-room now completes in 10.39-12.76s (was ~19s), well under the 15s Cloudflare hard limit. Payload shape (brief/engine_results/warnings), AI analysis engine result, provider registry timeout caps, cache status, and phase-cap behavior on unresolvable tickers all verified.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/web-intel/war-room", "issue": "MSFT earnings query hit 12.76s — marginally above the 12s soft target though comfortably under the 15s hard limit. Occasional variance likely comes from AI_ANALYSIS_TIMEOUT bumping against its 5s cap on slow LLM turns. If prod jitter pushes closer to 15s consider dropping AI_ANALYSIS_TIMEOUT to 4s or PROVIDER_PHASE_TIMEOUT to 5.0s to give AI more slack; currently non-blocking."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_war_room_p0_timing.py",
+    "/app/test_reports/pytest/iteration180_war_room_p0_timing.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "orchestrator.py line 105: `except (asyncio.TimeoutError, Exception)` is redundant — Exception already covers TimeoutError. Cosmetic, not a bug.",
+    "orchestrator.py line 64 `asyncio.gather(..., return_exceptions=False)` — since `_run_provider` wraps every exception into an EngineResult, this can never raise from a task. Safe today, but a future refactor that removes the internal try/except would silently break the phase cap. Consider `return_exceptions=True` for defense-in-depth.",
+    "orchestrator.py line 69-83 partial-collection path cancels pending tasks but does not `await` the cancellation — usually fine but under load can leave brief background CancelledError logs. Awaiting `asyncio.gather(*tasks, return_exceptions=True)` after cancel would silence them."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "n/a"},
+  "test_credentials": "admin@risedual.ai / RiseDual2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Test file /app/backend/tests/test_war_room_p0_timing.py is a regression suite for the P0 War Room timing fix. Contains: (1) status endpoint provider timeout caps, (2) cache/status 200 check, (3) 5 parameterized war-room queries (TSLA/AAPL/MSFT/GOOGL/Fed) — assert <15s and valid payload shape, (4) AI analysis engine ok check, (5) phase-cap hang guard on nonexistent ticker. Uses conftest_creds for BASE_URL and admin login (httpOnly cookie + Bearer belt-and-suspenders). Total run ~80s. Observed timings this iteration: 10.39-12.76s.",
+  "observed_timings_seconds": {
+    "TSLA outlook (auto)": 10.70,
+    "AAPL fundamentals (company)": 11.04,
+    "MSFT earnings (auto)": 12.76,
+    "GOOGL news (auto)": 11.65,
+    "Fed rate decision (auto)": 10.39,
+    "AI analysis presence check (AAPL)": 9.08,
+    "Phase-cap hang guard (nonexistent XYZQ)": 11.32
+  },
+  "rca of the issue": "Prod 520 error root cause: AI_ANALYSIS_TIMEOUT=18s plus unbounded parallel provider phase (individual providers up to 15s) produced ~19s total wall-clock, exceeding Cloudflare/ingress ~15s timeout. Fix applied by main agent: (a) AI_ANALYSIS_TIMEOUT 18→5s, (b) new PROVIDER_PHASE_TIMEOUT=5.5s wrapping asyncio.gather with partial-collection on timeout, (c) individual provider timeouts capped 4-6s (was 10-15s), (d) ai_analysis max_tokens 600→400. Total worst-case now ~11s (5.5 + 5 + overhead). Validated: all queries returned in 10.4-12.8s with valid payloads; degraded flag correctly set to True for nonexistent tickers (pre-existing behavior, not a regression)."
+}
