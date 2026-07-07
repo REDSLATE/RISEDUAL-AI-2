@@ -643,6 +643,19 @@ async def create_indexes():
     await db.data_integrity_audits.create_index([("run_id", -1)])
     await db.brute_force_events.create_index([("fired_at", -1)])
 
+    # ── Trades & watchlist symbol lookup (2026-07-07) ──────────────
+    # Frontend surfaces sort broker orders/positions by symbol and
+    # the watchlist reads by user_id + iterates tickers. These
+    # indexes make the paginated symbol scans O(log n) instead of a
+    # full collection scan as the trade log grows past ~10k rows.
+    await db.trade_orders.create_index([("symbol", 1)], name="symbol_asc")
+    await db.trade_orders.create_index(
+        [("user_id", 1), ("symbol", 1)], name="user_symbol",
+    )
+    await db.paper_trades.create_index([("symbol", 1)], name="symbol_asc")
+    await db.paper_trades.create_index([("ticker", 1)], name="ticker_asc")
+    await db.watchlists.create_index("user_id", name="user_id_idx")
+
 # --- Owner-only guard ---
 async def require_owner(request: Request):
     user = await get_current_user(request)

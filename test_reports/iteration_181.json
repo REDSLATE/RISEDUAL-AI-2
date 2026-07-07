@@ -1,0 +1,30 @@
+{
+  "summary": "Iteration 181 backend verification for two bug fixes (broker positions/orders sort by symbol, watchlist auto-merge of broker holdings) + 5 new Mongo indexes. Written 14 pytest tests spanning HTTP baseline, in-process sort logic with stubbed broker clients, _sync_watchlist canonical-field verification, _merge_broker_holdings union + fail-safe behaviour, and Mongo index presence. 14/14 passed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_broker_sort_and_watchlist_merge.py",
+    "/app/test_reports/pytest/iteration181_broker_sort_watchlist.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "workspace.py GET /workspace/watchlist mixes user_id string derivation (user['_id']) with the same key used for the mongo query - fine here because get_current_user already coerces _id to str, but keep this invariant documented so future refactors don't reintroduce ObjectId mismatch.",
+    "broker.py _sync_watchlist only writes to 'tickers'; any legacy docs that still have populated 'symbols' but empty 'tickers' from prior code are NOT migrated. Consider a one-shot migration to $rename/$copy so the residual data becomes visible without waiting for the next portfolio-sync to happen.",
+    "_merge_broker_holdings caps broker_connections at .to_list(length=20). Reasonable soft cap, but silent truncation could mask holdings if a user connects >20 brokers. Log a warning if len==20."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%"},
+  "test_credentials": "admin@risedual.ai / RiseDual2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "All test-created docs (broker_connections with _test_marker, watchlists with test-* user_ids) are inserted and deleted in-test. No residual seed data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Test file /app/backend/tests/test_broker_sort_and_watchlist_merge.py stubs broker._get_or_refresh_client and _get_user_broker to prove sort/merge behaviour without a real Public.com connection. Reuse this pattern if you need to prove future broker-response contract changes. The HTTP tests are tolerant of a real broker connection being present (they check sort invariants on 200 responses too).",
+  "rca of the issue": "Root cause of the watchlist bug (as noted by main agent): _sync_watchlist wrote to db.watchlists.symbols while GET /workspace/watchlist read from db.watchlists.tickers - classic field-name mismatch. Fix in /app/backend/routes/broker.py rewrites _sync_watchlist to $addToSet into 'tickers' (matches the canonical add/remove routes) and adds _merge_broker_holdings in workspace.py to union live broker positions on every read. Verified the fix path with in-process test that seeds a legacy shape (both 'symbols' and 'tickers'), calls _sync_watchlist, and confirms new broker symbols land in 'tickers'."
+}

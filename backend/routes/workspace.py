@@ -1,9 +1,13 @@
 """Workspace routes: watchlist, hypothesis history, notifications."""
+import asyncio
+import logging
+
 from fastapi import APIRouter, HTTPException, Request
 from datetime import datetime, timezone
 
 from services.auth_helpers import get_current_user, is_pro_user
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
 
 # Module-level db reference, set by server.py on startup
@@ -14,12 +18,92 @@ def set_db(database):
     db = database
 
 
+async def _merge_broker_holdings(user_id: str, current_tickers: list[str]) -> list[str]:
+    """Best-effort merge of live broker positions into the watchlist.
+
+    Reads every connected broker for this user, pulls current positions
+    via the same client factory the broker routes use, and unions the
+    symbols with whatever manual tickers the user already has. If any
+    single broker call fails (network, expired key, rate limit) the
+    failure is swallowed and the manual list is still returned. Also
+    persists any newly-discovered broker symbols so subsequent reads
+    are cache-fast even if the broker API is briefly unreachable.
+    """
+    try:
+        from routes import broker as broker_routes
+    except Exception:
+        return current_tickers
+
+    merged = {(t or "").upper().strip() for t in current_tickers if (t or "").strip()}
+
+    cursor = db.broker_connections.find(
+        {"user_id": user_id, "status": {"$in": ["active", "connected"]}},
+    )
+    conns = await cursor.to_list(length=20)
+    if not conns:
+        return sorted(merged)
+
+    async def _positions_for(conn: dict) -> list[str]:
+        broker_id = conn.get("broker_id") or conn.get("broker") or ""
+        try:
+            client = await broker_routes._get_or_refresh_client(user_id, broker_id, conn)
+            positions = await asyncio.to_thread(client.get_positions)
+        except Exception as exc:
+            logger.info(f"[watchlist_merge] broker={broker_id} skipped: {exc}")
+            return []
+        return [
+            (p.get("symbol") or "").upper().strip()
+            for p in (positions or [])
+            if (p.get("symbol") or "").strip()
+        ]
+
+    results = await asyncio.gather(
+        *[_positions_for(c) for c in conns], return_exceptions=True,
+    )
+
+    broker_symbols: set[str] = set()
+    for r in results:
+        if isinstance(r, list):
+            broker_symbols.update(r)
+
+    added = broker_symbols - merged
+    merged |= broker_symbols
+
+    if added:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        try:
+            await db.watchlists.update_one(
+                {"user_id": user_id},
+                {
+                    "$addToSet": {"tickers": {"$each": sorted(added)}},
+                    "$set": {"updated_at": now_iso},
+                    "$setOnInsert": {"created_at": now_iso},
+                },
+                upsert=True,
+            )
+        except Exception as exc:
+            logger.warning(f"[watchlist_merge] persist failed (non-fatal): {exc}")
+
+    return sorted(merged)
+
+
 # --- Watchlist ---
 @router.get("/workspace/watchlist")
 async def get_watchlist(request: Request):
+    """Return the user's watchlist, auto-merged with live broker holdings.
+
+    The stored tickers are the manual entries. Symbols the user
+    currently holds in any connected broker are unioned in on every
+    read so the UI never shows an empty watchlist while positions
+    exist. Newly-discovered broker symbols are persisted back so the
+    list survives a broker outage.
+    """
     user = await get_current_user(request)
+    user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
     doc = await db.watchlists.find_one({"user_id": user["_id"]}, {"_id": 0})
-    return {"tickers": doc.get("tickers", []) if doc else []}
+    manual = doc.get("tickers", []) if doc else []
+    tickers = await _merge_broker_holdings(user_id, manual)
+    return {"tickers": tickers}
 
 
 FREE_WATCHLIST_LIMIT = 3

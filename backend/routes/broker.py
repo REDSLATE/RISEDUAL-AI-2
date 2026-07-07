@@ -647,7 +647,12 @@ async def get_account(broker_id: str, request: Request):
 
 @router.get("/positions/{broker_id}")
 async def get_positions(broker_id: str, request: Request):
-    """Get all positions for a connected broker."""
+    """Get all positions for a connected broker.
+
+    Positions are returned sorted alphabetically by symbol so the UI
+    can render a stable, scannable list. This is a code-level sort
+    because positions come from the live broker API, not from Mongo.
+    """
     user = await _get_user(request)
     user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
     conn = await _get_user_broker(user_id, broker_id)
@@ -665,6 +670,7 @@ async def get_positions(broker_id: str, request: Request):
             "unrealized_pl": float(p.get("unrealized_pl", 0)),
             "unrealized_plpc": float(p.get("unrealized_plpc", 0)),
         })
+    formatted.sort(key=lambda p: p["symbol"])
     return {"positions": formatted, "total": len(formatted)}
 
 
@@ -835,7 +841,11 @@ async def place_order(broker_id: str, req: PlaceOrderRequest, request: Request):
 
 @router.get("/orders/{broker_id}")
 async def get_orders(broker_id: str, request: Request, status: str = "all"):
-    """Get order history from a connected broker."""
+    """Get order history from a connected broker.
+
+    Orders are sorted alphabetically by symbol so the UI presents a
+    stable, scannable list. Ties break on most-recent submission.
+    """
     user = await _get_user(request)
     user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
     conn = await _get_user_broker(user_id, broker_id)
@@ -855,6 +865,7 @@ async def get_orders(broker_id: str, request: Request, status: str = "all"):
             "submitted_at": o.get("submitted_at", ""),
             "created_at": o.get("created_at", ""),
         })
+    formatted.sort(key=lambda o: (o["symbol"], o.get("submitted_at") or ""))
     return {"orders": formatted, "total": len(formatted)}
 
 
@@ -884,23 +895,27 @@ async def cancel_order(broker_id: str, order_id: str, request: Request):
 # ============================================================
 
 async def _sync_watchlist(user_id: str, symbols: list[str]) -> None:
-    """Sync position symbols into the user's watchlist."""
-    if not symbols:
+    """Merge broker position symbols into the user's watchlist.
+
+    Uses the canonical ``tickers`` field (matches ``workspace.py``
+    manual add/remove and ``GET /api/workspace/watchlist``). Previous
+    implementation wrote to ``symbols``, which was invisible to the
+    watchlist reader — that field-name mismatch is why broker holdings
+    never appeared in the watchlist UI.
+    """
+    clean = sorted({(s or "").upper().strip() for s in symbols if (s or "").strip()})
+    if not clean:
         return
-    existing = await db.watchlists.find_one({"user_id": user_id})
-    if existing:
-        new_symbols = list(set(existing.get("symbols", [])) | set(symbols))
-        await db.watchlists.update_one(
-            {"user_id": user_id},
-            {"$set": {"symbols": new_symbols, "updated_at": datetime.now(timezone.utc)}}
-        )
-    else:
-        await db.watchlists.insert_one({
-            "user_id": user_id,
-            "symbols": symbols,
-            "created_at": datetime.now(timezone.utc),
-            "updated_at": datetime.now(timezone.utc),
-        })
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.watchlists.update_one(
+        {"user_id": user_id},
+        {
+            "$addToSet": {"tickers": {"$each": clean}},
+            "$set": {"updated_at": now_iso},
+            "$setOnInsert": {"created_at": now_iso},
+        },
+        upsert=True,
+    )
 
 
 async def _store_portfolio_snapshot(
