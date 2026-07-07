@@ -71,7 +71,7 @@ class TestOpsSnapshotEndpoint:
         }
         
         flag_names = {f["name"] for f in data["operator_flags"]}
-        assert known_flags.issubset(flag_names), f"Missing flags: {known_flags - flag_names}"
+        assert known_flags.issubset(flag_names), f"Missing flags: {known_flags - flag_names}"to the MC and the other one is the ⁷
         
         # Each flag has name, value, set fields
         for flag in data["operator_flags"]:
