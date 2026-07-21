@@ -1,0 +1,25 @@
+{
+  "summary": "Iteration 182 - Retention & Backlog Purge feature fully verified. All 18 backend tests pass (test_retention_p1.py) and the frontend Retention panel renders correctly with every required data-testid, 9-row breakdown table, 4 summary tiles, disabled-when-empty PURGE button, and correct banner behaviour. Regressions from iter-180 (war-room <15s) and iter-181 (broker sort + watchlist merge) still green.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_retention_p1.py",
+    "/app/test_reports/pytest/iteration182_retention.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "retention_service.purge_backlog uses correct $nor filter with preserve_filter for paper_trades (open/active/pending); verified end-to-end with parametrised test.",
+    "get_retention_status uses estimated_document_count + capped count_documents (limit=cap+1) which is O(1) for saturated collections - good perf choice for a UI-polled endpoint.",
+    "The purge_backlog 'more_remains' recheck (probe find_one across all rules if not tripped) is defensive and correct; the click-again UI affordance is trustworthy.",
+    "Frontend AdminPanel event bridge uses 'risedual:open-admin-autopsy' - the naming still refers to autopsy but the effect (open Admin modal) is generic. Minor - not a bug, just legacy naming.",
+    "React 'duplicate key' warnings spam the console on the dashboard (unrelated to retention feature) - hundreds of warnings from an upstream component. Not introduced by this iteration but worth flagging as a separate cleanup task."
+  ],
+  "updated_files": ["/app/backend/tests/test_retention_p1.py"],
+  "success_rate": {"backend": "100% (18/18)", "frontend": "100%"},
+  "test_credentials": "admin@risedual.ai / RiseDual2026! (owner role)",
+  "seed_data_creation": "test_audit_row_written_and_lifetime_increments inserts a synthetic old prediction (200h old) tagged with _test_marker; test_equity_live_trade_row_survives inserts a synthetic 400-day-old row into equity_live_trades; TestPaperTradePreservation inserts 4 paper_trades (open/active/pending + closed) 90h old. All cleaned up via _test_marker in test finally blocks.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Retention endpoints: GET /api/admin/retention/status (200, schema keys retention_hours_default=72/paper=24, purge_batch_cap=5000, 9 breakdown rules, 7 preserved collections). POST /api/admin/retention/purge (200, triggered_by='manual', batch_cap=5000, per_collection list, writes to db.retention_purge_log). Both require owner/admin (403 otherwise, 401 anonymous). Frontend admin modal opens via window.dispatchEvent(new Event('risedual:open-admin-autopsy')) - the sessionStorage 'showAdmin' flag alone is NOT enough since ModalManager doesn't listen for storage events, but the event bridge works reliably. Retention tab visible under Operations group with data-testid='retention-panel'.",
+  "rca of the issue": "No bugs found in the feature. Only issues encountered were test-plumbing (fresh Motor client per async helper to avoid 'Event loop is closed' when reusing a module-scope client across pytest tests; POST not GET for /api/web-intel/war-room; mode='auto' not 'fast' per SearchWarRoomRequest schema). All fixed in the test file, feature code unchanged."
+}

@@ -170,3 +170,15 @@ def register_all(scheduler, db, server_mod):
         id='scheduler_heartbeat', replace_existing=True,
         next_run_time=datetime.now(timezone.utc),  # write one immediately
     )
+
+    # ── Retention hourly sweeper (2026-07-07) ──────────────────
+    # Drains up to RISEDUAL_RETENTION_PURGE_BATCH (default 5000)
+    # expired telemetry rows per hour. Executed trades and user
+    # data are never touched. Full drain still requires the
+    # operator to click PURGE BACKLOG NOW in the Retention panel
+    # when the backlog exceeds the hourly cap.
+    from services.retention_service import run_hourly_purge
+    scheduler.add_job(
+        run_hourly_purge, 'interval', hours=1, args=[db],
+        id='retention_hourly_purge', replace_existing=True,
+    )

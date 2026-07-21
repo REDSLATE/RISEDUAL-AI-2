@@ -104,6 +104,7 @@ from routes.sovereign_honesty import router as sovereign_honesty_router
 from routes.admin_mc_sidecar import router as admin_mc_sidecar_router, set_db as set_admin_mc_sidecar_db
 from routes.chat_mc import router as chat_mc_router, set_db as set_chat_mc_db
 from routes.admin_decision_pairs import router as admin_decision_pairs_router, set_db as set_admin_decision_pairs_db
+from routes.admin_retention import router as admin_retention_router, set_db as set_admin_retention_db
 from routes.admin_ticker_abandonment import router as admin_ticker_abandonment_router, set_db as set_admin_ticker_abandonment_db
 from routes.admin_day_trade import router as admin_day_trade_router, set_db as set_admin_day_trade_db
 from routes.admin_spread_slippage import router as admin_spread_slippage_router, set_db as set_admin_spread_slippage_db
@@ -240,6 +241,7 @@ ALL_ROUTERS = [
     admin_mc_sidecar_router,
     chat_mc_router,
     admin_decision_pairs_router,
+    admin_retention_router,
 ]
 
 
@@ -331,6 +333,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_trading_gate_db,
         set_shelly_memory_db,
         set_admin_decision_pairs_db,
+        set_admin_retention_db,
     ]
     # Module-level db handle for the per-patent policy store so the
     # IP contract can read overrides without an explicit db arg.

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, TrendingUp, Bitcoin, X, Eye, FileText, HeartPulse, AlertTriangle, Radio, GitBranch, Brain, Upload, FileWarning, ScrollText, Network } from 'lucide-react';
+import { Users, Crown, RefreshCw, Gift, FileCode, Database, Key, Lock, Film, ShieldCheck, Activity, Search, MessageSquare, TrendingUp, Bitcoin, X, Eye, FileText, HeartPulse, AlertTriangle, Radio, GitBranch, Brain, Upload, FileWarning, ScrollText, Network, Trash2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { toast } from './ui/sonner';
 import { authFetch } from '../contexts/AuthContext';
@@ -45,6 +45,7 @@ import PythonCoach from './admin/PythonCoach';
 import AlphaKnowledgePanel from './admin/AlphaKnowledgePanel';
 import TradingGate from './admin/TradingGate';
 import DisciplineProfilePicker from './admin/DisciplineProfilePicker';
+import RetentionPanel from './admin/RetentionPanel';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -65,6 +66,7 @@ const TAB_GROUPS = [
     label: 'Operations',
     tabs: [
       { id: 'ops',       label: 'Health',    icon: HeartPulse },
+      { id: 'retention', label: 'Retention', icon: Trash2 },
       { id: 'trading-gate', label: 'Trading Gate', icon: Lock },
       { id: 'discipline', label: 'Discipline', icon: ShieldCheck },
       { id: 'terminal',  label: 'Terminal',  icon: TrendingUp },
@@ -132,6 +134,7 @@ const TAB_SUBTITLES = {
   security:       () => 'Auth attempts · password breaches · rate limits',
   promos:         () => 'Coupons & credit grants',
   ops:            () => 'Env flags · Mongo · scheduler · Tier 3 state · auto notes',
+  retention:      () => 'Data retention window · backlog purge · executed trades preserved forever',
   terminal:       () => 'Sovereign-driven prioritized action queue · EXIT / ENTER / MANAGE / WATCH',
   'burn-in':      () => 'NEWS_SHOCK feeders · snapshots · Smart-Money blocks — Monday AM burn-in',
   'help-search':  () => 'Unanswered help-search queries',
@@ -168,6 +171,7 @@ const TAB_SUBTITLES = {
 const TAB_COMPONENTS = {
   users:          (ctx) => <UsersTab users={ctx.users} filter={ctx.filter} setFilter={ctx.setFilter} actionLoading={ctx.actionLoading} doAction={ctx.doAction} />,
   ops:            () => <OpsSnapshotPanel />,
+  retention:      () => <RetentionPanel />,
   terminal:       () => <TerminalTopActions />,
   'burn-in':      () => <NewsShockBurnIn />,
   providers:      () => <ProviderHealth />,
