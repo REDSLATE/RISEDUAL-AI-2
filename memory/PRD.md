@@ -1,5 +1,35 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-07-21 (Retention & Backlog Purge)
+
+### ✨ New feature: Operator Control → Retention panel
+
+**Mirrors the mission.risedual.ai retention flow.** Keeps Atlas breathing by evicting stale telemetry on a configurable window while executed trades and user data are preserved forever.
+
+**Retention windows:**
+- Telemetry (default): **72h** — `predictions`, `day_trade_targets`, `mc2_heartbeats`, `mc2_contributions`, `mc2_stances`, `mc2_intents`, `signal_dispatcher_events`, `alert_events`
+- Paper trades (closed only): **24h** — active/open/pending paper trades preserved
+- **Never purged**: `equity_live_trades`, `trade_orders`, `broker_connections`, `users`, `watchlists`, `portfolio_snapshots`, `portfolio_history`
+
+**Endpoints (owner/admin only):**
+- `GET /api/admin/retention/status` — per-collection totals + expired backlog, lifetime purged, last-purge timestamp, "more remains" flag
+- `POST /api/admin/retention/purge` — idempotent batch drain (default 5000/call); click again if `more_remains: true`
+
+**Env knobs:**
+- `RISEDUAL_RETENTION_HOURS=72`
+- `RISEDUAL_RETENTION_PAPER_HOURS=24`
+- `RISEDUAL_RETENTION_PURGE_BATCH=5000`
+
+**Hourly sweeper**: `retention_hourly_purge` scheduler job auto-drains one batch/hour with `triggered_by='scheduler'` audit trail.
+
+**UI**: New "Retention" tab in Admin panel (Operations group). PURGE BACKLOG NOW button (data-testid `purge-backlog-btn`), per-collection breakdown table, 4 summary tiles, "more remains" banner.
+
+**Validation** (testing_agent iteration_182, 18/18 backend + 100% frontend passed): audit log verified, live trades survive purge, active paper trades preserved, admin auth enforced, click-again pattern works, all regressions (iter_180, iter_181) still green.
+
+**Deploy note**: Fix is on Preview. Push Deploy to enable on Production. Once deployed, open Admin → Retention and click PURGE BACKLOG NOW a few times to drain the backlog accumulated under the old no-retention setup — Atlas will breathe much easier.
+
+
+
 ## Multi-Trader Scaling Model (decided 2026-07-07)
 
 **Model chosen: BYO API keys (Option A)** — each trader connects their own Public.com / Kraken / broker keys via the BrokerConnect UI. RISEDUAL only orchestrates signals, decision logic, and UX. Traders own their capital and broker relationship end-to-end.
