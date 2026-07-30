@@ -103,6 +103,114 @@ def _live_confidence_floor() -> float:
     return v
 
 
+def _symbol_cooldown_min() -> int:
+    """Per-symbol re-fire cooldown in minutes. Default 60.
+
+    Prevents the same-ticker re-buy pattern seen on the prod tape
+    (JPM fired 3× in the same window). Cooldown counts from the
+    ``opened_at`` of the last live BUY into this symbol regardless
+    of whether the position is still open or already closed.
+    Override via ``PUBLIC_LIVE_SYMBOL_COOLDOWN_MIN``.
+    """
+    raw = (os.environ.get("PUBLIC_LIVE_SYMBOL_COOLDOWN_MIN") or "").strip()
+    if not raw:
+        return 60
+    try:
+        v = int(float(raw))
+    except (TypeError, ValueError):
+        return 60
+    if v < 0:
+        return 0
+    if v > 1440:  # 24h ceiling
+        return 1440
+    return v
+
+
+def _evidence_enforce_enabled() -> bool:
+    """When true, the evidence-worker notional multiplier is APPLIED
+    to live fires. When false (default), the multiplier is logged
+    but ``notional`` is not reduced — shadow mode so the operator
+    can observe scores before enforcement.
+    """
+    return (os.environ.get("RISEDUAL_EVIDENCE_ENFORCE") or "").strip() in (
+        "1", "true", "True", "yes", "on",
+    )
+
+
+async def _last_symbol_fire_at(db: Any, symbol: str) -> Optional[datetime]:
+    """Look up the ``opened_at`` of the most recent BUY into ``symbol``.
+
+    Reads from ``equity_live_trades`` and returns the datetime (any
+    status — open or closed). ``None`` when the symbol has never fired
+    or the read fails.
+    """
+    if db is None:
+        return None
+    try:
+        row = await db.equity_live_trades.find_one(
+            {"symbol": symbol, "broker_id": "public", "side": "BUY"},
+            {"opened_at": 1},
+            sort=[("opened_at", -1)],
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[public-live] cooldown lookup failed: %s", exc)
+        return None
+    if not row:
+        return None
+    ts = row.get("opened_at")
+    if isinstance(ts, datetime):
+        return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+    if isinstance(ts, str):
+        try:
+            return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return None
+
+
+async def _evidence_multiplier(db: Any, strategy_id: str) -> tuple[float, dict]:
+    """Look up the notional multiplier for a strategy from the
+    Evidence Worker's ``strategy_evidence_scores`` collection.
+
+    Returns ``(multiplier, meta)``. When no row exists (strategy
+    untested), the caller gets ``UNTESTED_NOTIONAL_MULT`` (default
+    0.25) — a hard-limited exposure until the worker has scored the
+    strategy. Any read failure or missing collection falls back to
+    ``1.0`` (no reduction) so a Mongo hiccup can never inflate the
+    trade above its baseline sizing.
+
+    ``meta`` carries the raw stats so ``equity_live_trades`` rows
+    are self-describing (``evidence_hit_rate``, ``evidence_sharpe``,
+    ``evidence_trade_count``, ``evidence_bucket``) — critical for
+    post-mortems.
+    """
+    default_untested = 0.25
+    try:
+        raw = (os.environ.get("PUBLIC_LIVE_UNTESTED_NOTIONAL_MULT") or "").strip()
+        if raw:
+            default_untested = max(0.0, min(1.0, float(raw)))
+    except (TypeError, ValueError):
+        pass
+
+    if db is None:
+        return 1.0, {"bucket": "no_db"}
+    try:
+        row = await db.strategy_evidence_scores.find_one(
+            {"strategy_id": strategy_id}, {"_id": 0},
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[public-live] evidence lookup failed: %s", exc)
+        return 1.0, {"bucket": "lookup_error"}
+    if not row:
+        return default_untested, {"bucket": "untested"}
+    return float(row.get("notional_multiplier") or default_untested), {
+        "bucket": row.get("bucket") or "unknown",
+        "hit_rate": row.get("hit_rate"),
+        "sharpe": row.get("sharpe"),
+        "trade_count": row.get("trade_count"),
+    }
+
+
 # ── Public.com client construction ──────────────────────────────────
 
 
@@ -251,6 +359,24 @@ async def maybe_route_live(
         )
         return None
 
+    # 2026-07-30 — Per-symbol re-fire cooldown. Applies to OPEN_LONG
+    # only; SELL/close paths bypass because closing a stale position
+    # must never be gated by a cooldown. Preview forensic showed
+    # JPM/UNH/SPY fired 3× each within the same day.
+    if intent_kind == "open_long":
+        cooldown_min = _symbol_cooldown_min()
+        if cooldown_min > 0:
+            last_at = await _last_symbol_fire_at(db, symbol)
+            if last_at is not None:
+                delta_min = (datetime.now(timezone.utc) - last_at).total_seconds() / 60.0
+                if delta_min < cooldown_min:
+                    logger.info(
+                        "[public-live] symbol=%s SKIPPED — cooldown "
+                        "(%.1f min since last fire, need %d)",
+                        symbol, delta_min, cooldown_min,
+                    )
+                    return None
+
     # Connect-state gate
     creds = await _aresolve_connect_creds(db)
     if creds is None:
@@ -268,7 +394,37 @@ async def maybe_route_live(
     # signal fans out faster than settled cash. Best-effort — if
     # the account-fetch fails for any reason we fall through to the
     # broker's own rejection (worst case = a logged 4xx).
-    notional = _fixed_notional_usd()
+    notional_baseline = _fixed_notional_usd()
+
+    # 2026-07-30 — Ring 3: Evidence-based notional multiplier.
+    # Untested strategies fire at 0.25× baseline; strategies with a
+    # positive Sharpe from the nightly Evidence Worker scale up to
+    # 1.0×. When ``RISEDUAL_EVIDENCE_ENFORCE`` is unset (default —
+    # shadow mode) the multiplier is computed and recorded in the
+    # trade row for post-hoc analysis, but ``notional`` is not
+    # reduced. Flip the env flag to 1 to enforce.
+    strategy_id_raw = (intent.get("strategy_id") or "signal_dispatcher:v1").strip()
+    evidence_mult, evidence_meta = await _evidence_multiplier(db, strategy_id_raw)
+    enforce_evidence = _evidence_enforce_enabled()
+    notional = notional_baseline * evidence_mult if enforce_evidence else notional_baseline
+    # Never let the multiplier bring notional below Public's $1 floor.
+    if notional < 1.0:
+        notional = 1.0
+    if enforce_evidence and evidence_mult < 1.0:
+        logger.info(
+            "[public-live] symbol=%s strategy=%s evidence mult=%.2f "
+            "notional %.2f → %.2f (enforced)",
+            symbol, strategy_id_raw, evidence_mult,
+            notional_baseline, notional,
+        )
+    elif evidence_mult < 1.0:
+        logger.info(
+            "[public-live] symbol=%s strategy=%s evidence mult=%.2f "
+            "notional %.2f (SHADOW — not reduced; set "
+            "RISEDUAL_EVIDENCE_ENFORCE=1 to apply)",
+            symbol, strategy_id_raw, evidence_mult, notional_baseline,
+        )
+
     try:
         client_pre = _public_client(secret_key, account_id)
         if client_pre is not None:
@@ -442,15 +598,30 @@ async def maybe_route_live(
         "side": "BUY",
         "intent_kind": "open_long",
         "size": qty,
+        # 2026-07-30 — persist both the historical field name
+        # (``live_notional_usd``) and the normalized ``notional``
+        # so tape queries stop mysteriously returning $0.00.
         "live_notional_usd": notional,
+        "notional": notional,
+        "notional_baseline": notional_baseline,
+        "evidence_multiplier": evidence_mult,
+        "evidence_enforced": enforce_evidence,
         "entry_price": mark,
         "status": "open",
         "broker_order_id": order_id,
         "opened_at": datetime.now(timezone.utc),
+        # 2026-07-30 — full confidence provenance stored on the row
+        # so post-mortems don't need to re-join predictions.
         "confidence": float(intent.get("confidence") or 0.0),
+        "raw_confidence": float(intent.get("raw_confidence") or 0.0),
+        "calibrated_confidence": intent.get("calibrated_confidence"),
+        "strategy_id": strategy_id_raw,
+        "regime": intent.get("regime"),
+        "predicted_move_pct": intent.get("predicted_move_pct"),
         "sovereign_decision_id": intent.get("sovereign_decision_id"),
         "prediction_id": intent.get("prediction_id"),
         "source_signal": intent.get("source_signal"),
+        **{f"evidence_{k}": v for k, v in evidence_meta.items()},
     }
     if db is not None:
         try:

@@ -182,3 +182,16 @@ def register_all(scheduler, db, server_mod):
         run_hourly_purge, 'interval', hours=1, args=[db],
         id='retention_hourly_purge', replace_existing=True,
     )
+
+    # ── Evidence Worker nightly (2026-07-30) ──────────────────
+    # Recomputes per-strategy Sharpe / hit-rate / expectancy from
+    # closed live trades in a rolling window
+    # (RISEDUAL_EVIDENCE_WINDOW_DAYS, default 30). Writes to
+    # strategy_evidence_scores. The live executor reads this when
+    # sizing new fires and, when RISEDUAL_EVIDENCE_ENFORCE=1,
+    # scales notional by the resulting multiplier.
+    from services.evidence_worker import compute_evidence
+    scheduler.add_job(
+        compute_evidence, 'cron', hour=3, minute=15, args=[db],
+        id='evidence_worker_nightly', replace_existing=True,
+    )

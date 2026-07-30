@@ -46,6 +46,7 @@ import AlphaKnowledgePanel from './admin/AlphaKnowledgePanel';
 import TradingGate from './admin/TradingGate';
 import DisciplineProfilePicker from './admin/DisciplineProfilePicker';
 import RetentionPanel from './admin/RetentionPanel';
+import EvidencePanel from './admin/EvidencePanel';
 import logger from '../utils/logger';
 import { getApiBase } from '../utils/apiBase';
 
@@ -67,6 +68,7 @@ const TAB_GROUPS = [
     tabs: [
       { id: 'ops',       label: 'Health',    icon: HeartPulse },
       { id: 'retention', label: 'Retention', icon: Trash2 },
+      { id: 'evidence',  label: 'Evidence',  icon: TrendingUp },
       { id: 'trading-gate', label: 'Trading Gate', icon: Lock },
       { id: 'discipline', label: 'Discipline', icon: ShieldCheck },
       { id: 'terminal',  label: 'Terminal',  icon: TrendingUp },
@@ -135,6 +137,7 @@ const TAB_SUBTITLES = {
   promos:         () => 'Coupons & credit grants',
   ops:            () => 'Env flags · Mongo · scheduler · Tier 3 state · auto notes',
   retention:      () => 'Data retention window · backlog purge · executed trades preserved forever',
+  evidence:       () => 'Per-strategy Sharpe · hit rate · notional multiplier · shadow vs enforce',
   terminal:       () => 'Sovereign-driven prioritized action queue · EXIT / ENTER / MANAGE / WATCH',
   'burn-in':      () => 'NEWS_SHOCK feeders · snapshots · Smart-Money blocks — Monday AM burn-in',
   'help-search':  () => 'Unanswered help-search queries',
@@ -172,6 +175,7 @@ const TAB_COMPONENTS = {
   users:          (ctx) => <UsersTab users={ctx.users} filter={ctx.filter} setFilter={ctx.setFilter} actionLoading={ctx.actionLoading} doAction={ctx.doAction} />,
   ops:            () => <OpsSnapshotPanel />,
   retention:      () => <RetentionPanel />,
+  evidence:       () => <EvidencePanel />,
   terminal:       () => <TerminalTopActions />,
   'burn-in':      () => <NewsShockBurnIn />,
   providers:      () => <ProviderHealth />,

@@ -77,6 +77,7 @@ class ScanCandidate:
     confidence_calibrated: float | None
     prediction_id: str | None
     prediction_at: str        # ISO timestamp string from predictions.timestamp
+    strategy_id: str = "signal_dispatcher:v1"  # brain/model identity for evidence attribution
     rank: int = -1            # filled in after rank pass
     gate_passed: bool = False
     gate_blocker: str | None = None
@@ -116,7 +117,15 @@ async def scan_universe(
 
     Pure read — never writes. Returns one candidate per (symbol)
     using the most recent prediction within ``lookback_minutes``.
-    Score = ``calibrated_confidence`` when stamped, else ``confidence``.
+    Score = ``calibrated_confidence`` when stamped **and** the
+    calibrator's ``applies_to`` scope includes the scanner; otherwise
+    the raw ``confidence`` is used. The scope check is critical —
+    the isotonic calibrator historically had ``applies_to =
+    ['tier3_readiness_only']`` but every downstream consumer,
+    including this scanner, was blindly reading ``calibrated_confidence``.
+    A degenerate 4-knot calibrator then mapped every raw >= 0.47 to a
+    single 0.9167 sink, causing every live fire to record confidence
+    ≈ 0.92 (see prod tape 2026-07 forensic).
     """
     if db is None:
         return []
@@ -149,6 +158,8 @@ async def scan_universe(
             "direction": {"$first": "$direction"},
             "confidence": {"$first": "$confidence"},
             "calibrated_confidence": {"$first": "$calibrated_confidence"},
+            "calibration_applies_to": {"$first": "$calibration_applies_to"},
+            "model_version": {"$first": "$model_version"},
             "timestamp": {"$first": "$timestamp"},
         }},
     ]
@@ -183,18 +194,46 @@ async def scan_universe(
         if raw_conf > 1.01:
             raw_conf = raw_conf / 100.0
 
-        # Score: calibrated when present, raw otherwise. Directional
-        # adjustment for "down" predictions (raw confidence ==
-        # P(up); for short signals true confidence is 1 - P(up)).
-        # Skipped when calibrated since calibration already maps
-        # raw confidence to actual win probability.
+        # Score selection with SCOPE CHECK on the calibrator.
+        #
+        # Historical bug: the isotonic calibrator was stamped with
+        # ``calibration_applies_to: ['tier3_readiness_only']`` but the
+        # scanner read ``calibrated_confidence`` unconditionally.
+        # Combined with a 4-knot calibrator whose curve mapped every
+        # raw >= 0.47 to 0.9167, every live fire recorded confidence
+        # ≈ 0.92. Fix: only use the calibrated value when the scope
+        # explicitly authorises this consumer. Scanner is authorised
+        # when scope is empty (legacy — assume all), missing, or
+        # contains one of ``day_trade_scanner`` / ``all`` / ``*``.
+        applies_to = r.get("calibration_applies_to") or []
+        if isinstance(applies_to, str):
+            applies_to = [applies_to]
+        scope_authorised = (
+            not applies_to
+            or any(
+                (s or "").lower() in {"day_trade_scanner", "all", "*"}
+                for s in applies_to
+            )
+        )
+        # Directional adjustment for "down" predictions (raw
+        # confidence == P(up); for short signals true confidence
+        # is 1 - P(up)). Skipped when we use the calibrated value
+        # because calibration already maps to actual win probability.
         direction = (r.get("direction") or "").upper()
-        if cal_val is not None:
+        if scope_authorised and cal_val is not None:
             score = cal_val
         elif direction in ("DOWN", "SHORT", "STRONG_SELL", "WEAK_SELL", "BEARISH"):
             score = 1.0 - raw_conf
         else:
             score = raw_conf
+
+        # ``strategy_id`` = brain-model identity for evidence
+        # attribution. Falls back through model_version → prediction
+        # feature → static v1 tag so every downstream row is tagged.
+        strategy_id = (
+            (r.get("model_version") or "").strip()
+            or "signal_dispatcher:v1"
+        )
 
         out.append(ScanCandidate(
             symbol=sym,
@@ -205,6 +244,7 @@ async def scan_universe(
             confidence_calibrated=cal_val,
             prediction_id=r.get("prediction_id"),
             prediction_at=r.get("timestamp") or "",
+            strategy_id=strategy_id,
         ))
     return out
 
@@ -494,6 +534,9 @@ async def run_scan(db: Any, asset_class: AssetClass) -> ScanResult:
                         "symbol": candidate.symbol,
                         "direction": _side,
                         "confidence": float(candidate.score),
+                        "raw_confidence": float(candidate.confidence_raw),
+                        "calibrated_confidence": candidate.confidence_calibrated,
+                        "strategy_id": candidate.strategy_id,
                         "source_signal": "alpha:day_trade_scanner:v1",
                         "scan_id": scan_id,
                         "prediction_id": candidate.prediction_id,
