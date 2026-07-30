@@ -1,5 +1,50 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-07-30 (Ring 1 + Ring 3 — Fix "trash picks")
+
+### 🐛→✅ Root cause of every-trade-scored-0.92 bug
+
+**Forensic finding**: `calibration_layer` had shipped a degenerate 4-knot isotonic model fit on only 147 samples in May. Its curve mapped ANY raw confidence ≥ 0.47 to a single sink value of **0.9167**. The calibrator was stamped with `applies_to: ['tier3_readiness_only']` but `day_trade_scanner` read `calibrated_confidence` unconditionally — so every fire hit the 0.92 sink, `PUBLIC_LIVE_CONFIDENCE_FLOOR=0.55` became meaningless, and JPM / UNH / SPY re-fired 3× each. First evidence run confirmed the 11 legacy live trades had a **Sharpe of -0.42** — mathematically losing.
+
+### Ring 1 fixes (data quality + gates)
+
+1. **`day_trade_scanner.scan_universe`** — respects `calibration_applies_to` scope: uses `calibrated_confidence` only when scope is empty or includes `day_trade_scanner`/`all`/`*`. With the current `tier3_readiness_only` scope, the scanner now uses raw confidence — so a 0.55 raw signal falls below the 0.65 live floor and is refused, breaking the pathological re-fire pattern.
+2. **`strategy_id` propagation** — every `ScanCandidate` and every `_intent` dict now carries `strategy_id` (falls back through `model_version` → `signal_dispatcher:v1`). Downstream `equity_live_trades` insert stores it.
+3. **Per-symbol cooldown** — `PUBLIC_LIVE_SYMBOL_COOLDOWN_MIN=60` (default). Blocks `OPEN_LONG` on any symbol within N minutes of its last live BUY; `SELL/close` paths bypass so exits are never gated.
+4. **Enriched OPEN_LONG insert** — `equity_live_trades` rows now carry `strategy_id`, `raw_confidence`, `calibrated_confidence`, `regime`, `predicted_move_pct`, `notional` (mirrors `live_notional_usd`), `notional_baseline`, `evidence_multiplier`, `evidence_enforced`, `evidence_bucket`, `evidence_hit_rate`, `evidence_sharpe`, `evidence_trade_count` — full provenance without needing a `predictions` re-join.
+
+### Ring 3 (Evidence Worker + governor multiplier)
+
+5. **New `services/evidence_worker.py`** — nightly cron at 03:15 UTC (or manual trigger). Groups closed `equity_live_trades` by `strategy_id`, computes `hit_rate`, `mean_return`, `stdev_return`, Sharpe (mean/stdev), expectancy. Upserts to `strategy_evidence_scores`, logs run to `strategy_evidence_runs`.
+6. **Bucket → notional multiplier decision table**:
+   | Bucket | Condition | Multiplier |
+   |---|---|---|
+   | `proven` | ≥5 trades AND Sharpe ≥ 1.0 | 1.00× |
+   | `ok` | ≥5 trades AND Sharpe ≥ 0.0 | 0.50× |
+   | `losing` | ≥5 trades AND Sharpe < 0.0 | **0.10×** |
+   | `untested` | < 5 trades | 0.25× |
+7. **Governor pre-flight in `maybe_route_live`** — reads `strategy_evidence_scores`, multiplies notional. **SHADOW mode by default** — `RISEDUAL_EVIDENCE_ENFORCE=1` in Prod Secrets to activate real notional reduction.
+8. **Admin UI** — new Admin → Evidence tab (`data-testid='evidence-panel'`). Per-strategy table with color-coded buckets, SHADOW/ENFORCING banner, Refresh + Recompute buttons.
+9. **Endpoints**: `GET /api/admin/evidence/scores`, `POST /api/admin/evidence/recompute` (owner/admin only).
+
+### New env knobs
+- `PUBLIC_LIVE_CONFIDENCE_FLOOR=0.65` (existing; unchanged)
+- `PUBLIC_LIVE_SYMBOL_COOLDOWN_MIN=60`
+- `PUBLIC_LIVE_UNTESTED_NOTIONAL_MULT=0.25`
+- `RISEDUAL_EVIDENCE_WINDOW_DAYS=30`
+- `RISEDUAL_EVIDENCE_MIN_TRADES=5`
+- `RISEDUAL_EVIDENCE_ENFORCE=` (unset = SHADOW; `1` = enforce)
+
+### Validation
+testing_agent iteration_184: **16/16 new backend + 53/53 regression tests passed**. Frontend Evidence panel renders, buttons functional. Zero critical or minor issues.
+
+**Recommended Prod rollout**:
+1. Deploy the code
+2. Leave `RISEDUAL_EVIDENCE_ENFORCE` unset for 3-5 days (SHADOW) — watch scores populate as new fires accrue with `strategy_id` tagged
+3. Once `signal_dispatcher:v1` has ≥5 closed trades and a real Sharpe reading, flip enforcement on
+
+
+
 ## Latest Update — 2026-07-30 (Code-review P1 bug bundle)
 
 ### 🐛→✅ 8 confirmed bugs from external code review, all fixed
