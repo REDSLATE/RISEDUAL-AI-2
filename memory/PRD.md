@@ -1,5 +1,20 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-07-30 (Duplicate React key spam fix)
+
+### 🐛→✅ Zero more "Encountered two children with the same key" warnings
+
+**Root cause**: two components used bare `${side}-${price}` / `${ticker}-${price}` keys without an array index, so React's reconciler flagged every collision as sibling lists updated on the SSE stream.
+
+**Fixes:**
+- `WhaleRadar.jsx` L187 — key = `${ev.id}-${w.side}-${w.price}-${idx}` (was `${w.side}-${w.price}`)
+- `DarkPoolData.jsx` L101 — key = `${w.ticker}-${w.price}-${idx}` (was `${w.ticker}-${w.price}`)
+- `OrderFlowHeatmap.jsx` L281 (defensive) — key = `${ev.type}-${ev.price}-${ev.time || ''}-${idx}` (added idx per test-agent recommendation)
+
+**Validation** (testing_agent iteration_185): Zero duplicate-key warnings across 60+ seconds of live SSE-driven WhaleRadar re-rendering with 10 pairs and up to 11 walls per event. 100% frontend pass.
+
+
+
 ## Latest Update — 2026-07-30 (Ring 1 + Ring 3 — Fix "trash picks")
 
 ### 🐛→✅ Root cause of every-trade-scored-0.92 bug

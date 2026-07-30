@@ -277,8 +277,8 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
         <div className="space-y-1">
           <p className="text-[10px] text-slate-400 uppercase tracking-wider">Wall Movements</p>
           <div className="flex flex-wrap gap-1">
-            {wallEvents.slice(0, 6).map((ev) => (
-              <WallEvent key={`${ev.type}-${ev.price}-${ev.time || ''}`} event={ev} />
+            {wallEvents.slice(0, 6).map((ev, idx) => (
+              <WallEvent key={`${ev.type}-${ev.price}-${ev.time || ''}-${idx}`} event={ev} />
             ))}
           </div>
         </div>
