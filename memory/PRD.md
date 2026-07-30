@@ -1,5 +1,38 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-07-30 (Code-review P1 bug bundle)
+
+### 🐛→✅ 8 confirmed bugs from external code review, all fixed
+
+**Front-end (1)**
+- `OrderFlowHeatmap.jsx` — invalid Tailwind class `border-slate-400/30/60` → `border-slate-400/30`.
+
+**LLM prompt correctness (1)**
+- `crew_definitions.py` prediction crew — `ADVERSARIAL CHECK` list renumbered from `1,2,3,4,4` → `1,2,3,4,5`.
+
+**Concurrency / stability (2)**
+- `orderflow_ws_service.OrderFlowStream` — whale-alert `asyncio.ensure_future(...)` task references now held in `self._bg_tasks: set[asyncio.Task]` with a done-callback so the GC can't collect them mid-flight.
+- `_run_stream` — fixed 3-second reconnect sleep replaced with exponential backoff (base=3s → cap=60s); resets to base after a successful message so brief blips don't inflate the delay.
+
+**Deprecation (1)**
+- `crew_engine.run_parallel_crew` — deprecated `asyncio.get_event_loop()` → `asyncio.get_running_loop()`.
+
+**Auth consolidation (2)**
+- `routes/auth.py` no longer defines `get_current_user`, `get_optional_user`, or `get_jwt_secret` — it now imports them from `services/auth_helpers.py` (single source of truth). Re-export preserves every existing `from routes.auth import get_current_user` call site across ~20 admin/route modules and 6+ tests.
+- `server.py` startup now validates `MONGO_URL`, `DB_NAME`, `JWT_SECRET` and raises a clear `RuntimeError` before app instantiation instead of a cryptic `KeyError` deep in the first authenticated request.
+
+**Observability (1)**
+- `crew_definitions.run_war_room_crew` + `run_hypothesis_crew` — the two `except Exception: pass` blocks around memory-context and order-flow-context fetches now emit `logger.warning(...)` with `[war_room_crew:<symbol>]` / `[hypothesis_crew:<symbol>]` tags so ChromaDB / memory-service outages are visible.
+
+**Skipped (product decision, not a bug)**
+- `AdversarialHub.jsx` — the "adversarial pipeline" panel is a stylized visualization, not a live agent verdict. Design intent, not a bug. Flagged for future work if it should reflect the real crew output.
+
+**Validation** (testing_agent iteration_183): 12/12 fix tests + 41/41 regression tests passed. Live smoke — admin login + `/api/auth/me` + `/api/admin/retention/status` all 200, proving the auth re-export path works across modules.
+
+**Deploy note**: All changes on Preview. Push Deploy for prod.
+
+
+
 ## Latest Update — 2026-07-21 (Retention & Backlog Purge)
 
 ### ✨ New feature: Operator Control → Retention panel
