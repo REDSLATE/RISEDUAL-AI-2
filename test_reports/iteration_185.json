@@ -1,0 +1,23 @@
+{
+  "summary": "Verified duplicate React key warnings fix from iter_184. Logged in as admin@risedual.ai, reached Dashboard where WhaleRadar (WHALE RADAR LIVE panel, SSE ACTIVE, 10 pairs, multiple tickers with 1-11 walls each — BTC 11 walls, ETH 4 walls, DOT 5 walls, LINK 1 wall, SHIB 7 walls) and OrderFlow panels rendered live. Monitored console for 60+ seconds of continuous SSE-driven re-renders, then also navigated to /dark-pool and /order-flow routes. Result: ZERO occurrences of 'Encountered two children with the same key' warning. No key-related React warnings of any kind. Fixes in /app/frontend/src/components/WhaleRadar.jsx L187 (key=`${ev.id}-${w.side}-${w.price}-${idx}`) and /app/frontend/src/components/DarkPoolData.jsx L101 (key=`${w.ticker}-${w.price}-${idx}`) are confirmed working. Panels render normally with visible ticker rows, wall badges, and no runtime errors. Only console errors observed were unrelated 401s (auth-optional endpoints), not React warnings.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Fix pattern is correct: appending array index + a per-parent unique id (event.id / ticker) to the composite key eliminates duplicate-key collisions when two walls share the same side+price within one event or across events.",
+    "Note: other components using `${side}-${price}-${idx}` (OrderFlowPanel L207, OrderFlowHeatmap L260) already include index — good. OrderFlowHeatmap L281 uses `${ev.type}-${ev.price}-${ev.time || ''}` — safe as long as ev.time is present and unique per event; if events with same type+price+empty-time ever fire, a duplicate could recur. Consider adding index there as a defensive measure."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A", "frontend": "100%"},
+  "test_credentials": "admin@risedual.ai / RiseDual2026! (from review request)",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Dashboard is landing page after login; WhaleRadar panel ('WHALE RADAR LIVE') and OrderFlow panel render on Dashboard directly. /dark-pool and /order-flow are not distinct SPA routes (SPA served but no dedicated view). DarkPoolData component's whales list did not visibly render during this session (either it's inside a sub-tab or feed had no whale prints), but the code path is fixed by index+ticker+price key. Login flow: click 'Log In' in landing header -> fill email/password -> submit. Skip Tour is a text link at top of onboarding tour dialog.",
+  "rca of the issue": "React reconciler emits 'Encountered two children with the same key' when sibling list items share a key. WhaleRadar previously used `${w.side}-${w.price}` for wall badges, so two walls at same side+price (common in live orderbook after price updates) collided. DarkPoolData used `${w.ticker}-${w.price}` — collisions possible when the same ticker shows two dark-pool prints at same price. Mitigation: add array index (guarantees uniqueness within map) and event-scoped prefix. Verified in production preview: zero warnings across 60+ seconds of live SSE streaming."
+}

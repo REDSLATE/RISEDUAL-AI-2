@@ -183,8 +183,8 @@ const WhaleRadar = () => {
                   <span className="font-mono text-[#3DE8D9] font-bold w-10">{ev.ticker}</span>
                   <span className="text-slate-300 font-mono">${ev.mid?.toLocaleString()}</span>
                   <div className="flex gap-1 flex-wrap flex-1">
-                    {ev.walls?.slice(0, 3).map((w) => (
-                      <span key={`${w.side}-${w.price}`} className={`px-1.5 py-0.5 rounded text-[9px] border ${
+                    {ev.walls?.slice(0, 3).map((w, idx) => (
+                      <span key={`${ev.id}-${w.side}-${w.price}-${idx}`} className={`px-1.5 py-0.5 rounded text-[9px] border ${
                         w.side === 'bid'
                           ? 'bg-green-500/10 border-emerald-500/20 text-lime-400'
                           : 'bg-red-500/10 border-red-500/20 text-orange-400'

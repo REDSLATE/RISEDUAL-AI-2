@@ -97,8 +97,8 @@ const DarkPoolData = ({ onSubscribe }) => {
             <span className="text-yellow-300 text-xs font-bold uppercase tracking-wider">Whale Dark Pool Prints</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {whales.slice(0, 6).map((w) => (
-              <div key={`${w.ticker}-${w.price}`} className="flex items-center justify-between bg-slate-900/50 rounded-lg px-3 py-2 border border-slate-700/30">
+            {whales.slice(0, 6).map((w, idx) => (
+              <div key={`${w.ticker}-${w.price}-${idx}`} className="flex items-center justify-between bg-slate-900/50 rounded-lg px-3 py-2 border border-slate-700/30">
                 <div className="flex items-center gap-2">
                   <Zap className="w-3.5 h-3.5 text-yellow-400" />
                   <span className="text-white text-xs font-bold">{w.ticker}</span>
