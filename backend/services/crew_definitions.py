@@ -61,13 +61,19 @@ async def run_war_room_crew(symbol: str, overview: dict, earnings: dict,
         if "No similar" in win_context:
             win_context = ""
         veto_context = await get_strategist_veto_context(symbol, n_results=2)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(
+            f"[war_room_crew:{symbol}] memory-context fetch failed "
+            f"({type(e).__name__}: {e}); continuing without win/veto memory.",
+        )
     try:
         from services.order_flow_service import get_order_flow_context
         order_flow_context = await get_order_flow_context(symbol)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(
+            f"[war_room_crew:{symbol}] order-flow-context fetch failed "
+            f"({type(e).__name__}: {e}); continuing without order-flow snapshot.",
+        )
 
     # Build data context for each agent
     overview_str = json.dumps(overview, indent=1, default=str) if overview else "No company data available"
@@ -191,13 +197,19 @@ async def run_hypothesis_crew(symbol: str, data: dict, api_key: str) -> dict:
         if "No similar" in win_context:
             win_context = ""
         veto_context = await get_strategist_veto_context(symbol, n_results=2)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(
+            f"[hypothesis_crew:{symbol}] memory-context fetch failed "
+            f"({type(e).__name__}: {e}); continuing without win/veto memory.",
+        )
     try:
         from services.order_flow_service import get_order_flow_context
         order_flow_context = await get_order_flow_context(symbol)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(
+            f"[hypothesis_crew:{symbol}] order-flow-context fetch failed "
+            f"({type(e).__name__}: {e}); continuing without order-flow snapshot.",
+        )
 
     # Format data sections
     news = _fmt_list(data.get("news", []), "title", "source", limit=8)
@@ -362,7 +374,7 @@ async def run_prediction_crew(
             "3. Only assign confidence above 70% if conditions mirror SUCCESS patterns with NO "
             "overlap to DANGER patterns.\n"
             "4. Factor institutional walls: heavy ASK walls = resistance ceiling; heavy BID walls = support floor.\n"
-            "4. In your summary, explicitly state why the current market is NOT a trap.\n\n"
+            "5. In your summary, explicitly state why the current market is NOT a trap.\n\n"
         )
 
     synth_prompt = f"""Produce a market research assessment for **{ticker_label}** by synthesizing sentiment, macro, and flow analyses.

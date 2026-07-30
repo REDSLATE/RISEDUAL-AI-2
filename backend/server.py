@@ -18,6 +18,21 @@ from datetime import datetime, timezone
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
+# ── Required secrets validation ────────────────────────────────────
+# Fail fast at startup with a clear message instead of raising an
+# opaque ``KeyError`` deep inside a request handler when the first
+# authenticated request lands. ``JWT_SECRET`` is used by every
+# access/refresh token path (see ``services.auth_helpers``); its
+# absence is a fatal misconfiguration, not a runtime edge case.
+_REQUIRED_ENV = ("MONGO_URL", "DB_NAME", "JWT_SECRET")
+_missing = [k for k in _REQUIRED_ENV if not (os.environ.get(k) or "").strip()]
+if _missing:
+    raise RuntimeError(
+        "Missing required environment variables: "
+        f"{', '.join(_missing)}. Set them in backend/.env (dev) or the "
+        "deployment Secrets panel (prod) and restart the backend.",
+    )
+
 from route_registry import register_all_routers, wire_db, seed_admin, create_indexes
 
 # MongoDB connection

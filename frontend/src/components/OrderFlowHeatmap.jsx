@@ -203,7 +203,7 @@ const OrderFlowHeatmap = ({ symbol = 'BTC' }) => {
 
       {/* Heatmap Grid */}
       {grid.length > 0 ? (
-        <div className="relative overflow-hidden rounded-lg border border-slate-400/30/60 bg-slate-700/60" ref={heatmapRef}>
+        <div className="relative overflow-hidden rounded-lg border border-slate-400/30 bg-slate-700/60" ref={heatmapRef}>
           <div className="overflow-x-hidden">
             <div className="min-w-full">
               {grid.map((row, ri) => {

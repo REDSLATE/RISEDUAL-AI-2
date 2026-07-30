@@ -165,7 +165,7 @@ class CrewEngine:
         """
         import concurrent.futures
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         api_key = self._api_key  # Copy immutable ref for closure
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(agents), _MAX_PARALLEL_AGENTS)) as pool:

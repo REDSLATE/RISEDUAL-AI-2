@@ -55,6 +55,10 @@ class OrderFlowStream:
         self._whale_cooldowns: dict[str, datetime] = {}  # "BTC:71800" -> last alert time
         self._lock = asyncio.Lock()
         self._db = None  # Set by server.py for push notifications
+        # Hold refs to fire-and-forget alert tasks so Python's GC can't
+        # collect them mid-flight. Each task self-removes on completion
+        # via the done-callback below, so this set never grows unbounded.
+        self._bg_tasks: set[asyncio.Task] = set()
 
     def set_db(self, db: Any) -> None:
         """Attach MongoDB reference for push notifications."""
@@ -90,12 +94,21 @@ class OrderFlowStream:
         """Connect to Binance depth stream with auto-reconnect."""
         binance_sym = _binance_symbol(symbol)
         stream_url = f"{BINANCE_WS_BASE}/{binance_sym}@depth20@1000ms"
+        # Exponential backoff for reconnects. Starts at 3s and caps at
+        # 60s so Binance geo-blocks or rate-limits don't turn into a
+        # hammering loop. The delay resets to the base value after a
+        # successful connection has yielded at least one message.
+        base_delay = 3.0
+        max_delay = 60.0
+        reconnect_delay = base_delay
 
         while True:
             try:
                 async with websockets.connect(stream_url, ping_interval=20, ping_timeout=10) as ws:
                     logger.info(f"Connected to Binance WS: {stream_url}")
                     async for raw_msg in ws:
+                        # Successful message → reset backoff.
+                        reconnect_delay = base_delay
                         try:
                             data = json.loads(raw_msg)
                             snapshot = self._process_snapshot(symbol, data)
@@ -114,8 +127,13 @@ class OrderFlowStream:
                 logger.info(f"Binance WS cancelled for {symbol}")
                 break
             except Exception as e:
-                logger.warning(f"Binance WS disconnected for {symbol}: {e}. Reconnecting in 3s...")
-                await asyncio.sleep(3)
+                logger.warning(
+                    f"Binance WS disconnected for {symbol}: {e}. "
+                    f"Reconnecting in {reconnect_delay:.1f}s...",
+                )
+                await asyncio.sleep(reconnect_delay)
+                # Double the delay, capped at max_delay.
+                reconnect_delay = min(reconnect_delay * 2.0, max_delay)
 
     def _process_snapshot(self, symbol: str, data: dict) -> dict:
         """Process a partial depth snapshot into heatmap-ready format."""
@@ -176,7 +194,11 @@ class OrderFlowStream:
 
         # Trigger whale alerts for intensity >= 85
         if whale_candidates:
-            asyncio.ensure_future(self._trigger_whale_alerts(symbol, whale_candidates))
+            # Keep a hard reference so the task isn't GC'd mid-flight;
+            # done-callback removes it from the set on completion.
+            task = asyncio.ensure_future(self._trigger_whale_alerts(symbol, whale_candidates))
+            self._bg_tasks.add(task)
+            task.add_done_callback(self._bg_tasks.discard)
 
         # Compute bias
         total_bid_val = sum(b["value"] for b in bids)

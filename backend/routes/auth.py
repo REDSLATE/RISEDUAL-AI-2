@@ -11,8 +11,18 @@ from pydantic import BaseModel
 from bson import ObjectId
 
 from services.datetime_utils import ensure_utc
-
-JWT_ALGORITHM = "HS256"
+# Consolidated auth helpers — single source of truth for JWT + user
+# resolution lives in ``services.auth_helpers``. We re-export those
+# symbols here so every ``from routes.auth import get_current_user``
+# call site across the codebase (routes, tests, admin modules)
+# keeps working without a broad rename. If you touch auth logic,
+# edit ``services/auth_helpers.py`` only.
+from services.auth_helpers import (
+    JWT_ALGORITHM,
+    get_jwt_secret,
+    get_current_user,
+    get_optional_user,
+)
 
 auth_router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -29,9 +39,6 @@ def hash_password(password: str) -> str:
 def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
 
-def get_jwt_secret():
-    return os.environ["JWT_SECRET"]
-
 def create_access_token(user_id: str, email: str) -> str:
     payload = {"sub": user_id, "email": email, "exp": datetime.now(timezone.utc) + timedelta(minutes=15), "type": "access"}
     return jwt.encode(payload, get_jwt_secret(), algorithm=JWT_ALGORITHM)
@@ -47,36 +54,6 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
     samesite_val = "none" if is_secure else "lax"
     response.set_cookie(key="access_token", value=access_token, httponly=True, secure=is_secure, samesite=samesite_val, max_age=900, path="/")
     response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=is_secure, samesite=samesite_val, max_age=604800, path="/")
-
-async def get_current_user(request: Request) -> dict:
-    token = request.cookies.get("access_token")
-    if not token:
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            token = auth_header[7:]
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        payload = jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
-        if payload.get("type") != "access":
-            raise HTTPException(status_code=401, detail="Invalid token type")
-        user = await db.users.find_one({"_id": ObjectId(payload["sub"])})
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found")
-        user["_id"] = str(user["_id"])
-        user.pop("password_hash", None)
-        return user
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-async def get_optional_user(request: Request):
-    """Returns user dict or None (no error if not logged in)"""
-    try:
-        return await get_current_user(request)
-    except HTTPException:
-        return None
 
 def _get_client_ip(request: Request) -> str:
     """Extract the real client IP, respecting reverse proxies.
