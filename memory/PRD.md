@@ -1,5 +1,29 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-07-30 (Options 520 + Chasing filter)
+
+### 🐛→✅ Bug A: Options "Buy to Open" modal showed Cloudflare 520
+**Root cause**: `services/brokers/registry.py::_PROVIDERS` had `alpaca/tradier/tastytrade/ibkr` — but `_user_provider(user)` defaults to `"public"`. `get_options_adapter("public")` raised `ValueError`, the route's generic `except Exception` returned 502, Cloudflare rendered its own 520 error HTML into the modal.
+
+**Fix**: registered `"public": lambda: StubOptionsAdapter("public")` in the factory. `/api/options/status` now returns HTTP 200 with `{enabled: false, provider: "public", details: "public options support coming soon"}`. The modal shows a clean "not enabled" state.
+
+### 🐛→✅ Bug B: Buying tops (P&L calendar -20/-56/-35/-19/-25 sequence)
+**Root cause**: no intraday-move sanity check — momentum signals arriving *after* a big run still fired.
+
+**Fix**: new chasing filter in `public_equity_live_executor.maybe_route_live`:
+- `_max_intraday_move_pct()` reads `PUBLIC_LIVE_MAX_INTRADAY_MOVE_PCT` (default **4.0%**)
+- `_intraday_move_pct(symbol)` reads market_data_pool (Public → Finnhub → TwelveData → Polygon failover) to compute `(current - prev_close) / prev_close * 100`
+- If `abs(move_pct) >= threshold` → OPEN_LONG rejected + log line
+- Data outage (all providers down) → **fail-open** (allow trade + log) so a provider hiccup can't block legit signals
+- Scoped to **OPEN_LONG only** — SELL/close paths never gated
+- Env `PUBLIC_LIVE_MAX_INTRADAY_MOVE_PCT=0` disables the gate entirely
+
+**Validation** (testing_agent iteration_186): 17/17 tests pass. Zero critical or minor issues. Live smoke — `/api/options/status` HTTP 200.
+
+**Deploy**: push to prod. Recommended tuning after 1-2 days: if the filter is still too permissive (i.e., still catching tops of smaller moves), tighten to `PUBLIC_LIVE_MAX_INTRADAY_MOVE_PCT=2.5` in Prod Secrets — no code deploy needed.
+
+
+
 ## Latest Update — 2026-07-30 (Duplicate React key spam fix)
 
 ### 🐛→✅ Zero more "Encountered two children with the same key" warnings
