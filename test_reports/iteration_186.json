@@ -1,0 +1,20 @@
+{
+  "summary": "Iteration 186 — verified BUG A (options/status now 200 for public provider, no more Cloudflare 520) and BUG B (chasing filter on OPEN_LONG in public_equity_live_executor). All 17 targeted tests pass. Live smoke via preview URL confirms /api/options/status returns HTTP 200 with {enabled:false, provider:'public', details:'public options support coming soon'}.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_options_status_and_chasing_filter.py"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "BUG A fix is minimal and correct: adding 'public' → StubOptionsAdapter in _PROVIDERS closes the ValueError-→-generic-except-→-502-→-CF-520 chain. Registry unit test confirms unknown providers still raise ValueError (route maps to 502 via the ``except Exception`` handler at options_trading.py:299).",
+    "BUG B fix correctly scoped to intent_kind=='open_long' — SELL/close_long bypasses the gate. Fail-open on data outage is intentional (None → allow with log). Env override PUBLIC_LIVE_MAX_INTRADAY_MOVE_PCT<=0 short-circuits via ``if max_move > 0`` guard.",
+    "Minor observation: SHORT-direction signals map to intent_kind='close_long' and therefore bypass the chasing gate — per problem statement the reviewer noted abs() would also filter shorts, but the actual implementation only applies the gate to open_long. This matches the current ``if intent_kind == 'open_long':`` block. If the intent is to also gate SHORTs (SEC signals), the block would need widening — flagging for main agent awareness but current behavior appears intentional (Public.com is cash-only, so SHORT never opens a new position anyway)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "not tested (backend-only fix; frontend consumes JSON now delivered correctly)"},
+  "test_credentials": "admin@risedual.ai / RiseDual2026!",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Test file at /app/backend/tests/test_options_status_and_chasing_filter.py covers 17 cases: registry membership, ValueError propagation for unknown providers, live /api/options/status HTTP 200, _intraday_move_pct math, _max_intraday_move_pct env override (default 4.0, custom, zero, negative), chasing gate blocking OPEN_LONG on >cap move, allowing OPEN_LONG on <cap move, fail-open on data outage, SELL bypass, env-zero disable. Uses monkeypatch to inject fake services.market_data_pool module. Note: SHORT direction is classified as close_long and therefore also bypasses chasing gate — a test documents this current behavior.",
+  "rca of the issue": "BUG A: services/brokers/registry.py:_PROVIDERS dict lacked 'public' key. Since user.broker.options_provider defaults to 'public' (routes/options_trading.py:_user_provider fallback), get_options_adapter('public') raised ValueError. The route's generic ``except Exception`` returned HTTPException 502 'Broker unavailable'. Cloudflare intercepted the 502 and rendered its 520 error HTML into the modal. Fix: register 'public': lambda: StubOptionsAdapter('public') so is_options_enabled() returns enabled=false with details='public options support coming soon' → HTTP 200 with clean payload. BUG B: maybe_route_live had no intraday move check, so momentum signals arriving after big runs (chasing) still fired live orders. Fix added _max_intraday_move_pct() env-configurable gate (default 4.0%) applied only to open_long, with fail-open on data outage."
+}

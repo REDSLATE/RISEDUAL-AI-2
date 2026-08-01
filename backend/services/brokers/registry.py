@@ -8,6 +8,13 @@ Phase 1 providers:
   * `tradier`     — stub (501)
   * `tastytrade`  — stub (501)
   * `ibkr`        — stub (501)
+  * `public`      — stub (200 with ``enabled=false``); Public.com has
+                    no public options API. Registering it here means
+                    ``/api/options/status`` returns a clean
+                    ``{enabled: false, details: "public options support
+                    coming soon"}`` for the ~all users whose default
+                    provider is Public, instead of a ``ValueError``
+                    that the route surfaced as 502 → Cloudflare 520.
 
 Adding a new broker: implement `BrokerOptionsAdapter`, register the
 class in `_PROVIDERS`, done. No route-layer changes required.
@@ -31,6 +38,7 @@ _PROVIDERS: dict[str, Callable[[], BrokerOptionsAdapter]] = {
     "tradier":    TradierOptionsAdapter,
     "tastytrade": lambda: StubOptionsAdapter("tastytrade"),
     "ibkr":       lambda: StubOptionsAdapter("ibkr"),
+    "public":     lambda: StubOptionsAdapter("public"),
 }
 
 SUPPORTED_PROVIDERS: list[str] = list(_PROVIDERS.keys())

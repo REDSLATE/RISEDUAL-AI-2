@@ -126,6 +126,80 @@ def _symbol_cooldown_min() -> int:
     return v
 
 
+def _max_intraday_move_pct() -> float:
+    """Refuse BUYs when the symbol has already run this far today.
+
+    2026-07-30 forensic: operator's prod P&L calendar showed a
+    -$56 / -$35 / -$25 sequence over three consecutive days. Root
+    cause per operator: "It sees it but doesn't enter until it's
+    ended" — the bot chases the top of moves. This gate blocks any
+    OPEN_LONG on a symbol whose intraday move (current quote vs
+    previous close) already exceeds a threshold, forcing the bot
+    to skip late entries. Signals that arrive DURING a fresh move
+    still fire; ones that arrive AFTER a completed run are refused.
+
+    Default 4.0% — chosen empirically as "already-mooned" territory
+    for a mid-cap on a normal day. Set to 0 or negative to disable.
+    Override via ``PUBLIC_LIVE_MAX_INTRADAY_MOVE_PCT``.
+    """
+    raw = (os.environ.get("PUBLIC_LIVE_MAX_INTRADAY_MOVE_PCT") or "").strip()
+    if not raw:
+        return 4.0
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        return 4.0
+    return v
+
+
+async def _intraday_move_pct(symbol: str) -> Optional[float]:
+    """Best-effort measure of today's move on ``symbol``.
+
+    Returns ``(current - previous_close) / previous_close * 100`` as
+    a signed float, or ``None`` when the data providers are all
+    unavailable / return garbage. Reads through the shared market
+    data pool so we get Public → Finnhub → TwelveData → Polygon
+    failover for free. Callers treat ``None`` as "don't gate on
+    this" — a data outage must never *silently* re-arm chasing.
+    """
+    try:
+        from services.market_data_pool import market_quote, market_daily
+    except Exception:
+        return None
+
+    try:
+        q = await market_quote(symbol)
+    except Exception:
+        q = None
+    try:
+        bars = await market_daily(symbol, outputsize="compact")
+    except Exception:
+        bars = None
+
+    current = None
+    if isinstance(q, dict):
+        current = q.get("price") or q.get("last") or q.get("close")
+        try:
+            current = float(current) if current is not None else None
+        except (TypeError, ValueError):
+            current = None
+
+    prev_close = None
+    if isinstance(bars, list) and bars:
+        # market_daily returns most-recent-last; the previous
+        # session's close is the penultimate row unless the most
+        # recent row IS the previous session (data not yet updated
+        # for today), in which case fall back to that.
+        try:
+            prev_close = float(bars[-2].get("close")) if len(bars) >= 2 else float(bars[-1].get("close"))
+        except (TypeError, ValueError, AttributeError):
+            prev_close = None
+
+    if current is None or prev_close is None or prev_close <= 0:
+        return None
+    return (current - prev_close) / prev_close * 100.0
+
+
 def _evidence_enforce_enabled() -> bool:
     """When true, the evidence-worker notional multiplier is APPLIED
     to live fires. When false (default), the multiplier is logged
@@ -376,6 +450,28 @@ async def maybe_route_live(
                         symbol, delta_min, cooldown_min,
                     )
                     return None
+
+        # 2026-07-30 — Chasing filter. If the symbol has already run
+        # this far today, we're buying the top. Skip. Data outage
+        # (returns None) does NOT block the trade — we can't punish
+        # a legit signal for a provider hiccup — but the miss is
+        # logged so the operator can catch systemic outages.
+        max_move = _max_intraday_move_pct()
+        if max_move > 0:
+            move_pct = await _intraday_move_pct(symbol)
+            if move_pct is None:
+                logger.info(
+                    "[public-live] symbol=%s chasing-filter data unavailable — "
+                    "allowing fire (fail-open)",
+                    symbol,
+                )
+            elif abs(move_pct) >= max_move:
+                logger.info(
+                    "[public-live] symbol=%s SKIPPED — chasing filter "
+                    "(intraday move %.2f%%, cap %.2f%%)",
+                    symbol, move_pct, max_move,
+                )
+                return None
 
     # Connect-state gate
     creds = await _aresolve_connect_creds(db)
