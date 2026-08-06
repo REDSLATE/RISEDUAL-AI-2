@@ -1,5 +1,28 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-08-06 (Trading Bots UI wired to live executor)
+
+### 🔌 mode=live bots now inherit Ring 1 + Ring 3 protection
+
+**Problem**: The Trading Bots UI (RED, BTC Grid, Tier3 Accumulator × 5, etc.) had a `mode=live` path that called `client.place_order` directly on the broker — bypassing every gate the autonomous loop just gained (confidence floor, per-symbol cooldown, chasing filter, evidence multiplier, structured `equity_live_trades` audit).
+
+**Fix**: `_execute_bot_trade` in `services/trading_bot_service.py` now dispatches `mode=live` through `public_equity_live_executor.maybe_route_live` with a full intent dict:
+- `strategy_id = "bot:<name-or-id>"` — bot fires get their own evidence bucket, distinct from the autonomous loop's `signal_dispatcher:v1`
+- `source_signal = "trading_bot:<type>:<bot_id>"` for audit
+- `intent_kind = open_long` (BUY) / `close_long` (SELL) — SELL correctly bypasses cooldown + chasing gates
+- `confidence = bot.min_ai_confidence` (fallback 0.65)
+- Returns `{'error': 'gated by executor safety checks'}` when any Ring 1 gate blocks; returns `{'status': 'filled', ...}` with `trade_id` + `broker_order_id` on success.
+
+**Preserved**: `mode=paper` path unchanged; circuit-breaker pre-flight still runs for both modes; dead-code cleanup completed.
+
+**Test surface**: `/app/backend/tests/test_bot_live_routing.py` (9 tests, all pass). Old `test_trading_bot_broker_contract.py` deleted (contract has moved).
+
+**Validation** (testing_agent iteration_188): 9/9 new tests pass. Zero critical issues. All prior iteration regression files pass individually.
+
+**Deploy**: Preview → Prod. No env-var changes. Users' bots stay `mode=paper` until they explicitly flip them; nothing fires until then.
+
+
+
 ## Latest Update — 2026-08-06 (Resend removed)
 
 ### 🗑️ Resend email provider fully removed (subscription not renewing)

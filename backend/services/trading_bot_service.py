@@ -1508,7 +1508,7 @@ async def _execute_bot_trade(
                 "error": str(e),
                 "type": type(e).__name__,
                 "context": "trading_bot",
-                "note": "Live bot trade failed (<expr> <symbol>)",
+                "note": f"Live bot trade failed ({side} {symbol})",
                 "symbol": symbol,
             })
             return {"error": f"Live execution failed: {e}"}
