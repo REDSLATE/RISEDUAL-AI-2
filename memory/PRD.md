@@ -1,5 +1,28 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-08-06 (Resend removed)
+
+### 🗑️ Resend email provider fully removed (subscription not renewing)
+
+**What was removed:**
+- `services/email_service.py` — dropped `import resend`, `_send_via_resend`, all direct `resend.Emails.send` call sites (send_toxic_spikes_email, send_referral_success now route through `_routed_send`). SendGrid is the sole provider.
+- `services/pool_config.py` — `get_email_provider_pool` no longer builds a resend-primary entry.
+- `services/key_vault.py` — `RESEND_API_KEY` no longer mapped to the email lane.
+- `routes/vault.py` — `_validate_resend` function and validator registration removed.
+- `routes/provider_health.py` + `services/digest_service.py` — docstring/comment updates (Resend → SendGrid).
+- `backend/.env` — `RESEND_API_KEY=` value cleared.
+- `backend/requirements.txt` — `resend==2.27.0` removed. Package uninstalled from the pod.
+
+**SENDER_EMAIL default** changed from `onboarding@resend.dev` to `noreply@risedual.ai`.
+
+**Validation** (testing_agent iteration_187): **12/12 removal tests pass**, backend boots without the `resend` package installed, all email helper functions dispatch via SendGrid, empty pool returns `False` cleanly. 84/86 regression tests pass (2 pre-existing flaky tests unrelated).
+
+**Deploy note**: Push to prod. Also remove `RESEND_API_KEY` from prod Secrets panel — it's no longer read but tidy hygiene.
+
+**Regression guard**: `/app/backend/tests/test_resend_removal.py` (created by testing agent) will catch any future re-introduction of Resend.
+
+
+
 ## Latest Update — 2026-07-30 (Options 520 + Chasing filter)
 
 ### 🐛→✅ Bug A: Options "Buy to Open" modal showed Cloudflare 520
