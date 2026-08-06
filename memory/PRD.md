@@ -1,5 +1,34 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-08-06 (Intent producer observability)
+
+### 🔍 Fixed "why doesn't anything fire?" — from silent to fully instrumented
+
+**Symptom**: All scanner candidates end up `executor_skipped` with empty `executor_skipped_reason`. Predictions/scanner alive; executor's `maybe_route_live` returns bare `None` on every rejection.
+
+**Fix**: New helper `_log_skip(db, symbol, reason, intent, detail)` writes structured docs to a new `intent_skip_log` collection at every `return None` gate in `maybe_route_live`. Non-blocking (Mongo failures swallowed at debug).
+
+**8 skip reason tags**:
+1. `live_exec_disabled` — `RISEDUAL_PUBLIC_LIVE_EXEC` not `1`
+2. `empty_symbol`
+3. `non_directional` — signal wasn't BUY/SELL variant
+4. `confidence_floor` — confidence < `PUBLIC_LIVE_CONFIDENCE_FLOOR`
+5. `not_in_allowlist` — `PUBLIC_LIVE_SYMBOLS` filter
+6. `symbol_cooldown` — recent fire, within `PUBLIC_LIVE_SYMBOL_COOLDOWN_MIN`
+7. `chasing_filter` — intraday move ≥ `PUBLIC_LIVE_MAX_INTRADAY_MOVE_PCT`
+8. `no_broker_creds` — no active Public.com connection
+9. `insufficient_buying_power` — bp < notional
+
+**New admin endpoints** (owner/admin only):
+- `GET /api/admin/intent-audit/summary?hours=24` — reason-aggregated view with skip/fire ratio
+- `GET /api/admin/intent-audit/events?hours=24&reason=X&symbol=Y&limit=200` — raw event log
+
+**Validation** (testing_agent iteration_189): 16/16 tests pass. Zero critical/minor issues.
+
+**Operator playbook**: after deploy, hit `GET /api/admin/intent-audit/summary` on prod. The top reason is your culprit — likely `live_exec_disabled` (fix: set `RISEDUAL_PUBLIC_LIVE_EXEC=1` in Prod Secrets) or `no_broker_creds` (fix: reconnect Public.com via Broker Connect UI). Whatever it is, no more guessing.
+
+
+
 ## Latest Update — 2026-08-06 (Trading Bots UI wired to live executor)
 
 ### 🔌 mode=live bots now inherit Ring 1 + Ring 3 protection
