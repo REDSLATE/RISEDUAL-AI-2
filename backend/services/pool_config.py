@@ -159,22 +159,13 @@ def get_email_provider_pool() -> list[dict]:
         return pool
 
     fallback = []
-    resend_key = os.environ.get("RESEND_API_KEY")
-    if resend_key and not resend_key.startswith("re_YOUR"):
-        fallback.append({
-            "name": "resend-primary",
-            "provider": "resend",
-            "api_key": resend_key,
-            "priority": 1,
-        })
-
     sendgrid_key = os.environ.get("SENDGRID_API_KEY")
     if sendgrid_key:
         fallback.append({
-            "name": "sendgrid-backup",
+            "name": "sendgrid-primary",
             "provider": "sendgrid",
             "api_key": sendgrid_key,
-            "priority": 2,
+            "priority": 1,
         })
 
     return fallback

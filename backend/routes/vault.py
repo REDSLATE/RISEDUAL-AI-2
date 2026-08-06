@@ -89,7 +89,6 @@ async def _validate_key(name: str, value: str) -> dict:
         "TAVILY_API_KEY": _validate_tavily,
         "ALPHA_VANTAGE_API_KEY": _validate_alphavantage,
         "FINNHUB_API_KEY": _validate_finnhub,
-        "RESEND_API_KEY": _validate_resend,
         "STOCKFIT_API_KEY": _validate_stockfit,
         "POLYGON_API_KEY": _validate_polygon,
         "QUIVERQUANT_API_KEY": _validate_quiverquant,
@@ -192,15 +191,6 @@ async def _validate_finnhub(key: str) -> dict:
         ok = r.status_code == 200
         return {"valid": ok, "name": "FINNHUB_API_KEY", "status": r.status_code,
                 "message": "Connected to Finnhub" if ok else f"HTTP {r.status_code}"}
-
-
-async def _validate_resend(key: str) -> dict:
-    import httpx
-    async with httpx.AsyncClient(timeout=10) as c:
-        r = await c.get("https://api.resend.com/domains", headers={"Authorization": f"Bearer {key}"})
-        ok = r.status_code == 200
-        return {"valid": ok, "name": "RESEND_API_KEY", "status": r.status_code,
-                "message": "Connected to Resend" if ok else f"HTTP {r.status_code}"}
 
 
 async def _validate_stockfit(key: str) -> dict:

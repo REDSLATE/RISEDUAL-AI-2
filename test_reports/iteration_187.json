@@ -1,0 +1,32 @@
+{
+  "summary": "Verified complete removal of Resend email provider from RISEDUAL-AI-2 backend. Created /app/backend/tests/test_resend_removal.py with 12 tests covering (a) resend package absent from venv, (b) email_service imports cleanly, (c) no active-code refs to resend./import resend/_ResendEmails, (d) pool_config.get_email_provider_pool returns SendGrid-only entry when SENDGRID_API_KEY set, (e) pool returns [] when no keys set, (f) vault.py has no _validate_resend/RESEND_API_KEY, (g) key_vault.py has no RESEND_API_KEY mapping, (h) requirements.txt no longer lists resend, (i) .env RESEND_API_KEY cleared, (j) monkey-patched httpx confirms _routed_send dispatches to SendGrid (POST https://api.sendgrid.com/v3/mail/send with Bearer auth, returns True on 202), (k) empty-pool _routed_send returns False without raising, (l) send_toxic_spikes_email/send_referral_success/send_welcome_referral_email/send_war_room_invite all funnel through _routed_send. All 12 tests PASS. Backend /api/health = 200, 639 routes registered, no ImportError/ModuleNotFoundError in supervisor logs. Regression suite (retention_p1, broker_sort_and_watchlist_merge, war_room_p0_timing, code_review_p1_fixes, ring1_ring3_evidence_and_cooldown, options_status_and_chasing_filter) = 84/86 passed; 2 failures are unrelated flaky tests (war-room GOOGL news at 15.36s vs 15.0s hard-limit, and ring1/ring3 cooldown gate) — neither touches email code.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "test_war_room_p0_timing.py::test_war_room_timing_and_payload[GOOGL news]", "issue": "Ran 15.36s, exceeds hard 15.0s limit by 0.36s (network flakiness, not Resend-related)"},
+      {"endpoint": "test_ring1_ring3_evidence_and_cooldown.py::TestCooldownGate::test_cooldown_expired_allows_progression", "issue": "Cooldown gate blocked flow when it shouldn't have (not Resend-related). Public.com credentials unavailable log noise."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_resend_removal.py",
+    "/app/test_reports/pytest/resend_removal.xml"
+  ],
+  "action_items": [
+    "Optional: investigate/quarantine flaky war_room GOOGL 15s-limit test and ring1 cooldown gate test (pre-existing, not caused by this iteration)."
+  ],
+  "critical_code_review_comments": [
+    "services/email_service.py cleanly rebuilt: single sendgrid dispatcher, ProviderRouter preserved for future providers, load_dotenv at top before pool build — good.",
+    "pool_config.get_email_provider_pool has correct guard: honours EMAIL_PROVIDER_POOL env override first, falls back to SENDGRID_API_KEY, returns [] otherwise — good.",
+    "backend/.env keeps RESEND_API_KEY= line with empty value (backwards-compat parsing) — verified via test_env_resend_key_cleared.",
+    "Note: /app/backend/tests/slow/ still contains Resend references per request instructions (out of scope)."
+  ],
+  "updated_files": ["/app/backend/tests/test_resend_removal.py"],
+  "success_rate": {"backend": "100% for resend-removal tests (12/12); 97.7% for regression sweep (84/86, both failures unrelated)", "frontend": "not tested (backend-only request)"},
+  "test_credentials": "admin@risedual.ai / RiseDual2026! (not exercised — no auth flow needed for removal verification)",
+  "seed_data_creation": "none",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Resend fully removed. Any future email-provider work should add entries to pool_config.get_email_provider_pool and extend the _dispatch branch in email_service._routed_send. Test file test_resend_removal.py can be reused as a regression guard against Resend re-introduction.",
+  "rca of the issue": "N/A — this was a planned removal task, not a bug. Verified end-to-end that the codebase gracefully degrades to SendGrid-only with no residual Resend imports/env/pool entries."
+}

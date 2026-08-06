@@ -28,7 +28,7 @@ def set_db(database):
 class RegisterRequest(BaseModel):
     lane: str = Field(..., description="Lane name: ai, market_data, email, etc.")
     name: str = Field(..., description="Unique provider name, e.g. openai-backup-2")
-    provider: str = Field(..., description="Provider type: openai, anthropic, alphavantage, finnhub, resend, etc.")
+    provider: str = Field(..., description="Provider type: openai, anthropic, alphavantage, finnhub, sendgrid, etc.")
     api_key: str = Field(..., description="API key for this provider")
     model: str = Field("", description="Model name if applicable, e.g. gpt-4.1")
     priority: int = Field(50, description="Priority (lower = higher priority)")

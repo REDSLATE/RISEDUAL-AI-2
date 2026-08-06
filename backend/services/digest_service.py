@@ -26,7 +26,7 @@ from services.structured_log import log_error, log_warning
 
 logger = logging.getLogger(__name__)
 
-# Resend free plan = 5 req/sec; pace sends to stay comfortably under the limit.
+# SendGrid free tier = 100 emails/day; pace sends to spread the daily budget.
 _DIGEST_SEND_PACE_SEC = 0.25
 
 
@@ -556,7 +556,7 @@ def build_digest_html(data: dict, is_pro: bool, user_name: str,
 # ─────────────────────────── Send ───────────────────────────
 
 async def send_daily_digest(db: Any) -> dict:
-    """Collect data, render per-user digest, send via Resend (→ SendGrid failover)."""
+    """Collect data, render per-user digest, send via SendGrid."""
     if not _is_configured():
         logger.info("Daily digest skipped: no email providers configured")
         return {"sent": 0, "skipped": True, "reason": "no_email_provider"}
@@ -597,7 +597,7 @@ async def send_daily_digest(db: Any) -> dict:
             skipped_count += 1
             continue
         # Skip seeded/test/example accounts — they don't receive real mail
-        # and just consume Resend quota.
+        # and just consume SendGrid quota.
         domain = email.split("@", 1)[1]
         if domain in {"test.com", "example.com", "example.org", "test.local"} or email.startswith("test_") or email.startswith("emailtest") or email.startswith("emailfix"):
             skipped_count += 1
@@ -630,7 +630,7 @@ async def send_daily_digest(db: Any) -> dict:
                 "email": email,
             })
 
-        # Pace to respect Resend's 5-req/sec rate limit.
+        # Pace sends so we don't burst-consume the SendGrid daily budget.
         await asyncio.sleep(_DIGEST_SEND_PACE_SEC)
 
     logger.info(

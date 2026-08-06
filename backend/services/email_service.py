@@ -1,10 +1,14 @@
-"""Email notification service with ProviderRouter failover (Resend → SendGrid)."""
+"""Email notification service — SendGrid via the ProviderRouter.
+
+2026-07-30: Resend removed (subscription not being renewed).
+SendGrid is now the only supported email provider. The
+ProviderRouter is preserved so a future provider can slot in with a
+one-line addition to ``pool_config.get_email_provider_pool()``
+without any changes to this file.
+"""
 import os
 import asyncio
 import logging
-from typing import Any, cast
-import resend
-from resend import Emails as _ResendEmails  # for SendParams TypedDict
 import httpx
 from dotenv import load_dotenv
 from pathlib import Path
@@ -18,8 +22,7 @@ from services.structured_log import log_error, log_warning
 
 logger = logging.getLogger(__name__)
 
-RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
-SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
+SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'noreply@risedual.ai')
 APP_NAME = "RISEDUAL AI"
 APP_URL = os.environ.get('FRONTEND_URL', 'https://risedual.ai')
 
@@ -28,24 +31,8 @@ email_router = ProviderRouter("email", get_email_provider_pool())
 
 
 def _is_configured() -> bool:
-    """True when at least one email provider (Resend/SendGrid) has a valid API key."""
-    if email_router.providers:
-        return True
-    return bool(RESEND_API_KEY) and not RESEND_API_KEY.startswith("re_YOUR")
-
-
-async def _send_via_resend(api_key: str, to: list, subject: str, html: str) -> dict:
-    """Send email through Resend API."""
-    resend.api_key = api_key
-    # Resend's SendParams is a TypedDict with literal keys
-    # ("from"/"to"/"subject"/"html"). Our plain dict is structurally
-    # identical; cast() preserves mypy's key-shape check without the
-    # silent drop that `# type: ignore` causes.
-    params: dict[str, Any] = {"from": SENDER_EMAIL, "to": to, "subject": subject, "html": html}
-    result = await asyncio.to_thread(
-        resend.Emails.send, cast(_ResendEmails.SendParams, params),
-    )
-    return dict(result) if result else {}
+    """True when at least one email provider has a valid API key."""
+    return bool(email_router.providers)
 
 
 async def _send_via_sendgrid(api_key: str, to: list, subject: str, html: str) -> dict:
@@ -75,9 +62,7 @@ async def _routed_send(to: list, subject: str, html: str) -> bool:
     async def _dispatch(provider: dict) -> dict:
         p = provider.get("provider")
         key = provider.get("api_key")
-        if p == "resend":
-            return await _send_via_resend(key, to, subject, html)
-        elif p == "sendgrid":
+        if p == "sendgrid":
             return await _send_via_sendgrid(key, to, subject, html)
         else:
             raise RuntimeError(f"Unknown email provider: {p}")
@@ -436,30 +421,14 @@ async def send_toxic_spikes_email(
     if not email_router.providers:
         logger.info(f"Email skipped (no providers configured): toxic spikes alert to {recipient_email}")
         return False
-    try:
-        params = {
-            "from": SENDER_EMAIL,
-            "to": [recipient_email],
-            "subject": f"[{APP_NAME}] Toxic Spikes Alert — {toxic_count} High-Confidence Failures Detected{persistence_tag}",
-            "html": _toxic_spikes_html(
-                toxic_count, obsolete_count, total_before, total_after,
-                spike_details or [], unique_episodes_retagged,
-            ),
-        }
-        result = await asyncio.to_thread(
-            resend.Emails.send, cast(_ResendEmails.SendParams, params),
-        )
-        logger.info(f"Toxic spikes alert email sent to {recipient_email}, id: {result.get('id', 'unknown')}")
-        return True
-    except Exception as e:
-        log_error(logger, {
-            "error": str(e),
-            "type": type(e).__name__,
-            "context": "email",
-            "note": "Failed to send toxic spikes email to <recipient_email>",
-            "recipient_email": recipient_email,
-        })
-        return False
+    return await _routed_send(
+        [recipient_email],
+        f"[{APP_NAME}] Toxic Spikes Alert — {toxic_count} High-Confidence Failures Detected{persistence_tag}",
+        _toxic_spikes_html(
+            toxic_count, obsolete_count, total_before, total_after,
+            spike_details or [], unique_episodes_retagged,
+        ),
+    )
 
 
 async def send_welcome_referral_email(user_email: str, user_name: str, referrer_name: str) -> bool:
@@ -812,24 +781,8 @@ async def send_referral_success(email: str, name: str, new_rank: int, referral_c
     if not email_router.providers:
         logger.warning("No email providers configured — skipping referral success email")
         return False
-    try:
-        params = {
-            "from": SENDER_EMAIL,
-            "to": [email],
-            "subject": f"You just skipped 20 spots — now #{new_rank} in line",
-            "html": _referral_success_html(name, new_rank, referral_count, spots_skipped),
-        }
-        result = await asyncio.to_thread(
-            resend.Emails.send, cast(_ResendEmails.SendParams, params),
-        )
-        logger.info(f"Referral success email sent to {email}, id: {result.get('id', 'unknown')}")
-        return True
-    except Exception as e:
-        log_error(logger, {
-            "error": str(e),
-            "type": type(e).__name__,
-            "context": "email",
-            "note": "Failed to send referral success email to <email>",
-            "email": email,
-        })
-        return False
+    return await _routed_send(
+        [email],
+        f"You just skipped 20 spots — now #{new_rank} in line",
+        _referral_success_html(name, new_rank, referral_count, spots_skipped),
+    )
