@@ -1,0 +1,22 @@
+{
+  "summary": "Iteration 189 — Intent audit observability. Wrote /app/backend/tests/test_intent_audit.py (16 tests, all pass) covering: (1) _log_skip primitives — no-op when db=None, non-blocking on Mongo insert failure, doc shape carries ts/symbol/reason/detail/strategy_id/scan_id/prediction_id/source_signal/confidence/direction; (2) gate-by-gate skip tagging via maybe_route_live for all 8 reason tags (live_exec_disabled, empty_symbol, non_directional, confidence_floor, not_in_allowlist, symbol_cooldown, chasing_filter, no_broker_creds) each verified to write to intent_skip_log with correct reason + structured detail; (3) GET /api/admin/intent-audit/summary — 401/403 for anon, 200 for admin, correct schema (window_hours/since/total_skips/total_fires/reasons[] with count/symbols[≤20]/last_ts), hours validation (422 for out-of-range); (4) GET /api/admin/intent-audit/events — 401/403 for anon, 200 for admin, no _id leakage, reason filter, symbol filter (case-insensitive→uppercased server-side), limit honored. Live smoke via HTTP against public REACT_APP_BACKEND_URL confirms both endpoints wire through route_registry.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_intent_audit.py",
+    "/app/test_reports/pytest/iter_189_intent_audit.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "admin_intent_audit.py: solid. _require_admin, projection excludes _id, aggregation caps symbols[:20], input validated via Query(ge=1,le=168). No issues.",
+    "public_equity_live_executor._log_skip: correctly swallows Mongo failures at debug level so an observability write can never take down a trading gate. Doc shape complete.",
+    "Note (pre-existing, NOT this iteration): tests/test_ring1_ring3_evidence_and_cooldown.py (iter_184) has 12 failures due to asyncio.get_event_loop() calls in the test setup — Python 3.11 deprecated implicit loop creation from MainThread. Unrelated to iter_189 changes (verified: this iteration only ADDS calls to _log_skip and adds a new router). Main agent may want to fix iter_184 tests by switching to asyncio.new_event_loop() or asyncio.run()."
+  ],
+  "updated_files": ["/app/backend/tests/test_intent_audit.py"],
+  "success_rate": {"backend": "100% (16/16 iter_189 tests)", "frontend": "n/a"},
+  "test_credentials": "admin@risedual.ai / RiseDual2026! (owner role — passes _require_admin)",
+  "seed_data_creation": "None — all skip-log tests use in-memory _FakeDB; endpoint tests read whatever prod DB contains without seeding.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter_189 = observability only, no gate behavior changes. All 8 skip reason tags verified end-to-end through maybe_route_live. Endpoints /api/admin/intent-audit/{summary,events} live and admin-gated. Pre-existing test_ring1_ring3_evidence_and_cooldown.py failures are Python 3.11 event-loop API issues unrelated to this iteration."
+}

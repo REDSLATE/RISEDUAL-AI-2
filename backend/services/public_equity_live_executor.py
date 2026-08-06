@@ -242,6 +242,49 @@ async def _last_symbol_fire_at(db: Any, symbol: str) -> Optional[datetime]:
     return None
 
 
+async def _log_skip(
+    db: Any,
+    *,
+    symbol: str,
+    reason: str,
+    intent: Mapping[str, Any] | None = None,
+    detail: Mapping[str, Any] | None = None,
+) -> None:
+    """Persist a structured skip event so the operator can see WHY
+    the executor rejected an intent.
+
+    Every ``return None`` path in :func:`maybe_route_live` should
+    precede itself with a call here. Reads to ``intent_skip_log`` power
+    the ``/api/admin/intent-audit`` endpoints — before this helper
+    existed, ~100% of scanner targets ended up ``executor_skipped``
+    with an empty ``executor_skipped_reason``, blinding the operator
+    to which gate was blocking live trades.
+
+    Non-blocking: any Mongo write failure is swallowed with a
+    debug log — an observability write must never take down a
+    trading gate.
+    """
+    if db is None:
+        return
+    doc: dict[str, Any] = {
+        "ts": datetime.now(timezone.utc),
+        "symbol": symbol or "",
+        "reason": reason,
+        "detail": dict(detail or {}),
+    }
+    if intent:
+        doc["strategy_id"] = intent.get("strategy_id")
+        doc["scan_id"] = intent.get("scan_id")
+        doc["prediction_id"] = intent.get("prediction_id")
+        doc["source_signal"] = intent.get("source_signal")
+        doc["confidence"] = intent.get("confidence")
+        doc["direction"] = intent.get("direction")
+    try:
+        await db.intent_skip_log.insert_one(doc)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[public-live] intent_skip_log write failed: %s", exc)
+
+
 async def _evidence_multiplier(db: Any, strategy_id: str) -> tuple[float, dict]:
     """Look up the notional multiplier for a strategy from the
     Evidence Worker's ``strategy_evidence_scores`` collection.
@@ -390,11 +433,14 @@ async def maybe_route_live(
     (with the Public order id) so the orchestrator can log lineage.
     """
     if not _live_exec_enabled():
+        await _log_skip(db, symbol=(intent.get("symbol") or "").upper(),
+                        reason="live_exec_disabled", intent=intent)
         return None
 
     symbol = (intent.get("symbol") or "").upper()
     direction = (intent.get("direction") or intent.get("action") or "").upper()
     if not symbol:
+        await _log_skip(db, symbol="", reason="empty_symbol", intent=intent)
         return None
 
     # Direction classification → side + intent_kind.
@@ -408,6 +454,8 @@ async def maybe_route_live(
             "[public-live] symbol=%s SKIPPED — non-directional signal: %r",
             symbol, direction,
         )
+        await _log_skip(db, symbol=symbol, reason="non_directional",
+                        intent=intent, detail={"direction": direction})
         return None
 
     # 2026-06-18: Confidence floor gate. Refuses live execution when
@@ -423,6 +471,9 @@ async def maybe_route_live(
             "[public-live] symbol=%s SKIPPED — confidence %.2f below floor %.2f",
             symbol, confidence, floor,
         )
+        await _log_skip(db, symbol=symbol, reason="confidence_floor",
+                        intent=intent,
+                        detail={"confidence": confidence, "floor": floor})
         return None
 
     allow = _allowed_symbols()
@@ -431,6 +482,8 @@ async def maybe_route_live(
             "[public-live] symbol=%s not in PUBLIC_LIVE_SYMBOLS allowlist — skip",
             symbol,
         )
+        await _log_skip(db, symbol=symbol, reason="not_in_allowlist",
+                        intent=intent, detail={"allowlist_size": len(allow)})
         return None
 
     # 2026-07-30 — Per-symbol re-fire cooldown. Applies to OPEN_LONG
@@ -449,6 +502,10 @@ async def maybe_route_live(
                         "(%.1f min since last fire, need %d)",
                         symbol, delta_min, cooldown_min,
                     )
+                    await _log_skip(db, symbol=symbol, reason="symbol_cooldown",
+                                    intent=intent,
+                                    detail={"delta_min": round(delta_min, 1),
+                                            "required_min": cooldown_min})
                     return None
 
         # 2026-07-30 — Chasing filter. If the symbol has already run
@@ -471,6 +528,10 @@ async def maybe_route_live(
                     "(intraday move %.2f%%, cap %.2f%%)",
                     symbol, move_pct, max_move,
                 )
+                await _log_skip(db, symbol=symbol, reason="chasing_filter",
+                                intent=intent,
+                                detail={"move_pct": round(move_pct, 2),
+                                        "cap_pct": max_move})
                 return None
 
     # Connect-state gate
@@ -481,6 +542,7 @@ async def maybe_route_live(
             "connection (operator must connect via /api/broker/connect)",
             symbol,
         )
+        await _log_skip(db, symbol=symbol, reason="no_broker_creds", intent=intent)
         return None
     secret_key, account_id = creds
 
@@ -532,6 +594,11 @@ async def maybe_route_live(
                         "[public-live] symbol=%s SKIPPED — buying_power $%.2f "
                         "< notional $%.2f", symbol, bp, notional,
                     )
+                    await _log_skip(db, symbol=symbol,
+                                    reason="insufficient_buying_power",
+                                    intent=intent,
+                                    detail={"buying_power": bp,
+                                            "notional_required": notional})
                     return None
     except Exception as exc:  # noqa: BLE001
         logger.debug(
