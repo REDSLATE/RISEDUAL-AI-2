@@ -1449,34 +1449,60 @@ async def _execute_bot_trade(
         )
 
     if mode == "live":
+        # 2026-08-06 — Route bot live trades through the SAME executor
+        # as the autonomous loop (public_equity_live_executor.maybe_route_live)
+        # so every fire inherits the Ring 1 + Ring 3 protection stack:
+        # confidence floor, per-symbol cooldown, chasing filter, evidence-
+        # multiplier sizing, structured audit into equity_live_trades.
+        #
+        # Previously this branch called client.place_order directly, which
+        # bypassed all of those gates. That was fine when the user's only
+        # entry point was the Trading Bots UI, but with the autonomous
+        # loop and the bot UI both live, we want ONE protection surface.
         try:
             if _db is None:
                 logger.error("Live bot trade attempted with no DB handle")
                 return {"error": "DB unavailable"}
-            broker_conn = await _db.broker_connections.find_one(
-                {"user_id": user_id}, {"_id": 0, "broker_id": 1},
-            )
-            if not broker_conn:
-                return {"error": "No broker connected for live trading"}
+            from services.public_equity_live_executor import maybe_route_live
 
-            from routes.broker import _get_or_refresh_client, _get_user_broker
-            import asyncio as _asyncio
-
-            conn = await _get_user_broker(user_id, broker_conn["broker_id"])
-            client = await _get_or_refresh_client(user_id, broker_conn["broker_id"], conn)
-            result = await _asyncio.to_thread(
-                client.place_order,
-                symbol=symbol, qty=qty, side=side.lower(),
-                order_type="market", time_in_force="day",
-            )
-            if not result:
-                return {"error": "Broker rejected order"}
+            intent_kind = "close_long" if side.upper() == "SELL" else "open_long"
+            confidence = float(bot.get("min_ai_confidence") or 0.65)
+            bot_id = str(bot.get("_id") or bot.get("id") or "unknown")
+            intent: dict[str, Any] = {
+                "symbol": symbol,
+                "direction": side.upper(),
+                "intent_kind": intent_kind,
+                "confidence": confidence,
+                "raw_confidence": confidence,
+                "calibrated_confidence": None,
+                "strategy_id": f"bot:{bot.get('name') or bot_id}",
+                "source_signal": f"trading_bot:{bot.get('type') or 'signal'}:{bot_id}",
+                "user_id": user_id,
+                # Signal risk-guard adjusted qty forwards to executor as
+                # notional_override when the bot uses fractional sizing.
+                # For share-based bots (qty >= 1 whole shares) the
+                # executor still computes notional from the fixed knob;
+                # bots override that upstream if needed.
+            }
+            routed = await maybe_route_live(_db, intent=intent)
+            if not routed:
+                logger.info(
+                    f"Live bot trade {bot.get('name')} {side} {qty} {symbol} — "
+                    "gated by executor (confidence/cooldown/chasing/broker)",
+                )
+                return {"error": "gated by executor safety checks"}
             logger.info(
                 f"Live bot trade filled: {bot.get('name')} {side} {qty} {symbol} "
-                f"(broker_order_id={result.get('id')})"
+                f"(broker_order_id={routed.get('broker_order_id')})",
             )
-            return {"status": "filled", "broker_order_id": result.get("id"),
-                    "symbol": symbol, "side": side, "qty": qty}
+            return {
+                "status": "filled",
+                "broker_order_id": routed.get("broker_order_id"),
+                "symbol": symbol,
+                "side": side,
+                "qty": qty,
+                "trade_id": routed.get("trade_id"),
+            }
         except Exception as e:
             log_error(logger, {
                 "error": str(e),
