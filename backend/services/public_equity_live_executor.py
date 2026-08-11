@@ -155,49 +155,100 @@ def _max_intraday_move_pct() -> float:
 async def _intraday_move_pct(symbol: str) -> Optional[float]:
     """Best-effort measure of today's move on ``symbol``.
 
-    Returns ``(current - previous_close) / previous_close * 100`` as
+    Returns ``(today_close - previous_close) / previous_close * 100`` as
     a signed float, or ``None`` when the data providers are all
-    unavailable / return garbage. Reads through the shared market
-    data pool so we get Public → Finnhub → TwelveData → Polygon
-    failover for free. Callers treat ``None`` as "don't gate on
-    this" — a data outage must never *silently* re-arm chasing.
+    unavailable / return garbage. Callers treat ``None`` as "don't gate
+    on this" — a data outage must never *silently* re-arm chasing.
+
+    2026-08-11 forensic: the previous implementation compared a live
+    quote from one provider against the previous close from another
+    provider. This produced impossible readings (PLTR reported +27.6%,
+    MSFT +23.2%) whenever the two providers disagreed on a split or
+    ex-dividend adjustment, blocking 100% of Alpha's live intents.
+    Both legs are now sourced from the SAME market_daily response so
+    provider-mismatch spikes are structurally impossible. If the daily
+    bars provider is down we return None (fail-open) instead of the
+    quote+bars fallback that was producing the bad readings.
     """
     try:
-        from services.market_data_pool import market_quote, market_daily
+        from services.market_data_pool import market_daily
     except Exception:
         return None
 
-    try:
-        q = await market_quote(symbol)
-    except Exception:
-        q = None
     try:
         bars = await market_daily(symbol, outputsize="compact")
     except Exception:
         bars = None
 
-    current = None
-    if isinstance(q, dict):
-        current = q.get("price") or q.get("last") or q.get("close")
-        try:
-            current = float(current) if current is not None else None
-        except (TypeError, ValueError):
-            current = None
-
-    prev_close = None
-    if isinstance(bars, list) and bars:
-        # market_daily returns most-recent-last; the previous
-        # session's close is the penultimate row unless the most
-        # recent row IS the previous session (data not yet updated
-        # for today), in which case fall back to that.
-        try:
-            prev_close = float(bars[-2].get("close")) if len(bars) >= 2 else float(bars[-1].get("close"))
-        except (TypeError, ValueError, AttributeError):
-            prev_close = None
-
-    if current is None or prev_close is None or prev_close <= 0:
+    if not isinstance(bars, list) or len(bars) < 2:
         return None
-    return (current - prev_close) / prev_close * 100.0
+
+    try:
+        today_close = float(bars[-1].get("close"))
+        prev_close = float(bars[-2].get("close"))
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+    if prev_close <= 0 or today_close <= 0:
+        return None
+    move_pct = (today_close - prev_close) / prev_close * 100.0
+    # Hard sanity cap. A single-session move above ±50% almost always
+    # means split/dividend adjustment desync, not real market action.
+    # Returning None here fails open rather than nuking a legit signal.
+    if abs(move_pct) > 50.0:
+        logger.info(
+            "[public-live] symbol=%s chasing-filter reading %.2f%% looks "
+            "corrupt (split/dividend?) — treating as unavailable",
+            symbol, move_pct,
+        )
+        return None
+    return move_pct
+
+
+def _rth_only_enabled() -> bool:
+    """Master switch for the RTH-only session gate. Default ON.
+
+    Public.com's broker API does not accept fractional/notional orders
+    outside 9:30-16:00 ET. Any BUY submitted in extended hours gets
+    rejected server-side, so we skip cleanly here with a dedicated
+    ``market_closed`` reason. Set ``PUBLIC_LIVE_RTH_ONLY=0`` to disable
+    (only useful once we add whole-share extended-hours support).
+    """
+    raw = (os.environ.get("PUBLIC_LIVE_RTH_ONLY") or "").strip().lower()
+    if raw in ("0", "false", "no", "off"):
+        return False
+    return True
+
+
+def _in_regular_session(now: Optional[datetime] = None) -> bool:
+    """True during US regular trading hours (Mon-Fri, 9:30-16:00 ET).
+
+    Holiday calendar is intentionally not implemented — the broker
+    itself rejects holiday orders and we log those as ``market_closed``
+    on the next signal without a bespoke calendar service.
+    """
+    now = now or datetime.now(timezone.utc)
+    # US Eastern = UTC-5 in EST, UTC-4 in EDT. Approximation: use
+    # UTC-4 mid-March → early Nov, UTC-5 otherwise. This is a
+    # tolerant classifier — the broker rejection is the source of
+    # truth if we get within ~1h of a boundary.
+    month = now.month
+    day = now.day
+    is_dst = (
+        (month > 3 or (month == 3 and day >= 8)) and
+        (month < 11 or (month == 11 and day <= 7))
+    )
+    offset_hours = 4 if is_dst else 5
+    et_hour = (now.hour - offset_hours) % 24
+    et_minute = now.minute
+    # Weekday check in ET (may shift by one day near midnight UTC)
+    # Compute ET weekday by rolling UTC clock back the offset.
+    from datetime import timedelta as _td
+    et_now = now - _td(hours=offset_hours)
+    if et_now.weekday() >= 5:  # Saturday=5, Sunday=6
+        return False
+    minutes_since_midnight = et_hour * 60 + et_minute
+    return 570 <= minutes_since_midnight < 960  # 9:30 → 16:00 ET
 
 
 def _evidence_enforce_enabled() -> bool:
