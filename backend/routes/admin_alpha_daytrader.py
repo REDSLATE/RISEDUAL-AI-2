@@ -1,0 +1,77 @@
+"""Admin Alpha Day Trader — read-only observability.
+
+Endpoints
+---------
+* ``GET  /api/admin/alpha-daytrader/counters`` — daily rolling counters
+  (candidates_seen, setups_created, triggers, intents_created,
+  broker_submitted, filled) + env-flag state.
+* ``GET  /api/admin/alpha-daytrader/setups?limit=50`` — active + recent
+  setups with lifecycle timestamps.
+* ``GET  /api/admin/alpha-daytrader/outcomes?limit=50`` — resolved
+  outcomes including the no-trade paths (Alpha saw the move, did not
+  fire → we still record it).
+* ``POST /api/admin/alpha-daytrader/tick`` — force one manual tick
+  (owner-only; useful for debugging without waiting 5 min).
+"""
+from __future__ import annotations
+
+import logging
+from datetime import datetime
+
+from fastapi import APIRouter, HTTPException, Query, Request
+
+from services.auth_helpers import get_current_user
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/admin/alpha-daytrader", tags=["admin-alpha-daytrader"])
+
+db = None
+
+
+def set_db(database) -> None:
+    global db
+    db = database
+
+
+async def _require_admin(request: Request) -> dict:
+    user = await get_current_user(request)
+    if not user or user.get("role") not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
+@router.get("/counters")
+async def counters(request: Request):
+    await _require_admin(request)
+    from services.alpha_day_trader import get_counters
+    return await get_counters(db)
+
+
+@router.get("/setups")
+async def setups(request: Request, limit: int = Query(50, ge=1, le=500)):
+    await _require_admin(request)
+    from services.alpha_day_trader import get_active_setups
+    return {"setups": await get_active_setups(db, limit=limit)}
+
+
+@router.get("/outcomes")
+async def outcomes(request: Request, limit: int = Query(50, ge=1, le=500)):
+    await _require_admin(request)
+    if db is None:
+        return {"outcomes": []}
+    out: list[dict] = []
+    cursor = db.alpha_outcomes.find({}, {"_id": 0}).sort("created_at", -1).limit(int(limit))
+    async for row in cursor:
+        if isinstance(row.get("created_at"), datetime):
+            row["created_at"] = row["created_at"].isoformat()
+        out.append(row)
+    return {"outcomes": out}
+
+
+@router.post("/tick")
+async def force_tick(request: Request):
+    user = await _require_admin(request)
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required for manual tick")
+    from services.alpha_day_trader import run_alpha_day_trader_tick
+    return await run_alpha_day_trader_tick(db)

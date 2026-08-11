@@ -123,6 +123,7 @@ def register_all(scheduler, db, server_mod):
     scheduler.add_job(s._run_day_trade_scanner_equity, 'interval', minutes=5, id='day_trade_scanner_equity', replace_existing=True)
     scheduler.add_job(s._run_day_trade_scanner_crypto, 'interval', minutes=5, id='day_trade_scanner_crypto', replace_existing=True)
     scheduler.add_job(s._run_day_trade_exit_monitor, 'interval', minutes=5, id='day_trade_exit_monitor', replace_existing=True)
+    scheduler.add_job(s._run_alpha_day_trader, 'interval', minutes=5, id='alpha_day_trader', replace_existing=True)
     scheduler.add_job(s._run_stress_event_monitor, 'interval', minutes=1, id='stress_event_monitor', replace_existing=True)
     scheduler.add_job(s._run_tier3_slippage_advisor, 'cron', day_of_week='mon', hour=13, minute=15, id='tier3_slippage_advisor', replace_existing=True)
     scheduler.add_job(s._run_research_shadow_scorer, 'interval', seconds=60, id='research_shadow_scorer', replace_existing=True)

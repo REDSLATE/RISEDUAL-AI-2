@@ -488,6 +488,19 @@ async def maybe_route_live(
                         reason="live_exec_disabled", intent=intent)
         return None
 
+    # 2026-08-11 — Session gate. Public.com's broker API rejects
+    # fractional / notional-based orders outside 9:30-16:00 ET
+    # (extended hours requires whole-share LIMIT orders with an
+    # explicit equityMarketSession=EXTENDED flag). Firing our
+    # fractional MARKET orders after hours guarantees a broker
+    # rejection. Skip cleanly with market_closed instead.
+    if _rth_only_enabled() and not _in_regular_session():
+        await _log_skip(db, symbol=(intent.get("symbol") or "").upper(),
+                        reason="market_closed", intent=intent,
+                        detail={"gate": "rth_only",
+                                "note": "Public.com fractional orders require RTH (9:30-16:00 ET)."})
+        return None
+
     symbol = (intent.get("symbol") or "").upper()
     direction = (intent.get("direction") or intent.get("action") or "").upper()
     if not symbol:

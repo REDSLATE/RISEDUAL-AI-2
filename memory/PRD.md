@@ -4147,3 +4147,41 @@ receipt before submitting any order.
 
 ## Test Credentials
 See `/app/memory/test_credentials.md`.
+
+## 2026-08-11 — Alpha Day Trader (Phase A+B) + Chasing/RTH fixes
+
+**What shipped (verified):**
+- **Chasing filter root-cause fix** (`_intraday_move_pct`): both legs now come from the same `market_daily` response — previously mixed providers produced impossible readings (PLTR reported +27.6%). Added ±50% sanity cap that fails open on suspected split/dividend desyncs. **72 skips → 0 in preview forensic before restart; watch after next 5-min tick.**
+- **RTH-only session gate** in `maybe_route_live`: outside 9:30–16:00 ET or weekends → clean `market_closed` skip (Public.com API rejects fractional MARKET orders in extended hours). Handles DST/EST switch, weekday-in-ET calculation, boundary minutes. Override via `PUBLIC_LIVE_RTH_ONLY=0`.
+- **Alpha Day Trader** (`services/alpha_day_trader.py`, ~700 LOC) — new intent-producing intraday strategy:
+  - Ranker (relvol + pct_change + vol_accel + spread + above-VWAP)
+  - Pattern engine: VWAP_RECLAIM, HOD_BREAK, BREAKOUT, PULLBACK, MOMENTUM_REACCELERATION
+  - Trigger watcher freezes `confirmation_price` on crossover
+  - Level 2 confirmation as MODIFIER only — `None → 0.50`, **never blocks**
+  - Setup dedup: same market move → one `setup_id` (5% price band per symbol×setup_type×day)
+  - Hands off to existing `maybe_route_live` — Seat/Risk/RoadGuard/EntryTiming path preserved
+  - Lifecycle counters (`candidates_seen → setups_created → triggers → intents_created → broker_submitted → filled`)
+  - Independent env switches: `RISEDUAL_ALPHA_DAYTRADER_SCAN`, `RISEDUAL_ALPHA_DAYTRADER_EXECUTE` (both OFF by default)
+- Admin routes: `GET/POST /api/admin/alpha-daytrader/{counters,setups,outcomes,tick}`
+- Scheduler: 5-min interval job `alpha_day_trader` (no-ops when SCAN switch off)
+- Existing `day_trade_scanner` **left running** during rollout — no interruption to current trade activity
+- 17/17 unit tests passing
+
+**How to activate on prod:**
+1. Set `RISEDUAL_ALPHA_DAYTRADER_SCAN=1` — observation only (creates setups/counters, no trades)
+2. Confirm setups/triggers appear at `/api/admin/alpha-daytrader/counters`
+3. Set `RISEDUAL_ALPHA_DAYTRADER_EXECUTE=1` — intents flow into the existing execution pipeline
+4. Watch `trigger → intent` conversion; anything != 1:1 means a hard-safety condition triggered
+
+**Not yet built (Phase C):**
+- Break-even auto-stop bump after +1R
+- Full outcome journal with latency instrumentation (signal→trigger→intent→broker→fill ms)
+- `AlphaDayTraderPanel.jsx` Mission Control panel
+
+**Files:**
+- NEW `backend/services/alpha_day_trader.py`
+- NEW `backend/routes/admin_alpha_daytrader.py`
+- NEW `backend/tests/test_alpha_day_trader.py`
+- MOD `backend/services/public_equity_live_executor.py` — chasing fix + RTH gate
+- MOD `backend/route_registry.py` + `services/scheduling/jobs.py` — wiring
+

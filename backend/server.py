@@ -1466,6 +1466,18 @@ async def _run_day_trade_scanner_crypto():
         logger.debug(f"Day-trade scanner (crypto) error: {e}")
 
 
+async def _run_alpha_day_trader():
+    """Background: Alpha Day Trader tick — scan + track setups + create
+    live intents. Independent switches ``RISEDUAL_ALPHA_DAYTRADER_SCAN``
+    (default OFF) and ``RISEDUAL_ALPHA_DAYTRADER_EXECUTE`` (default OFF)
+    keep observation and execution decoupled."""
+    try:
+        from services.alpha_day_trader import run_alpha_day_trader_tick
+        await run_alpha_day_trader_tick(db)
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"Alpha Day Trader tick error: {e}")
+
+
 async def _run_day_trade_exit_monitor():
     """Background: close day-trade positions whose ``max_hold_until``
     (21:00 UTC EOD) has elapsed. Idempotent — re-running after the
