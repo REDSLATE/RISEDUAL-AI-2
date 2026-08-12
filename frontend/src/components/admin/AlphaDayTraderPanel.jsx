@@ -69,6 +69,7 @@ export default function AlphaDayTraderPanel() {
   const [rollups, setRollups] = useState([]);
   const [runtime, setRuntime] = useState(null);
   const [regime, setRegime] = useState(null);
+  const [fastRegime, setFastRegime] = useState(null);
   const [edges, setEdges] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -77,13 +78,14 @@ export default function AlphaDayTraderPanel() {
     setLoading(true);
     setErr('');
     try {
-      const [c, s, o, r, rt, rg, eg] = await Promise.all([
+      const [c, s, o, r, rt, rg, fr, eg] = await Promise.all([
         apiGet('/api/admin/alpha-daytrader/counters'),
         apiGet('/api/admin/alpha-daytrader/setups?limit=25'),
         apiGet('/api/admin/alpha-daytrader/outcomes?limit=25'),
         apiGet('/api/admin/alpha-daytrader/pattern-performance'),
         apiGet('/api/admin/alpha-daytrader/runtime'),
         apiGet('/api/admin/alpha-daytrader/regime'),
+        apiGet('/api/admin/alpha-daytrader/fast-regime'),
         apiGet('/api/admin/alpha-daytrader/edge'),
       ]);
       setCounters(c);
@@ -92,6 +94,7 @@ export default function AlphaDayTraderPanel() {
       setRollups(r.rollups || []);
       setRuntime(rt);
       setRegime(rg);
+      setFastRegime(fr);
       setEdges(eg.rollups || []);
     } catch (e) {
       setErr(String(e.message || e));
@@ -198,36 +201,75 @@ export default function AlphaDayTraderPanel() {
       </div>
 
       <div>
-        <h3 className="text-sm font-medium text-zinc-300 mb-2">Market regime (HMM)</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Cell
-            label="Current regime"
-            value={
-              <span className={regime?.label === 'UNKNOWN' ? 'text-zinc-400' : 'text-cyan-300'}>
-                {regime?.label ?? '—'}
-              </span>
-            }
-            hint={regime?.trained_samples ? `${regime.trained_samples} training samples` : 'HMM not trained yet'}
-          />
-          <Cell
-            label="Confidence"
-            value={regime?.probability != null ? `${(regime.probability * 100).toFixed(0)}%` : '—'}
-            hint={regime?.updated_at ? `Updated ${new Date(regime.updated_at).toLocaleString()}` : null}
-          />
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 col-span-2">
-            <div className="text-xs uppercase tracking-wide text-zinc-500 mb-1">Posteriors</div>
-            <div className="text-xs text-zinc-300 space-y-0.5">
+        <h3 className="text-sm font-medium text-zinc-300 mb-2">Market regime</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <div className="text-xs uppercase tracking-wide text-zinc-500">Slow · Daily SPY HMM</div>
+                <div className="mt-1 text-2xl font-semibold">
+                  <span className={regime?.label === 'UNKNOWN' ? 'text-zinc-400' : 'text-cyan-300'}>
+                    {regime?.label ?? '—'}
+                  </span>
+                </div>
+                <div className="text-xs text-zinc-500 mt-1">
+                  {regime?.trained_samples ? `${regime.trained_samples} training samples` : 'HMM not trained yet'}
+                  {regime?.updated_at ? ` · updated ${new Date(regime.updated_at).toLocaleString()}` : ''}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs uppercase tracking-wide text-zinc-500">Model preference</div>
+                <div className="text-2xl font-mono text-zinc-200">
+                  {regime?.probability != null ? `${(regime.probability * 100).toFixed(0)}%` : '—'}
+                </div>
+              </div>
+            </div>
+            <div className="text-xs text-zinc-500 space-y-0.5 mt-3">
               {regime?.posteriors && Object.keys(regime.posteriors).length
                 ? Object.entries(regime.posteriors)
-                    .filter(([k]) => !k.startsWith('_') && k !== 'reason')
                     .sort((a, b) => (b[1] || 0) - (a[1] || 0))
                     .map(([k, v]) => (
-                      <div key={k} className="flex justify-between">
+                      <div key={k} className="flex justify-between text-zinc-400">
                         <span>{k}</span>
                         <span className="font-mono">{typeof v === 'number' ? `${(v * 100).toFixed(0)}%` : String(v)}</span>
                       </div>
                     ))
                 : <span className="text-zinc-500">—</span>}
+            </div>
+            <div className="mt-3 text-[10px] text-zinc-500 italic">
+              This is the fitted model&apos;s posterior preference for its own learned states,
+              not the objective probability that the market is in that regime.
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <div className="text-xs uppercase tracking-wide text-zinc-500">Fast · Current session</div>
+                <div className="mt-1 text-2xl font-semibold">
+                  <span className={fastRegime?.label === 'UNKNOWN' ? 'text-zinc-400' : 'text-amber-300'}>
+                    {fastRegime?.label ?? '—'}
+                  </span>
+                </div>
+                <div className="text-xs text-zinc-500 mt-1">
+                  Rule-based · today&apos;s SPY features
+                  {fastRegime?.updated_at ? ` · updated ${new Date(fastRegime.updated_at).toLocaleString()}` : ''}
+                </div>
+              </div>
+            </div>
+            <div className="text-xs text-zinc-500 space-y-0.5 mt-3">
+              {fastRegime?.features && Object.keys(fastRegime.features).length
+                ? Object.entries(fastRegime.features).map(([k, v]) => (
+                    <div key={k} className="flex justify-between text-zinc-400">
+                      <span>{k}</span>
+                      <span className="font-mono">{typeof v === 'number' ? v.toFixed(3) : String(v)}</span>
+                    </div>
+                  ))
+                : <span className="text-zinc-500">{fastRegime?.reason || '—'}</span>}
+            </div>
+            <div className="mt-3 text-[10px] text-zinc-500 italic">
+              Complements the slow HMM. Alpha combines both for edge lookup;
+              neither can block a trade.
             </div>
           </div>
         </div>
@@ -235,7 +277,7 @@ export default function AlphaDayTraderPanel() {
 
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-medium text-zinc-300">Edge modifiers by (pattern × regime)</h3>
+          <h3 className="text-sm font-medium text-zinc-300">Edge modifiers by (pattern × slow × fast)</h3>
           <span className="text-xs text-zinc-500">
             &lt;10 samples → DISCOVERING (neutral 1.00×)
           </span>
@@ -245,7 +287,8 @@ export default function AlphaDayTraderPanel() {
             <thead className="bg-zinc-900/60 text-xs uppercase text-zinc-500">
               <tr>
                 <th className="px-3 py-2 text-left">Pattern</th>
-                <th className="px-3 py-2 text-left">Regime</th>
+                <th className="px-3 py-2 text-left">Slow regime</th>
+                <th className="px-3 py-2 text-left">Fast regime</th>
                 <th className="px-3 py-2 text-right">Samples</th>
                 <th className="px-3 py-2 text-right">Expectancy R</th>
                 <th className="px-3 py-2 text-right">Modifier</th>
@@ -254,13 +297,14 @@ export default function AlphaDayTraderPanel() {
             </thead>
             <tbody>
               {edges.length === 0 ? (
-                <tr><td colSpan={6} className="px-3 py-4 text-center text-zinc-500">
-                  No edge rollups yet. Fill in as trades close with regime + pattern context.
+                <tr><td colSpan={7} className="px-3 py-4 text-center text-zinc-500">
+                  No edge rollups yet. Rows appear as real fills complete.
                 </td></tr>
               ) : edges.map((e) => (
-                <tr key={`${e.pattern}-${e.regime}`} className="border-t border-zinc-800/60">
+                <tr key={`${e.pattern}-${e.slow_regime || e.regime}-${e.fast_regime}`} className="border-t border-zinc-800/60">
                   <td className="px-3 py-2 font-medium">{e.pattern}</td>
-                  <td className="px-3 py-2">{e.regime}</td>
+                  <td className="px-3 py-2">{e.slow_regime || e.regime}</td>
+                  <td className="px-3 py-2">{e.fast_regime || 'UNKNOWN'}</td>
                   <td className="px-3 py-2 text-right">{e.samples}</td>
                   <td className={`px-3 py-2 text-right ${
                     e.expectancy_r > 0 ? 'text-emerald-400' :

@@ -167,3 +167,30 @@ async def edge_recompute(request: Request):
         raise HTTPException(status_code=403, detail="Owner access required")
     from services.alpha_edge_engine import compute_rollups
     return await compute_rollups(db)
+
+
+@router.get("/fast-regime")
+async def fast_regime_state(request: Request):
+    await _require_admin(request)
+    from services.fast_intraday_regime import get_current
+    return await get_current(db)
+
+
+@router.post("/fast-regime/refresh")
+async def fast_regime_refresh(request: Request):
+    user = await _require_admin(request)
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
+    from services.fast_intraday_regime import snapshot
+    return await snapshot(db)
+
+
+@router.post("/fills/resolve")
+async def fills_resolve(request: Request):
+    user = await _require_admin(request)
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
+    from services.alpha_fill_writer import resolve_closed_outcomes, track_open_excursions
+    excursions = await track_open_excursions(db)
+    resolved = await resolve_closed_outcomes(db)
+    return {"excursions": excursions, "resolved": resolved}

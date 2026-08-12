@@ -620,6 +620,7 @@ async def _record_outcome(db: Any, *, setup: ActiveSetup, intent_id: Optional[st
                           submitted: bool, filled: bool,
                           reject_reason: Optional[str],
                           regime: Optional[str] = None,
+                          fast_regime: Optional[str] = None,
                           time_bucket: Optional[str] = None,
                           rvol_bucket: Optional[str] = None,
                           spread_bucket: Optional[str] = None,
@@ -643,6 +644,7 @@ async def _record_outcome(db: Any, *, setup: ActiveSetup, intent_id: Optional[st
             "filled": filled,
             "reject_reason": reject_reason,
             "regime": regime,
+            "fast_regime": fast_regime,
             "time_bucket": time_bucket,
             "rvol_bucket": rvol_bucket,
             "spread_bucket": spread_bucket,
@@ -782,6 +784,7 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
 
         # ── regime + edge lookup (both are NON-BLOCKING modifiers) ──
         regime_label = "UNKNOWN"
+        fast_regime_label = "UNKNOWN"
         try:
             from services.market_regime import get_current as _get_regime
             regime_doc = await _get_regime(db)
@@ -789,9 +792,16 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
         except Exception:  # noqa: BLE001
             pass
         try:
+            from services.fast_intraday_regime import get_current as _get_fast
+            fast_doc = await _get_fast(db)
+            fast_regime_label = str(fast_doc.get("label") or "UNKNOWN")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
             from services import alpha_edge_engine as _edge
             edge_info = await _edge.lookup(db, pattern=setup.setup_type.value,
-                                            regime=regime_label)
+                                            regime=regime_label,
+                                            fast_regime=fast_regime_label)
             t_bucket = _edge.time_bucket(snap.timestamp)
             r_bucket = _edge.rvol_bucket(snap.relative_volume)
             s_bucket = _edge.spread_bucket(snap.spread_bps)
@@ -806,6 +816,7 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
         intent.confidence = min(1.0, raw_conf * modifier)
         intent.reason.update({
             "regime": regime_label,
+            "fast_regime": fast_regime_label,
             "edge_state": edge_info.get("state"),
             "edge_modifier": modifier,
             "edge_samples": edge_info.get("samples"),
@@ -825,12 +836,14 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
             "confirmation_price": intent.confirmation_price,
             "stop_price": intent.stop_price, "target_price": intent.target_price,
             "regime": regime_label,
+            "fast_regime": fast_regime_label,
             "edge_state": edge_info.get("state"),
             "edge_modifier": modifier,
         })
 
         _outcome_kwargs = {
             "regime": regime_label,
+            "fast_regime": fast_regime_label,
             "time_bucket": t_bucket,
             "rvol_bucket": r_bucket,
             "spread_bucket": s_bucket,

@@ -1532,6 +1532,33 @@ async def _run_alpha_edge_rollup():
         logger.debug(f"Alpha edge rollup error: {e}")
 
 
+async def _run_alpha_fill_excursions():
+    """Background: track MFE/MAE on open Alpha positions (peak/trough)."""
+    try:
+        from services.alpha_fill_writer import track_open_excursions
+        await track_open_excursions(db)
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"Alpha fill excursion error: {e}")
+
+
+async def _run_alpha_resolve_outcomes():
+    """Background: on closed Alpha trades, compute realized_r/mfe_r/mae_r/slippage."""
+    try:
+        from services.alpha_fill_writer import resolve_closed_outcomes
+        await resolve_closed_outcomes(db)
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"Alpha resolve outcomes error: {e}")
+
+
+async def _run_alpha_fast_regime():
+    """Background: compute fast intraday regime label from today's SPY features."""
+    try:
+        from services.fast_intraday_regime import snapshot
+        await snapshot(db)
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"Alpha fast regime error: {e}")
+
+
 async def _run_day_trade_exit_monitor():
     """Background: close day-trade positions whose ``max_hold_until``
     (21:00 UTC EOD) has elapsed. Idempotent — re-running after the

@@ -4302,3 +4302,54 @@ See `/app/memory/test_credentials.md`.
 
 **Prod redeploy needed to activate Phase D on live.**
 
+
+## 2026-08-12 — Alpha Phase D+ (Measurement Loop Closed)
+
+**Fill economics wired end-to-end** (`services/alpha_fill_writer.py`):
+- `track_open_excursions()` — 1-min job: walks open Alpha positions, updates `peak_price` / `trough_price` on `equity_live_trades`
+- `resolve_closed_outcomes()` — 2-min job: on close, computes `realized_r`, `mfe_r`, `mae_r`, `slippage_bps`, `entry_fill_price`, `exit_fill_price` and updates the matching `alpha_outcomes` doc (looked up by `setup_id`). Idempotent via `outcome_resolved` flag.
+- `slippage_bps = (entry_fill - trigger_price) / trigger_price × 10000` — uses the frozen `confirmation_price` from the intent as the reference
+- Setup timeline gets an `outcome_resolved` event with the full metrics payload
+
+**Edge Engine now consumes ONLY resolved samples:**
+- Rollup query filters to rows with `realized_r` set → observed-but-not-measured rows never poison expectancy
+- Rollup key upgraded to `(pattern × slow_regime × fast_regime)`
+- Lookup falls back through 2 layers: fine-grained → `(pattern × slow)` → neutral DISCOVERING
+- Requires ≥10 samples per bucket to leave DISCOVERING
+
+**Fast intraday regime layer** (`services/fast_intraday_regime.py`):
+- Rules-based classifier over current-session SPY features (today's return vs prev close, today_range/atr20, volume run-rate, body-to-range ratio)
+- 6 labels: `momentum_ignition_up/down`, `volatility_expansion`, `risk_off`, `trend_up/down`, `session_chop`
+- Non-blocking — missing bars → `UNKNOWN`
+- Complements (never overrides) the slow SPY-daily HMM
+- Scheduler: `_run_alpha_fast_regime` every 5 min
+- Verified live: today's SPY produces `session_chop` (+0.15%, tight range)
+
+**Panel honesty upgrade:**
+- Slow + fast regime shown side-by-side, not merged
+- Slow regime posterior now labelled "Model preference" with italic caveat: "This is the fitted model's posterior preference for its own learned states, not the objective probability that the market is in that regime"
+- Edge modifiers table gets `slow_regime` + `fast_regime` columns
+- Preserves the (∼15%) modifier scale — no automatic size reductions from regime transitions (informational only)
+
+**Endpoints (3 new):**
+- `GET  /api/admin/alpha-daytrader/fast-regime`
+- `POST /api/admin/alpha-daytrader/fast-regime/refresh` (owner)
+- `POST /api/admin/alpha-daytrader/fills/resolve` (owner)
+
+**Test coverage:**
+- 48/48 unit tests passing (17 A+B + 10 C + 12 D + 9 D+)
+- Fill metrics: realized_r, MFE, MAE, slippage, missing-excursion fallback, unknown-risk flag
+- Fast regime: all 6 labels have explicit classifier tests
+
+**Files:**
+- NEW `backend/services/alpha_fill_writer.py`
+- NEW `backend/services/fast_intraday_regime.py`
+- NEW `backend/tests/test_alpha_phase_d_plus.py`
+- MOD `backend/services/alpha_day_trader.py` (fast_regime stamped on outcomes + intent reason)
+- MOD `backend/services/alpha_edge_engine.py` ((pattern × slow × fast) key + 2-tier fallback lookup + resolved-only filter)
+- MOD `backend/routes/admin_alpha_daytrader.py` (3 new endpoints)
+- MOD `backend/services/scheduling/jobs.py` + `server.py` (4 new scheduled jobs)
+- MOD `frontend/src/components/admin/AlphaDayTraderPanel.jsx` (slow + fast side-by-side, posterior wording)
+
+**Not yet:** operator-adjustable modifier weighting — deferred per your instruction until real fill economics accumulate.
+

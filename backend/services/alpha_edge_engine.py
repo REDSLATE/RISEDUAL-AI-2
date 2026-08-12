@@ -113,31 +113,47 @@ def _summarize(rows: list[dict]) -> dict:
 
 
 async def compute_rollups(db: Any) -> dict:
-    """Group ``alpha_outcomes`` by (pattern × regime) and persist compact rollups.
+    """Group ``alpha_outcomes`` by (pattern × slow_regime × fast_regime)
+    and persist compact rollups.
 
-    Time-of-day and RVOL buckets are stored on the outcome row itself
-    (by ``_bucket_outcome_on_save`` — see ``alpha_day_trader``).  This
-    keeps aggregation cheap: single scan, dict grouping in memory.
+    Only rows with ``realized_r`` are treated as resolved samples — an
+    outcome that never got a real fill (execute_switch_off, executor_rejected,
+    exec_lock_conflict, invalidated_before_trigger) is counted as
+    "observed but not measured" and never poisons the expectancy.
+    Every measured outcome is one unique resolved setup (dedup applied
+    at setup-creation time), so counts are honest samples.
     """
     if db is None:
         return {"rollups": {}, "computed_at": datetime.now(timezone.utc).isoformat()}
     grouped: dict[tuple, list[dict]] = {}
+    observed_by_key: dict[tuple, int] = {}
     async for row in db.alpha_outcomes.find({}, {"_id": 0}):
         pattern = row.get("setup_type") or "unknown"
-        regime = row.get("regime") or "UNKNOWN"
-        key = (pattern, regime)
-        grouped.setdefault(key, []).append(row)
+        slow = row.get("regime") or "UNKNOWN"
+        fast = row.get("fast_regime") or "UNKNOWN"
+        key = (pattern, slow, fast)
+        observed_by_key[key] = observed_by_key.get(key, 0) + 1
+        # Only rows with a realized_r are edge-sample-worthy.
+        if isinstance(row.get("realized_r"), (int, float)):
+            grouped.setdefault(key, []).append(row)
 
     now = datetime.now(timezone.utc)
     rollups: list[dict] = []
-    for (pattern, regime), rows in grouped.items():
+    for key, rows in grouped.items():
+        pattern, slow, fast = key
         summary = _summarize(rows)
-        summary.update({"pattern": pattern, "regime": regime,
-                        "updated_at": now.isoformat()})
+        summary.update({
+            "pattern": pattern,
+            "slow_regime": slow,
+            "fast_regime": fast,
+            "regime": slow,  # back-compat with the old panel column
+            "observed": observed_by_key.get(key, 0),
+            "updated_at": now.isoformat(),
+        })
         rollups.append(summary)
         try:
             await db.alpha_edge_rollups.update_one(
-                {"pattern": pattern, "regime": regime},
+                {"pattern": pattern, "slow_regime": slow, "fast_regime": fast},
                 {"$set": {**summary, "updated_at": now}},
                 upsert=True,
             )
@@ -162,27 +178,35 @@ async def read_rollups(db: Any) -> list[dict]:
 # ─── lookup (called from the tick before intent creation) ────────
 
 
-async def lookup(db: Any, *, pattern: str, regime: str) -> dict:
-    """Return the current edge summary for (pattern × regime).
+async def lookup(db: Any, *, pattern: str, regime: str,
+                  fast_regime: str = "UNKNOWN") -> dict:
+    """Return the current edge summary for (pattern × slow_regime × fast_regime).
 
-    Falls back to DISCOVERING (modifier=1.00) when no rollup exists.
-    Callers must NEVER treat a DISCOVERING result as a rejection.
+    Precedence when the fine-grained bucket has too few samples:
+      1. (pattern, slow, fast) — most specific
+      2. (pattern, slow, *)   — collapse fast_regime
+      3. neutral DISCOVERING
+    A DISCOVERING result **must** be treated as neutral, never as a rejection.
     """
     if db is None:
-        return {"pattern": pattern, "regime": regime,
+        return {"pattern": pattern, "slow_regime": regime, "fast_regime": fast_regime,
                 "state": "DISCOVERING", "modifier": 1.00, "samples": 0}
-    try:
-        doc = await db.alpha_edge_rollups.find_one(
-            {"pattern": pattern, "regime": regime}, {"_id": 0}
-        )
-    except Exception:  # noqa: BLE001
-        doc = None
-    if not doc:
-        return {"pattern": pattern, "regime": regime,
-                "state": "DISCOVERING", "modifier": 1.00, "samples": 0}
-    if isinstance(doc.get("updated_at"), datetime):
-        doc["updated_at"] = doc["updated_at"].isoformat()
-    return doc
+    # Try the fine-grained bucket first
+    for query in (
+        {"pattern": pattern, "slow_regime": regime, "fast_regime": fast_regime},
+        {"pattern": pattern, "slow_regime": regime},
+    ):
+        try:
+            doc = await db.alpha_edge_rollups.find_one(query, {"_id": 0})
+        except Exception:  # noqa: BLE001
+            doc = None
+        if doc and (doc.get("samples") or 0) >= 10:
+            if isinstance(doc.get("updated_at"), datetime):
+                doc["updated_at"] = doc["updated_at"].isoformat()
+            return doc
+    # Neither bucket has enough samples yet.
+    return {"pattern": pattern, "slow_regime": regime, "fast_regime": fast_regime,
+            "state": "DISCOVERING", "modifier": 1.00, "samples": 0}
 
 
 __all__ = [
