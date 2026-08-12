@@ -120,6 +120,8 @@ def _resolve_metrics(row: dict) -> dict:
     peak = row.get("peak_price")
     trough = row.get("trough_price")
     trigger = _trigger_price_of(row) or entry
+    close_reason = str(row.get("close_reason") or "")
+    size = float(row.get("size") or row.get("quantity") or 0.0)
 
     risk_per_share = max(0.0, entry - stop) if stop and entry > stop else None
     metrics: dict = {}
@@ -138,10 +140,35 @@ def _resolve_metrics(row: dict) -> dict:
         metrics["risk_unknown"] = True
 
     if trigger and trigger > 0 and entry > 0:
-        metrics["slippage_bps"] = round((entry - trigger) / trigger * 10_000.0, 2)
+        metrics["entry_slippage_bps"] = round((entry - trigger) / trigger * 10_000.0, 2)
+
+    # Exit slippage: measured against the *decision* reference the exit
+    # monitor used. For stop hits → stop_price; for target hits →
+    # target_price (pulled from the setup); otherwise unknown (e.g.
+    # time-based exits have no reference price).
+    exit_ref: Optional[float] = None
+    if close_reason.startswith("stop") and stop > 0:
+        exit_ref = stop
+    else:
+        info = row.get("alpha_daytrader") or {}
+        target = info.get("target_price") if isinstance(info, dict) else None
+        try:
+            t = float(target) if target is not None else None
+        except (TypeError, ValueError):
+            t = None
+        if t and close_reason.startswith(("target", "profit")):
+            exit_ref = t
+    if exit_ref and exit_ref > 0 and close > 0:
+        metrics["exit_slippage_bps"] = round((close - exit_ref) / exit_ref * 10_000.0, 2)
+
+    # Dollar P&L when we have position size.
+    if size > 0 and entry > 0 and close > 0:
+        metrics["realized_pnl_usd"] = round((close - entry) * size, 2)
+        metrics["gross_notional_usd"] = round(entry * size, 2)
 
     metrics["entry_fill_price"] = entry
     metrics["exit_fill_price"] = close
+    metrics["close_reason"] = close_reason or None
     metrics["resolved_at"] = datetime.now(timezone.utc)
     return metrics
 

@@ -194,3 +194,14 @@ async def fills_resolve(request: Request):
     excursions = await track_open_excursions(db)
     resolved = await resolve_closed_outcomes(db)
     return {"excursions": excursions, "resolved": resolved}
+
+
+@router.get("/resolved-trades")
+async def resolved_trades(request: Request,
+                           limit: int = Query(50, ge=1, le=500),
+                           include_unmeasured: bool = Query(False)):
+    """First Resolved Trade Report — per-trade fill economics with
+    latency samples from the SQLite hot store and edge-agreement flag."""
+    await _require_admin(request)
+    from services.alpha_trade_report import resolved_report
+    return await resolved_report(db, limit=limit, only_measured=not include_unmeasured)

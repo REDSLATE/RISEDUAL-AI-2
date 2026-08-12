@@ -4353,3 +4353,54 @@ See `/app/memory/test_credentials.md`.
 
 **Not yet:** operator-adjustable modifier weighting — deferred per your instruction until real fill economics accumulate.
 
+
+## 2026-08-12 — Alpha Phase E: Resolved Trade Report + Setup Timeline + Discovery Radar
+
+**Order shipped per operator instruction: 1 → 2 → 3.**
+
+### 1. First Resolved Trade Report (`services/alpha_trade_report.py`)
+- Reads `alpha_outcomes` (Mongo, one doc per unique resolved setup)
+- Pulls latency samples from SQLite hot store on demand — no Mongo duplication
+- Filters to rows with `realized_r` set (`only_measured=True` default) so incomplete outcomes never pollute totals
+- Per-row fields: symbol, pattern, slow_regime, fast_regime, detected_price, confirmation_price, entry_fill_price, exit_fill_price, realized_r, mfe_r, mae_r, entry_slippage_bps, exit_slippage_bps, realized_pnl_usd, close_reason, intent_to_broker_ms, edge_agreement
+- **Edge agreement**: for each resolved trade, record whether the Edge Engine's `edge_state` at entry (POSITIVE/NEGATIVE) matched the sign of `realized_r`. AGREE / DISAGREE / N/A (for DISCOVERING/FLAT). Observation only — never gates.
+- Header totals: count, win rate, avg realized R, gross P&L, median entry slippage, edge-agreement ratio
+- `GET /api/admin/alpha-daytrader/resolved-trades?limit=50&include_unmeasured=false`
+
+**Extended fill economics** (`alpha_fill_writer._resolve_metrics`):
+- Renamed `slippage_bps` → `entry_slippage_bps` (against frozen `confirmation_price`)
+- Added `exit_slippage_bps` — measured against stop_price for stop hits, target_price for target hits, omitted for time-based exits
+- Added `realized_pnl_usd` and `gross_notional_usd` when position size is known
+- Stamped `close_reason` on the outcome row
+
+### 2. Setup Timeline URL (frontend)
+- Uses existing `GET /api/admin/alpha-daytrader/setup/{setup_id}/timeline` (SQLite hot store; no Mongo duplication)
+- Modal viewer inside `AlphaDayTraderPanel.jsx` with 4-phase latency tiles + full event log + payload JSON
+- Deep-link via URL hash `#alpha-timeline-<setup_id>` — refreshable / shareable
+- One-click "Timeline" button next to each row in the Resolved Trade Report
+- Also opens by clicking any row in the "Recent setups" list
+- "Copy URL" button for sharing
+
+### 3. Edge Discovery Radar (frontend)
+- Filters `alpha_edge_rollups` to `samples < 10`
+- Per-bucket columns: pattern, slow, fast, samples, "N more" to threshold, progress bar, interim expectancy
+- Interim expectancy shown for information only — badge state does not change until the bucket reaches 10 samples (per Edge Engine rules)
+
+### Tests
+- 57/57 passing (17 A+B + 10 C + 12 D + 9 D+ + 9 E)
+- New in E: edge_agreement matrix, exit-slippage on stop/target/time exits, realized_pnl_usd
+
+### Files
+- NEW `backend/services/alpha_trade_report.py`
+- NEW `backend/tests/test_alpha_trade_report.py`
+- MOD `backend/services/alpha_fill_writer.py` (extended metrics)
+- MOD `backend/routes/admin_alpha_daytrader.py` (+1 endpoint)
+- MOD `backend/tests/test_alpha_phase_d_plus.py` (renamed slippage field)
+- MOD `frontend/src/components/admin/AlphaDayTraderPanel.jsx` (report, radar, timeline modal, deep-link)
+
+### Not added by design
+- No new execution gates
+- No auto-disable behavior
+- No operator-adjustable modifier weighting (deferred until real samples accumulate)
+- No regime-transition alerts
+

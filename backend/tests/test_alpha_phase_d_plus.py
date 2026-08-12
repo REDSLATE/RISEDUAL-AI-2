@@ -21,7 +21,7 @@ def test_resolve_metrics_computes_realized_r_and_slippage():
     assert m["mfe_r"] == 4.5           # (104.5 - 100) / 1.0
     assert m["mae_r"] == -0.8          # (99.2 - 100) / 1.0
     # slippage = (100 - 99.90) / 99.90 * 10000 ≈ 10 bps
-    assert m["slippage_bps"] == 10.01
+    assert m["entry_slippage_bps"] == 10.01
     assert m["entry_fill_price"] == 100.0
     assert m["exit_fill_price"] == 103.0
 
