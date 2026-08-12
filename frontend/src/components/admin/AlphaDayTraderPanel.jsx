@@ -239,6 +239,225 @@ function BrokerComparisonSection({ data, rows, window, onWindowChange }) {
           )}
         </div>
       </div>
+      <BrokerAuditTail />
+    </div>
+  );
+}
+
+function BrokerAuditTail() {
+  const [rows, setRows] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState('');
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    setErr('');
+    try {
+      const data = await apiGet('/api/admin/alpha-daytrader/broker-audit?limit=25');
+      setRows(data.switches || []);
+    } catch (e) {
+      setErr(String(e.message || e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  return (
+    <div data-testid="broker-audit-tail" className="mt-4">
+      <div className="flex items-center justify-between mb-1">
+        <div className="text-xs text-zinc-500">Broker router audit ({rows.length})</div>
+        <button
+          type="button"
+          onClick={load}
+          data-testid="broker-audit-refresh"
+          className="text-[10px] uppercase text-zinc-500 hover:text-zinc-300"
+        >
+          {loading ? 'loading…' : 'refresh'}
+        </button>
+      </div>
+      {err ? (
+        <div className="text-xs text-red-400">{err}</div>
+      ) : (
+        <div className="rounded-lg border border-zinc-800 max-h-52 overflow-y-auto text-xs">
+          {rows.length === 0 ? (
+            <div className="p-3 text-center text-zinc-500" data-testid="broker-audit-empty">
+              No broker switches recorded yet.
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead className="bg-zinc-900/60 text-zinc-500 sticky top-0">
+                <tr>
+                  <th className="px-2 py-1 text-left">When</th>
+                  <th className="px-2 py-1 text-left">Bot</th>
+                  <th className="px-2 py-1 text-left">From → To</th>
+                  <th className="px-2 py-1 text-left">Operator</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={i} className="border-t border-zinc-800/60">
+                    <td className="px-2 py-1 text-zinc-500">
+                      {r.created_at ? new Date(r.created_at).toLocaleString() : '—'}
+                    </td>
+                    <td className="px-2 py-1 font-mono text-zinc-300">
+                      {String(r.bot_id || '').slice(-8)}
+                    </td>
+                    <td className="px-2 py-1">
+                      <span className={r.from_broker === 'public' ? 'text-sky-300' : (r.from_broker === 'moomoo' ? 'text-fuchsia-300' : 'text-zinc-500')}>
+                        {r.from_broker || '—'}
+                      </span>
+                      <span className="text-zinc-600 mx-1">→</span>
+                      <span className={r.to_broker === 'public' ? 'text-sky-300' : 'text-fuchsia-300'}>
+                        {r.to_broker}
+                      </span>
+                    </td>
+                    <td className="px-2 py-1 text-zinc-400">{r.operator || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OptionsDryRunWidget() {
+  const [symbol, setSymbol] = React.useState('');
+  const [direction, setDirection] = React.useState('call');
+  const [loading, setLoading] = React.useState(false);
+  const [result, setResult] = React.useState(null);
+  const [err, setErr] = React.useState('');
+
+  const run = async (e) => {
+    e?.preventDefault?.();
+    const sym = symbol.trim().toUpperCase();
+    if (!sym) return;
+    setLoading(true);
+    setErr('');
+    setResult(null);
+    try {
+      const data = await apiGet(
+        `/api/admin/moomoo/options/preview/${encodeURIComponent(sym)}?direction=${encodeURIComponent(direction)}`
+      );
+      setResult(data);
+    } catch (ex) {
+      setErr(String(ex.message || ex));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const sel = result?.selected;
+  const rejected = result?.rejected || [];
+  const policy = result?.policy_used;
+  return (
+    <div data-testid="options-dryrun-widget" className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 mt-4">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h3 className="text-sm font-medium text-zinc-100">Options dry run — MooMoo live chain</h3>
+          <div className="text-xs text-zinc-500">Read-only: shows the contract Alpha would pick right now. Never submits.</div>
+        </div>
+        {policy ? (
+          <div className="text-[10px] text-zinc-500">
+            Policy: delta {policy.delta_min}–{policy.delta_max} · DTE {policy.dte_min}–{policy.dte_max}d · spread ≤ {policy.max_spread_pct}%
+          </div>
+        ) : null}
+      </div>
+      <form onSubmit={run} className="flex flex-wrap items-end gap-2">
+        <div>
+          <label className="block text-[10px] uppercase text-zinc-500 mb-1">Ticker</label>
+          <input
+            type="text"
+            value={symbol}
+            onChange={(e) => setSymbol(e.target.value)}
+            placeholder="AAPL"
+            data-testid="options-dryrun-symbol"
+            className="rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 uppercase w-28"
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] uppercase text-zinc-500 mb-1">Direction</label>
+          <select
+            value={direction}
+            onChange={(e) => setDirection(e.target.value)}
+            data-testid="options-dryrun-direction"
+            className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100"
+          >
+            <option value="call">Call</option>
+            <option value="put">Put</option>
+          </select>
+        </div>
+        <button
+          type="submit"
+          disabled={loading || !symbol.trim()}
+          data-testid="options-dryrun-run"
+          className="rounded border border-cyan-600/60 bg-cyan-600/10 px-3 py-1.5 text-sm text-cyan-300 hover:bg-cyan-600/20 disabled:opacity-40"
+        >
+          {loading ? 'Previewing…' : 'Preview'}
+        </button>
+      </form>
+      {err ? (
+        <div className="mt-3 text-xs text-red-400">{err}</div>
+      ) : null}
+      {result && result.available === false ? (
+        <div className="mt-3 rounded border border-amber-700/60 bg-amber-900/10 p-3 text-xs text-amber-300"
+             data-testid="options-dryrun-unavailable">
+          MooMoo option chain unavailable: <span className="font-mono">{result.reason || 'unknown'}</span>.
+          OpenD must be running with an OPRA options entitlement for live previews.
+        </div>
+      ) : null}
+      {result && result.available && (
+        <div className="mt-3 space-y-3">
+          <div className="text-[11px] text-zinc-500">
+            Evaluated {result.candidates_evaluated} contracts from a chain of {result.chain_size}.
+          </div>
+          {sel ? (
+            <div className="rounded border border-emerald-700/60 bg-emerald-600/5 p-3" data-testid="options-dryrun-selected">
+              <div className="flex items-center justify-between mb-2">
+                <div className="font-mono text-emerald-300 text-sm">{sel.symbol}</div>
+                <div className="text-[10px] uppercase text-emerald-400/80">selected</div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div><div className="text-zinc-500">Strike</div><div className="font-mono text-zinc-100">${sel.strike}</div></div>
+                <div><div className="text-zinc-500">Expiry</div><div className="font-mono text-zinc-100">{sel.expiry}</div></div>
+                <div><div className="text-zinc-500">DTE</div><div className="font-mono text-zinc-100">{sel.dte}d</div></div>
+                <div><div className="text-zinc-500">Delta</div><div className="font-mono text-zinc-100">{sel.delta}</div></div>
+                <div><div className="text-zinc-500">Bid/Ask</div><div className="font-mono text-zinc-100">{sel.bid}/{sel.ask}</div></div>
+                <div><div className="text-zinc-500">Mid</div><div className="font-mono text-zinc-100">${sel.mid}</div></div>
+                <div><div className="text-zinc-500">Spread</div><div className="font-mono text-zinc-100">{sel.spread_pct}%</div></div>
+                <div><div className="text-zinc-500">OI/Vol</div><div className="font-mono text-zinc-100">{sel.open_interest}/{sel.volume}</div></div>
+                <div><div className="text-zinc-500">Est. debit</div><div className="font-mono text-zinc-100">${sel.estimated_debit}</div></div>
+                <div><div className="text-zinc-500">Max risk</div><div className="font-mono text-zinc-100">${sel.estimated_max_risk}</div></div>
+                <div><div className="text-zinc-500">Contracts</div><div className="font-mono text-zinc-100">{sel.contracts}</div></div>
+              </div>
+              {sel.why_selected ? (
+                <div className="mt-2 text-[11px] text-emerald-300/80">{sel.why_selected}</div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="rounded border border-zinc-800 bg-zinc-900/40 p-3 text-xs text-zinc-400" data-testid="options-dryrun-none">
+              No contract passed all policy gates. See rejected alternatives below.
+            </div>
+          )}
+          {rejected.length ? (
+            <div>
+              <div className="text-[11px] uppercase text-zinc-500 mb-1">Top rejected ({rejected.length})</div>
+              <div className="rounded border border-zinc-800 max-h-40 overflow-y-auto text-xs">
+                {rejected.map((r, i) => (
+                  <div key={i} className="border-b border-zinc-800/60 px-2 py-1 flex items-center justify-between">
+                    <span className="font-mono text-zinc-300">{r.symbol || `${r.strike} ${r.opt_type}`}</span>
+                    <span className="text-red-400/80">{r.rejection}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
@@ -778,6 +997,8 @@ export default function AlphaDayTraderPanel() {
         window={brokerCmpWindow}
         onWindowChange={setBrokerCmpWindow}
       />
+
+      <OptionsDryRunWidget />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div>

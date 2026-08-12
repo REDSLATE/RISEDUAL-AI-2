@@ -729,11 +729,13 @@ async def startup_event():
         from services.crypto_signal_audit import ensure_indexes as _crypto_audit_indexes
         from services.research_router import ensure_indexes as _research_cache_indexes
         from services.adversarial_logger import ensure_indexes as _adv_log_indexes
+        from services.broker_router_audit import ensure_indexes as _broker_audit_indexes
         await _crypto_audit_indexes(db)
         await _research_cache_indexes(db)
         await _adv_log_indexes(db)
+        await _broker_audit_indexes(db)
     except Exception as e:
-        logger.debug(f"Crypto audit / research-cache / adv-log indexes: {e}")
+        logger.debug(f"Crypto audit / research-cache / adv-log / broker-audit indexes: {e}")
 
     # Restore dynamically registered providers from MongoDB
     try:

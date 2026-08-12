@@ -140,6 +140,8 @@ async def update_bot_broker(bot_id: str, request: Request, body: UpdateBrokerReq
 
     Enforced at the write layer so the bot doc's ``broker`` field is
     the sole source of truth for ``broker_router.resolve_broker``.
+    Every switch is journalled to ``broker_router_audit`` so we can
+    later trace which venue routed which trade.
     """
     user = await get_current_user(request)
     broker = (body.broker or "").strip().lower()
@@ -152,13 +154,30 @@ async def update_bot_broker(bot_id: str, request: Request, body: UpdateBrokerReq
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid bot_id")
     user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
+    prior = await _db.trading_bots.find_one(
+        {"_id": _id, "user_id": user_id}, {"broker": 1}
+    )
+    if prior is None:
+        raise HTTPException(status_code=404, detail="Bot not found")
+    prior_broker = (prior.get("broker") or "").lower() or None
     res = await _db.trading_bots.update_one(
         {"_id": _id, "user_id": user_id},
         {"$set": {"broker": broker, "updated_at": datetime.now(timezone.utc).isoformat()}},
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Bot not found")
-    return {"bot_id": bot_id, "broker": broker}
+    # Only audit when the effective broker actually changed.
+    if prior_broker != broker:
+        from services.broker_router_audit import record_switch
+        await record_switch(
+            _db,
+            bot_id=bot_id,
+            user_id=user_id,
+            operator=user.get("email") or user.get("_id") or "unknown",
+            from_broker=prior_broker,
+            to_broker=broker,
+        )
+    return {"bot_id": bot_id, "broker": broker, "from_broker": prior_broker}
 
 
 @router.delete("/{bot_id}")

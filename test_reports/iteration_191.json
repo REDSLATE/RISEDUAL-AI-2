@@ -1,0 +1,26 @@
+{
+  "summary": "Iteration 191 backend-only testing of Broker Router Audit Log. All acceptance criteria pass. 10 live-API integration tests (via public REACT_APP_BACKEND_URL) plus the 3 requested pytest suites (27 unit tests) all green. PATCH /api/bots/{bot_id}/broker correctly (a) records audit row with bot_id/broker/from_broker in the response, (b) is a no-op when the broker is unchanged, (c) rejects invalid broker values with 400 and no audit write, (d) returns 404 for other-user bots. GET /api/admin/alpha-daytrader/broker-audit returns {switches:[...]} newest-first, respects bot_id and limit filters, and requires auth (401 without bearer). Regression: iteration_190 broker-comparison endpoints still 200.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter191_broker_audit_integration.py",
+    "/app/backend/tests/test_broker_router_audit.py",
+    "/app/test_reports/pytest/iter_191_audit.xml",
+    "/app/test_reports/pytest/iter_191_integration.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "record_switch() correctly swallows all Mongo exceptions — good, matches the 'best-effort audit' contract.",
+    "PATCH /api/bots/{bot_id}/broker looks up prior_broker BEFORE the update and only writes the audit row when values differ — correct idempotency.",
+    "ensure_indexes() is defined but I did not verify it is called from server startup; if not wired, first read/write still works (lazy), but you lose the (bot_id, created_at) index performance. Confirm boot wiring.",
+    "operator field falls back to user['_id'] which for owner is an ObjectId — currently coerced via str(...) inside record_switch so it works, but consider always logging email when available for readability."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter191_broker_audit_integration.py"],
+  "success_rate": {"backend": "100% (37/37 tests)", "frontend": "n/a"},
+  "test_credentials": "admin@risedual.ai / RiseDual2026! (owner)",
+  "seed_data_creation": "Created + deleted one TEST_iter191_audit_bot signal bot per module (auto-cleaned via fixture teardown). Left ~2-3 rows in broker_router_audit collection for the created bot's lifecycle.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All 10 acceptance items pass end-to-end. Integration test file /app/backend/tests/test_iter191_broker_audit_integration.py can be re-run as regression. Unit suite is /app/backend/tests/test_broker_router_audit.py.",
+  "rca of the issue": "N/A — no defects found."
+}

@@ -230,3 +230,15 @@ async def broker_comparison_recent(
     await _require_admin(request)
     from services.broker_comparison_service import recent_rows
     return {"rows": recent_rows(limit=limit, symbol=(symbol or None))}
+
+
+@router.get("/broker-audit")
+async def broker_audit(
+    request: Request,
+    limit: int = Query(50, ge=1, le=500),
+    bot_id: str = Query("", max_length=64),
+):
+    """Recent per-bot broker switches. Newest first."""
+    await _require_admin(request)
+    from services.broker_router_audit import recent
+    return {"switches": await recent(db, limit=limit, bot_id=(bot_id or None))}
