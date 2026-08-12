@@ -96,3 +96,47 @@ async def broker_comparison(request: Request, limit: int = Query(50, ge=1, le=50
         return {"rows": [dict(r) for r in rows]}
     except Exception:
         return {"rows": []}
+
+
+@router.get("/options/policy")
+async def options_policy(request: Request):
+    """Effective MooMoo options execution policy (from env + defaults)."""
+    await _require_admin(request)
+    from services.moomoo_options_policy import policy, policy_to_dict
+    return {"policy": policy_to_dict(policy())}
+
+
+@router.get("/options/preview/{symbol}")
+async def options_preview(
+    request: Request,
+    symbol: str,
+    direction: str = Query("call", pattern="^(?i)(call|put|c|p)$"),
+    dte_max: int = Query(45, ge=1, le=180),
+):
+    """Read-only contract preview against the LIVE MooMoo chain.
+
+    Never submits an order. Returns:
+        * selected contract (or null if nothing passes policy)
+        * reason why it was selected
+        * top rejected alternatives with per-rule rejection reasons
+        * the policy snapshot used for evaluation
+    """
+    await _require_admin(request)
+    from services.moomoo_market_data_adapter import option_chain
+    from services.moomoo_options_policy import policy, select_contract, policy_to_dict
+    chain = option_chain(symbol, dte_max=dte_max)
+    if chain is None:
+        return {
+            "available": False,
+            "reason": "opend_unreachable_or_no_option_entitlement",
+            "symbol": symbol.upper(),
+            "policy_used": policy_to_dict(policy()),
+        }
+    result = select_contract(chain, direction=direction)
+    return {
+        "available": True,
+        "symbol": symbol.upper(),
+        "direction": direction.lower(),
+        "chain_size": len(chain),
+        **result,
+    }

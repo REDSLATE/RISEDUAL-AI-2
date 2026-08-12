@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Mapping, Optional
@@ -752,25 +753,63 @@ async def maybe_route_live(
     if client is None:
         return None
     order_side = "buy" if intent_kind == "open_long" else "sell"
+    client_order_id = str(uuid.uuid4())
+    _submit_start_ns = time.time_ns()
     try:
         resp = client.place_order(
             symbol=symbol, qty=qty, side=order_side, order_type="market",
         )
     except Exception as exc:  # noqa: BLE001
+        _ack_ms = (time.time_ns() - _submit_start_ns) // 1_000_000
         logger.error(
             "[public-live] CRITICAL — place_order raised symbol=%s "
             "kind=%s: %s", symbol, intent_kind, exc,
         )
+        try:
+            from services import broker_comparison_service
+            broker_comparison_service.record_public_submit(
+                client_order_id=client_order_id, broker_order_id="",
+                symbol=symbol, side=order_side.upper(), qty=qty,
+                limit_price=float(mark or 0.0),
+                submit_latency_ms=int(_ack_ms), ack_latency_ms=int(_ack_ms),
+                fill_price=None, status="exception", error=exc.__class__.__name__,
+            )
+        except Exception:  # noqa: BLE001
+            pass
         return None
+    _ack_ms = (time.time_ns() - _submit_start_ns) // 1_000_000
     if not resp:
         logger.warning(
             "[public-live] symbol=%s place_order returned empty — "
             "Public.com rejected (check vault token + connect)",
             symbol,
         )
+        try:
+            from services import broker_comparison_service
+            broker_comparison_service.record_public_submit(
+                client_order_id=client_order_id, broker_order_id="",
+                symbol=symbol, side=order_side.upper(), qty=qty,
+                limit_price=float(mark or 0.0),
+                submit_latency_ms=int(_ack_ms), ack_latency_ms=int(_ack_ms),
+                fill_price=None, status="rejected", error="empty_response",
+            )
+        except Exception:  # noqa: BLE001
+            pass
         return None
 
     order_id = resp.get("id") or ""
+    try:
+        from services import broker_comparison_service
+        broker_comparison_service.record_public_submit(
+            client_order_id=client_order_id, broker_order_id=str(order_id),
+            symbol=symbol, side=order_side.upper(), qty=qty,
+            limit_price=float(mark or 0.0),
+            submit_latency_ms=int(_ack_ms), ack_latency_ms=int(_ack_ms),
+            fill_price=float(resp.get("fillPrice") or resp.get("filled_avg_price") or 0.0) or None,
+            status=str(resp.get("status") or "accepted"), error=None,
+        )
+    except Exception:  # noqa: BLE001
+        pass
     trade_id = str(uuid.uuid4())
     if intent_kind == "close_long":
         # CLOSE: update the existing open row (if any) to ``closed``.

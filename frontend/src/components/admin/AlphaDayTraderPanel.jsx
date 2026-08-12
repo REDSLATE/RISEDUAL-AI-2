@@ -62,6 +62,187 @@ const Toggle = ({ label, on, onChange, disabled, source }) => (
   </button>
 );
 
+const _WINDOWS = ['1h', '6h', '1d', '3d', '7d', '30d'];
+
+const _fmtMs = (v) => (v === null || v === undefined ? '—' : `${Math.round(Number(v))} ms`);
+const _fmtBps = (v) => (v === null || v === undefined ? '—' : `${Number(v).toFixed(1)} bps`);
+const _fmtPct = (v) => (v === null || v === undefined ? '—' : `${(Number(v) * 100).toFixed(1)}%`);
+const _fmtScore = (v) => (v === null || v === undefined ? '—' : Number(v).toFixed(3));
+
+function BrokerStatCard({ broker, agg, isWinner, lowSample }) {
+  const label = broker === 'public' ? 'Public.com' : 'MooMoo';
+  const samples = agg?.samples ?? 0;
+  return (
+    <div
+      data-testid={`broker-comparison-card-${broker}`}
+      className={`rounded-lg border p-4 ${
+        isWinner
+          ? 'border-emerald-600/70 bg-emerald-600/5'
+          : 'border-zinc-800 bg-zinc-900/40'
+      }`}
+    >
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <div className="text-xs uppercase tracking-wide text-zinc-500">
+            {broker === 'public' ? 'Equities · fractional' : 'Equities + options'}
+          </div>
+          <div className="text-xl font-semibold text-zinc-100 flex items-center gap-2">
+            {label}
+            {isWinner ? (
+              <span className="text-[10px] uppercase tracking-wider rounded-full border border-emerald-500/60 bg-emerald-500/10 text-emerald-300 px-2 py-0.5">
+                Winner
+              </span>
+            ) : null}
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-[10px] uppercase text-zinc-500">Composite score</div>
+          <div className={`text-2xl font-mono ${
+            agg?.composite_score === null || agg?.composite_score === undefined
+              ? 'text-zinc-500'
+              : (isWinner ? 'text-emerald-300' : 'text-zinc-200')
+          }`}>
+            {_fmtScore(agg?.composite_score)}
+          </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        <div>
+          <div className="text-[10px] uppercase text-zinc-500">Samples</div>
+          <div className={`text-lg font-mono ${
+            samples > 0 && samples < 10 ? 'text-amber-400' : 'text-zinc-200'
+          }`}>
+            {samples}
+            {samples > 0 && samples < 10 ? (
+              <span className="ml-1 text-[10px] text-amber-400/80">low</span>
+            ) : null}
+          </div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase text-zinc-500">Fill rate</div>
+          <div className="text-lg font-mono text-zinc-200">{_fmtPct(agg?.fill_rate)}</div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase text-zinc-500">Avg slippage</div>
+          <div className="text-lg font-mono text-zinc-200">{_fmtBps(agg?.avg_slippage_bps)}</div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase text-zinc-500">p50 ack latency</div>
+          <div className="text-lg font-mono text-zinc-200">{_fmtMs(agg?.p50_ack_ms)}</div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase text-zinc-500">p95 ack latency</div>
+          <div className="text-lg font-mono text-zinc-200">{_fmtMs(agg?.p95_ack_ms)}</div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase text-zinc-500">Avg fill latency</div>
+          <div className="text-lg font-mono text-zinc-200">{_fmtMs(agg?.avg_fill_latency_ms)}</div>
+        </div>
+      </div>
+      {lowSample && (samples === 0 || samples < 10) ? (
+        <div className="mt-3 text-[11px] text-amber-400/80">
+          Composite score is preliminary — need ≥10 samples for a stable read.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function BrokerComparisonSection({ data, rows, window, onWindowChange }) {
+  const pub = data?.brokers?.public;
+  const moo = data?.brokers?.moomoo;
+  const winner = data?.winner;
+  const lowSample = data?.low_sample_warning;
+  return (
+    <div data-testid="broker-comparison-section">
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <h3 className="text-sm font-medium text-zinc-300">Broker comparison — Public vs MooMoo</h3>
+          <div className="text-xs text-zinc-500">
+            Composite: 50% slippage · 30% fill rate · 20% ack latency
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          {_WINDOWS.map((w) => (
+            <button
+              type="button"
+              key={w}
+              onClick={() => onWindowChange(w)}
+              data-testid={`broker-cmp-window-${w}`}
+              className={`text-xs px-2 py-1 rounded border transition ${
+                window === w
+                  ? 'border-cyan-600/70 bg-cyan-600/10 text-cyan-300'
+                  : 'border-zinc-700 bg-zinc-800/60 text-zinc-400 hover:bg-zinc-700'
+              }`}
+            >
+              {w}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <BrokerStatCard
+          broker="public"
+          agg={pub}
+          isWinner={winner === 'public'}
+          lowSample={lowSample}
+        />
+        <BrokerStatCard
+          broker="moomoo"
+          agg={moo}
+          isWinner={winner === 'moomoo'}
+          lowSample={lowSample}
+        />
+      </div>
+      <div className="mt-3">
+        <div className="text-xs text-zinc-500 mb-1">Recent submits ({rows?.length || 0})</div>
+        <div className="rounded-lg border border-zinc-800 max-h-56 overflow-y-auto text-xs">
+          {(!rows || rows.length === 0) ? (
+            <div className="p-3 text-center text-zinc-500" data-testid="broker-cmp-empty">
+              No broker submits recorded yet. Rows are written when Alpha routes a live equity order.
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead className="bg-zinc-900/60 text-zinc-500 sticky top-0">
+                <tr>
+                  <th className="px-2 py-1 text-left">When</th>
+                  <th className="px-2 py-1 text-left">Broker</th>
+                  <th className="px-2 py-1 text-left">Symbol</th>
+                  <th className="px-2 py-1 text-left">Side</th>
+                  <th className="px-2 py-1 text-right">Qty</th>
+                  <th className="px-2 py-1 text-right">Ack</th>
+                  <th className="px-2 py-1 text-right">Slip</th>
+                  <th className="px-2 py-1 text-left">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={i} className="border-t border-zinc-800/60 font-mono">
+                    <td className="px-2 py-1 text-zinc-500">
+                      {r.ts_ns ? new Date(Math.floor(r.ts_ns / 1e6)).toLocaleTimeString() : '—'}
+                    </td>
+                    <td className={`px-2 py-1 ${
+                      r.broker === 'public' ? 'text-sky-300' : 'text-fuchsia-300'
+                    }`}>{r.broker}</td>
+                    <td className="px-2 py-1 text-zinc-200">{r.symbol}</td>
+                    <td className="px-2 py-1 text-zinc-400">{r.side}</td>
+                    <td className="px-2 py-1 text-right text-zinc-400">{r.qty}</td>
+                    <td className="px-2 py-1 text-right text-zinc-200">{_fmtMs(r.ack_latency_ms)}</td>
+                    <td className="px-2 py-1 text-right text-zinc-200">{_fmtBps(r.slippage_bps)}</td>
+                    <td className={`px-2 py-1 ${
+                      r.error ? 'text-red-400' : 'text-emerald-400'
+                    }`}>{r.error || r.status || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AlphaDayTraderPanel() {
   const [counters, setCounters] = useState(null);
   const [setups, setSetups] = useState([]);
@@ -74,6 +255,9 @@ export default function AlphaDayTraderPanel() {
   const [report, setReport] = useState(null);
   const [timelineFor, setTimelineFor] = useState(null);
   const [timeline, setTimeline] = useState(null);
+  const [brokerCmp, setBrokerCmp] = useState(null);
+  const [brokerCmpRows, setBrokerCmpRows] = useState([]);
+  const [brokerCmpWindow, setBrokerCmpWindow] = useState('1d');
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
 
@@ -587,6 +771,13 @@ export default function AlphaDayTraderPanel() {
           </table>
         </div>
       </div>
+
+      <BrokerComparisonSection
+        data={brokerCmp}
+        rows={brokerCmpRows}
+        window={brokerCmpWindow}
+        onWindowChange={setBrokerCmpWindow}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div>

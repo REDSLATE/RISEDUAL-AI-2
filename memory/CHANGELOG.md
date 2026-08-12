@@ -6,6 +6,67 @@ here. Roll an entry from PRD.md → CHANGELOG.md once it's >30 days old or PRD.m
 
 ## 4. What's Been Implemented (cumulative)
 
+### Broker Comparison Panel + MooMoo Options Playbook V1 (Feb 12, 2026)
+
+**Broker Comparison Panel** (`services/broker_comparison_service.py`,
+`routes/admin_alpha_daytrader.py`, `AlphaDayTraderPanel.jsx`):
+
+- New aggregation service reads the existing SQLite `broker_comparison`
+  table and produces per-broker rollups: samples, fill_rate,
+  avg_slippage_bps, p50_ack_ms, p95_ack_ms, avg_fill_latency_ms.
+- **Composite winner score** per operator spec: 50% slippage,
+  30% fill rate, 20% ack latency. Lower-is-better metrics are inverted
+  so a bigger score is always better. Missing metrics drop out and the
+  remaining weights renormalize.
+- **Low-sample honesty**: never hides low counts. `low_sample_warning`
+  fires when either broker has <10 samples, and the UI shows an
+  amber "preliminary" chip.
+- Public.com submissions now also record into `broker_comparison`
+  via `record_public_submit()` (side-aware slippage bps computed
+  from limit_price vs fill_price). Rejections and exceptions are
+  also recorded so fill-rate is honest.
+- Endpoints (both admin-only):
+    - `GET /api/admin/alpha-daytrader/broker-comparison?window=1d&symbol=`
+    - `GET /api/admin/alpha-daytrader/broker-comparison/recent?limit=50`
+- UI: New `BrokerComparisonSection` nested inside Alpha Day Trader
+  panel with window selector (1h/6h/1d/3d/7d/30d), side-by-side
+  Public.com vs MooMoo cards, winner chip, and recent submits table.
+
+**MooMoo Options Playbook V1** (`services/moomoo_options_policy.py`,
+`services/moomoo_market_data_adapter.py`, `routes/admin_moomoo.py`,
+`docs/MOOMOO_OPTIONS_PLAYBOOK.md`):
+
+- Policy config from env vars with conservative defaults:
+  delta 0.30–0.45, DTE 7–21 days, OI ≥1000, volume ≥500,
+  spread ≤ 8% of option mid, marketable LIMIT only (never MARKET),
+  max_contracts=1 initially, stale-quote max 30s, earnings blackout ON.
+- **Spread cap enforced as % of mid**, not cents — an easily-missed
+  rule that matters more on cheap contracts.
+- **Stale-quote rejection** built into contract selection.
+- Live chain fetch added to the market-data adapter
+  (`option_chain(symbol, dte_max)`), returns `None` when OpenD is
+  unreachable so callers never fabricate contracts.
+- Read-only preview endpoint:
+  `GET /api/admin/moomoo/options/preview/{symbol}?direction=call&dte_max=45`
+  Returns the selected contract (strike, expiry, delta, mid, spread%,
+  OI, volume, estimated_debit, estimated_max_risk, why_selected)
+  plus top rejected alternatives with per-rule rejection reasons.
+  **Never submits an order.**
+- Policy inspection endpoint:
+  `GET /api/admin/moomoo/options/policy`
+- `submit_option()` remains gated OFF regardless of the flag — the
+  playbook's flip checklist enumerates what has to be true before we
+  turn autonomous options routing on.
+
+Testing: 34/34 pytest passing (broker_comparison_service, options
+policy, HTTP endpoint suite). No paper trading, no synthetic contracts,
+no mocked fills. In the preview container MooMoo OpenD is unreachable
+by design — the preview endpoint returns `available: false` with
+`reason: 'opend_unreachable_or_no_option_entitlement'` as the correct
+degraded state.
+
+
+
 ### Regime Memory Retrieval + Event-Aware Regime Labeler + Performance Tracker (Feb, 2026)
 
 **Regime Memory Retrieval Layer** (`services/regime_memory_retrieval.py`,

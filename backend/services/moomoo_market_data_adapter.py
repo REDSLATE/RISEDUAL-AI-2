@@ -27,6 +27,7 @@ import logging
 import os
 import threading
 from dataclasses import dataclass
+from datetime import timedelta, timezone
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -212,6 +213,99 @@ def to_level2_snapshot(symbol: str) -> Optional[dict]:
     }
 
 
+def option_chain(symbol: str, *, dte_max: int = 45) -> Optional[list[dict]]:
+    """Fetch the live option chain for ``symbol`` from OpenD.
+
+    Returns a normalized flat list of contract rows (calls + puts across
+    expiries within the DTE window). Returns ``None`` when OpenD is
+    unreachable so callers can render an ``available=False`` state
+    rather than fabricate contracts.
+
+    Each row shape:
+        {symbol, underlying, opt_type, strike, expiry,
+         bid, ask, last, volume, open_interest, delta, data_time_ns}
+    """
+    import time as _time
+    ctx = _get_quote_ctx()
+    if ctx is None:
+        return None
+    sym = _to_moomoo_symbol(symbol)
+    try:
+        from moomoo import RET_OK, OptionType
+    except Exception:  # noqa: BLE001
+        return None
+
+    # 1) Get expiries within the window.
+    try:
+        ret, exp_data = ctx.get_option_expiration_date(code=sym)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[moomoo_md] option_expiry_query failed: %s", exc)
+        return None
+    if ret != RET_OK:
+        return None
+    try:
+        expiry_rows = exp_data.to_dict("records") if hasattr(exp_data, "to_dict") else []
+    except Exception:  # noqa: BLE001
+        expiry_rows = []
+    from datetime import date as _date, datetime as _dt
+    today = _dt.now(timezone.utc).date()
+    cutoff = today + timedelta(days=int(max(1, dte_max)))
+    expiries: list[str] = []
+    for row in expiry_rows:
+        raw = row.get("strike_time") or row.get("expiration_date") or row.get("strike_time_date")
+        if not raw:
+            continue
+        try:
+            d = _dt.strptime(str(raw)[:10], "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if today <= d <= cutoff:
+            expiries.append(d.isoformat())
+    if not expiries:
+        return []
+
+    now_ns = _time.time_ns()
+    out: list[dict] = []
+    for exp in expiries:
+        try:
+            ret, chain_df = ctx.get_option_chain(
+                code=sym,
+                start=exp,
+                end=exp,
+                option_type=OptionType.ALL,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[moomoo_md] option_chain(%s @ %s) failed: %s", sym, exp, exc)
+            continue
+        if ret != RET_OK:
+            continue
+        try:
+            rows = chain_df.to_dict("records") if hasattr(chain_df, "to_dict") else []
+        except Exception:  # noqa: BLE001
+            rows = []
+        for r in rows:
+            opt_type = str(r.get("option_type") or r.get("opt_type") or "").lower()
+            if "call" in opt_type:
+                opt_type = "call"
+            elif "put" in opt_type:
+                opt_type = "put"
+            out.append({
+                "symbol": str(r.get("code") or ""),
+                "underlying": _from_moomoo_symbol(sym),
+                "opt_type": opt_type,
+                "strike": float(r.get("strike_price") or r.get("strike") or 0.0) or None,
+                "expiry": exp,
+                "bid": float(r.get("bid_price") or r.get("bid") or 0.0),
+                "ask": float(r.get("ask_price") or r.get("ask") or 0.0),
+                "last": float(r.get("last_price") or 0.0) or None,
+                "volume": int(r.get("volume") or 0),
+                "open_interest": int(r.get("open_interest") or r.get("open_interest_val") or 0),
+                "delta": float(r.get("option_delta") or r.get("delta") or 0.0) or None,
+                "data_time_ns": now_ns,
+            })
+    return out
+
+
 def market_state(symbol: str) -> Optional[dict]:
     ctx = _get_quote_ctx()
     if ctx is None:
@@ -266,6 +360,6 @@ def status() -> dict:
 __all__ = [
     "QuoteSnapshot", "OrderBookSnapshot",
     "snapshot_quote", "snapshot_order_book",
-    "to_level2_snapshot", "market_state", "entitlements",
+    "to_level2_snapshot", "option_chain", "market_state", "entitlements",
     "status", "close",
 ]

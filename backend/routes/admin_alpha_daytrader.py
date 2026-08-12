@@ -205,3 +205,28 @@ async def resolved_trades(request: Request,
     await _require_admin(request)
     from services.alpha_trade_report import resolved_report
     return await resolved_report(db, limit=limit, only_measured=not include_unmeasured)
+
+
+@router.get("/broker-comparison")
+async def broker_comparison(
+    request: Request,
+    window: str = Query("1d"),
+    symbol: str = Query("", max_length=16),
+):
+    """Public vs MooMoo latency + slippage aggregates for the Mission
+    Control Broker Comparison panel."""
+    await _require_admin(request)
+    from services.broker_comparison_service import compare
+    return compare(window=window, symbol=(symbol or None))
+
+
+@router.get("/broker-comparison/recent")
+async def broker_comparison_recent(
+    request: Request,
+    limit: int = Query(50, ge=1, le=500),
+    symbol: str = Query("", max_length=16),
+):
+    """Raw last-N broker_comparison rows for the side-by-side table."""
+    await _require_admin(request)
+    from services.broker_comparison_service import recent_rows
+    return {"rows": recent_rows(limit=limit, symbol=(symbol or None))}
