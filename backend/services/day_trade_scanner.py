@@ -523,6 +523,28 @@ async def run_scan(db: Any, asset_class: AssetClass) -> ScanResult:
                     from services.public_equity_live_executor import (
                         maybe_route_live as _public_route_live,
                     )
+                    # 2026-08-11 — Cross-scanner execution-boundary lock.
+                    # Alpha Day Trader and this scanner must not double-buy
+                    # the same underlying move. Fails open on lock-service
+                    # errors so a lock outage never suppresses trades.
+                    try:
+                        from services import alpha_hot_store
+                        alpha_hot_store.init()
+                        _lock_ok = alpha_hot_store.try_acquire_symbol_lock(
+                            candidate.symbol,
+                            setup_id=str(candidate.prediction_id or scan_id),
+                            source="day_trade_scanner",
+                            ttl_seconds=120,
+                        )
+                    except Exception:  # noqa: BLE001
+                        _lock_ok = True
+                    if not _lock_ok:
+                        # Alpha (or another scanner) already holds it.
+                        logger.info(
+                            "[day_trade_scanner] symbol=%s skipped — exec lock held by another scanner",
+                            candidate.symbol,
+                        )
+                        continue
                     _direction = (candidate.direction or "").upper()
                     _side = (
                         "BUY" if _direction in {

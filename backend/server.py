@@ -1478,6 +1478,33 @@ async def _run_alpha_day_trader():
         logger.debug(f"Alpha Day Trader tick error: {e}")
 
 
+async def _run_alpha_breakeven():
+    """Background: arm break-even stops on Alpha trades that reach +1R."""
+    try:
+        from services.alpha_breakeven import evaluate_and_apply
+        await evaluate_and_apply(db)
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"Alpha break-even tick error: {e}")
+
+
+async def _run_alpha_pattern_rollup():
+    """Background: compute pattern-performance rollups from resolved outcomes."""
+    try:
+        from services.alpha_pattern_performance import compute_rollups
+        await compute_rollups(db)
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"Alpha pattern rollup error: {e}")
+
+
+async def _run_alpha_hot_store_prune():
+    """Background: prune SQLite hot store (14-day retention)."""
+    try:
+        from services import alpha_hot_store
+        alpha_hot_store.prune(older_than_days=14)
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"Alpha hot-store prune error: {e}")
+
+
 async def _run_day_trade_exit_monitor():
     """Background: close day-trade positions whose ``max_hold_until``
     (21:00 UTC EOD) has elapsed. Idempotent — re-running after the

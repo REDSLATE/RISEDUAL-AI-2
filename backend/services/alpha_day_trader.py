@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timezone
@@ -62,6 +63,21 @@ def _execute_enabled() -> bool:
     return (os.environ.get("RISEDUAL_ALPHA_DAYTRADER_EXECUTE") or "").strip().lower() in (
         "1", "true", "yes", "on",
     )
+
+
+async def _effective_flags(db: Any) -> tuple[bool, bool]:
+    """Return (scan_enabled, execute_enabled) after applying operator overrides.
+
+    Operator toggles in ``alpha_runtime_state`` take precedence over
+    the env vars, so the Mission Control ON/OFF switches actually
+    change runtime behaviour instead of just displaying env values.
+    """
+    try:
+        from services.alpha_runtime_state import get_state
+        state = await get_state(db)
+        return bool(state["scan_enabled"]), bool(state["execute_enabled"])
+    except Exception:  # noqa: BLE001
+        return _scan_enabled(), _execute_enabled()
 
 
 def _max_active_setups() -> int:
@@ -558,17 +574,19 @@ def _setup_from_doc(doc: dict) -> ActiveSetup:
 
 
 async def _record_observation(db: Any, setup_id: str, event: str, payload: dict) -> None:
-    if db is None:
-        return
+    """Route lifecycle events to the SQLite hot store, NOT to Mongo.
+
+    Mongo receives only compact rollups + one row per resolved setup
+    via ``_record_outcome`` — the raw high-frequency lifecycle stream
+    lives locally so ``alpha_setup_observations`` never grows.
+    """
     try:
-        await db.alpha_setup_observations.insert_one({
-            "setup_id": setup_id,
-            "event": event,
-            "payload": payload,
-            "ts": datetime.now(timezone.utc),
-        })
+        from services import alpha_hot_store
+        alpha_hot_store.record_event(setup_id, event, payload=payload,
+                                      symbol=str(payload.get("symbol") or ""),
+                                      stage=str(payload.get("stage") or ""))
     except Exception as exc:  # noqa: BLE001
-        logger.debug("[alpha_daytrader] observation write failed: %s", exc)
+        logger.debug("[alpha_daytrader] hot-store write failed: %s", exc)
 
 
 async def _bump_counter(db: Any, field_name: str, delta: int = 1) -> None:
@@ -657,18 +675,22 @@ async def _candidate_universe(db: Any, *, lookback_minutes: int = 60) -> list[st
 async def run_alpha_day_trader_tick(db: Any) -> dict:
     """One scheduler tick. Returns a summary dict for logging.
 
-    Steps:
-      1. If SCAN switch off → no-op.
-      2. Build the candidate universe from recent predictions.
-      3. Snapshot each candidate, rank by opportunity score, keep top-N.
-      4. Run pattern engine → get_or_create setup (deduped by market move).
-      5. For each ACTIVE setup, run trigger watcher against a fresh snapshot.
-      6. On TRIGGERED: build intent → (if EXECUTE) call maybe_route_live.
+    Full lifecycle capture: every stage transition (candidate → setup →
+    armed → triggered → intent → seat → risk → roadguard → entry_timing
+    → broker → fill) is written to the SQLite hot store with latency
+    samples. Only compact resolved-outcome docs go to Mongo.
     """
-    if not _scan_enabled():
+    scan_on, exec_on = await _effective_flags(db)
+    if not scan_on:
         return {"skipped": True, "reason": "scan_disabled"}
     if db is None:
         return {"skipped": True, "reason": "no_db"}
+
+    try:
+        from services import alpha_hot_store
+        alpha_hot_store.init()
+    except Exception:  # noqa: BLE001
+        pass
 
     scanner = AlphaOpportunityScanner()
     patterns = AlphaPatternEngine()
@@ -700,11 +722,14 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
             if setup.state == SetupState.ARMED:
                 await _bump_counter(db, "setups_armed", 1)
             await _record_observation(db, setup.setup_id, "setup_detected", {
+                "symbol": setup.symbol,
+                "stage": "detected",
                 "state": setup.state.value,
                 "opportunity_score": opp_score,
                 "setup_score": setup.score,
                 "trigger_price": setup.trigger_price,
                 "invalidation_price": setup.invalidation_price,
+                "detected_ns": time.time_ns(),
             })
 
     # ── trigger loop on all ACTIVE setups ──
@@ -719,44 +744,69 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
         if snap is None:
             continue
         if not watcher.triggered(setup, snap):
-            # Invalidation or still watching — persist state if it changed.
             if setup.state == SetupState.INVALIDATED:
                 await _update_setup_state(db, setup)
                 await _record_observation(db, setup.setup_id, "invalidated", {
-                    "price": snap.price, "invalidation": setup.invalidation_price,
+                    "symbol": setup.symbol,
+                    "stage": "invalidated",
+                    "price": snap.price,
+                    "invalidation": setup.invalidation_price,
                 })
                 await _record_outcome(db, setup=setup, intent_id=None, submitted=False,
                                        filled=False, reject_reason="invalidated_before_trigger")
             continue
 
-        # TRIGGERED — freeze price, build intent, hand off to executor.
+        # ── TRIGGERED ──
+        trigger_ns = time.time_ns()
+        detected_ns = int(setup.detected_at.timestamp() * 1e9) if setup.detected_at else trigger_ns
+        alpha_hot_store.record_latency(setup.setup_id, "signal_to_trigger",
+                                        max(0, (trigger_ns - detected_ns) // 1_000_000))
         await _update_setup_state(db, setup)
         await _bump_counter(db, "triggers", 1)
         await _record_observation(db, setup.setup_id, "triggered", {
+            "symbol": setup.symbol, "stage": "triggered",
             "confirmation_price": setup.confirmation_price, "price": snap.price,
         })
 
-        intent = create_alpha_intent(setup, snap, None, l2_engine)  # L2=None → 0.50
+        intent = create_alpha_intent(setup, snap, None, l2_engine)
+        intent_ns = time.time_ns()
+        alpha_hot_store.record_latency(setup.setup_id, "trigger_to_intent",
+                                        max(0, (intent_ns - trigger_ns) // 1_000_000))
         triggered_intents += 1
         await _bump_counter(db, "intents_created", 1)
         await _record_observation(db, setup.setup_id, "intent_created", {
-            "intent_id": intent.intent_id,
-            "confidence": intent.confidence,
+            "symbol": setup.symbol, "stage": "intent",
+            "intent_id": intent.intent_id, "confidence": intent.confidence,
             "confirmation_price": intent.confirmation_price,
-            "stop_price": intent.stop_price,
-            "target_price": intent.target_price,
+            "stop_price": intent.stop_price, "target_price": intent.target_price,
         })
 
-        if not _execute_enabled():
+        if not exec_on:
             await _record_outcome(db, setup=setup, intent_id=intent.intent_id,
                                    submitted=False, filled=False,
                                    reject_reason="execute_switch_off")
             continue
 
+        # ── cross-scanner execution-boundary lock ──
+        # Prevents the old day_trade_scanner + Alpha from double-buying
+        # the same underlying move. Fails open on lock-service errors.
+        if not alpha_hot_store.try_acquire_symbol_lock(
+            setup.symbol, setup_id=setup.setup_id, source="alpha_daytrader",
+            ttl_seconds=120,
+        ):
+            await _record_observation(db, setup.setup_id, "exec_lock_conflict", {
+                "symbol": setup.symbol, "stage": "dedup",
+                "note": "another scanner holds the symbol lock",
+            })
+            await _record_outcome(db, setup=setup, intent_id=intent.intent_id,
+                                   submitted=False, filled=False,
+                                   reject_reason="exec_lock_conflict")
+            continue
+
         # Hand off to the existing execution pipeline. maybe_route_live
         # runs Seat → Risk → RoadGuard → Entry Timing → broker. We do NOT
-        # bypass any of that. A row-back dict means the order was
-        # submitted; None means one of those gates rejected.
+        # bypass any of that. A dict return means the broker submission
+        # attempt happened; None means one of those gates rejected.
         try:
             from services.public_equity_live_executor import maybe_route_live
             row = await maybe_route_live(db, intent=_build_intent_dict(intent))
@@ -764,27 +814,51 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
             logger.warning("[alpha_daytrader] executor call failed for %s: %s",
                            setup.symbol, exc)
             row = None
+        broker_ns = time.time_ns()
+        alpha_hot_store.record_latency(setup.setup_id, "intent_to_broker",
+                                        max(0, (broker_ns - intent_ns) // 1_000_000))
 
         if row:
             submitted += 1
             await _bump_counter(db, "broker_submitted", 1)
-            if row.get("status") in ("open", "filled", "submitted"):
+            status = row.get("status")
+            if status in ("open", "filled", "submitted"):
                 await _bump_counter(db, "filled", 1)
             setup.state = SetupState.EXECUTED
             await _update_setup_state(db, setup)
             await _record_observation(db, setup.setup_id, "broker_submitted", {
+                "symbol": setup.symbol, "stage": "broker",
                 "trade_id": row.get("trade_id"),
                 "broker_order_id": row.get("broker_order_id"),
-                "status": row.get("status"),
+                "status": status,
             })
             await _record_outcome(db, setup=setup, intent_id=intent.intent_id,
-                                   submitted=True, filled=bool(row.get("status") == "filled"),
+                                   submitted=True, filled=bool(status == "filled"),
                                    reject_reason=None)
         else:
-            await _record_observation(db, setup.setup_id, "executor_rejected", {})
+            # Ask the intent-skip log why the executor rejected. We do
+            # NOT invent a reason locally — the executor is the source
+            # of truth for its own gate decisions.
+            reject_reason = "executor_rejected"
+            try:
+                skip = await db.intent_skip_log.find_one(
+                    {"prediction_id": intent.intent_id},
+                    sort=[("ts", -1)],
+                )
+                if skip:
+                    reject_reason = skip.get("reason") or reject_reason
+            except Exception:  # noqa: BLE001
+                pass
+            await _record_observation(db, setup.setup_id, "executor_rejected", {
+                "symbol": setup.symbol, "stage": reject_reason,
+                "reject_reason": reject_reason,
+            })
             await _record_outcome(db, setup=setup, intent_id=intent.intent_id,
                                    submitted=False, filled=False,
-                                   reject_reason="executor_rejected")
+                                   reject_reason=reject_reason)
+            # Release the lock on rejection so the next legitimate
+            # signal can try again promptly.
+            alpha_hot_store.release_symbol_lock(setup.symbol, setup_id=setup.setup_id)
 
     summary = {
         "candidates_seen": len(snapshots),
@@ -793,7 +867,7 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
         "triggers": triggered_intents,
         "broker_submitted": submitted,
         "scan_enabled": True,
-        "execute_enabled": _execute_enabled(),
+        "execute_enabled": exec_on,
     }
     logger.info("[alpha_daytrader] tick %s", summary)
     return summary
@@ -810,8 +884,27 @@ async def get_counters(db: Any, *, session_date: Optional[str] = None) -> dict:
         doc["updated_at"] = doc["updated_at"].isoformat()
     doc["scan_enabled"] = _scan_enabled()
     doc["execute_enabled"] = _execute_enabled()
+    try:
+        from services.alpha_runtime_state import get_state
+        rt = await get_state(db)
+        doc["scan_enabled"] = rt["scan_enabled"]
+        doc["execute_enabled"] = rt["execute_enabled"]
+        doc["runtime"] = rt
+    except Exception:  # noqa: BLE001
+        pass
     doc["max_active_setups"] = _max_active_setups()
     doc["min_opportunity_score"] = _min_opportunity_score()
+    # Conversion ratios — the operator's primary health signal.
+    def _ratio(numer_key: str, denom_key: str) -> Optional[float]:
+        n = doc.get(numer_key) or 0
+        d = doc.get(denom_key) or 0
+        return round(n / d, 3) if d else None
+    doc["conversion"] = {
+        "setup_to_trigger": _ratio("triggers", "setups_created"),
+        "trigger_to_intent": _ratio("intents_created", "triggers"),
+        "intent_to_broker": _ratio("broker_submitted", "intents_created"),
+        "broker_to_fill": _ratio("filled", "broker_submitted"),
+    }
     return doc
 
 

@@ -75,3 +75,62 @@ async def force_tick(request: Request):
         raise HTTPException(status_code=403, detail="Owner access required for manual tick")
     from services.alpha_day_trader import run_alpha_day_trader_tick
     return await run_alpha_day_trader_tick(db)
+
+
+@router.get("/runtime")
+async def runtime_state(request: Request):
+    await _require_admin(request)
+    from services.alpha_runtime_state import get_state
+    return await get_state(db)
+
+
+@router.post("/runtime")
+async def runtime_state_set(request: Request):
+    user = await _require_admin(request)
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
+    body = await request.json()
+    from services.alpha_runtime_state import set_state
+    return await set_state(
+        db,
+        scan_enabled=body.get("scan_enabled"),
+        execute_enabled=body.get("execute_enabled"),
+        operator=user.get("email") or user.get("id") or "owner",
+    )
+
+
+@router.get("/pattern-performance")
+async def pattern_performance(request: Request):
+    await _require_admin(request)
+    from services.alpha_pattern_performance import read_rollups
+    return {"rollups": await read_rollups(db)}
+
+
+@router.post("/pattern-performance/recompute")
+async def pattern_performance_recompute(request: Request):
+    user = await _require_admin(request)
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
+    from services.alpha_pattern_performance import compute_rollups
+    return await compute_rollups(db)
+
+
+@router.get("/setup/{setup_id}/timeline")
+async def setup_timeline(request: Request, setup_id: str):
+    """Full lifecycle events for a single setup, read from the SQLite hot store."""
+    await _require_admin(request)
+    from services import alpha_hot_store
+    return {
+        "setup_id": setup_id,
+        "events": alpha_hot_store.events_for_setup(setup_id),
+        "latency_ms": alpha_hot_store.latency_samples(setup_id),
+    }
+
+
+@router.post("/breakeven/run")
+async def run_breakeven(request: Request):
+    user = await _require_admin(request)
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
+    from services.alpha_breakeven import evaluate_and_apply
+    return await evaluate_and_apply(db)

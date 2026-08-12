@@ -4185,3 +4185,66 @@ See `/app/memory/test_credentials.md`.
 - MOD `backend/services/public_equity_live_executor.py` — chasing fix + RTH gate
 - MOD `backend/route_registry.py` + `services/scheduling/jobs.py` — wiring
 
+
+## 2026-08-11/12 — Alpha Day Trader Phase C SHIPPED
+
+**Storage split (Mongo constraint honored):**
+- Raw lifecycle events + latency samples + cross-scanner locks → SQLite `/app/backend/data/alpha_hot_store.sqlite` (WAL mode, 14-day retention)
+- Compact operator-facing docs → Mongo only: `alpha_active_setups`, `alpha_outcomes`, `alpha_daytrader_counters`, `alpha_pattern_rollups`, `alpha_runtime_state`
+- `alpha_setup_observations` collection retired; all writes routed to hot store
+
+**Full lifecycle journal:**
+- Every stage transition (detected → armed → triggered → intent → broker → filled/rejected) captured
+- 4 latency samples per successful setup: `signal_to_trigger`, `trigger_to_intent`, `intent_to_broker`, `broker_to_fill`
+- Setup timeline endpoint: `GET /api/admin/alpha-daytrader/setup/{setup_id}/timeline`
+- Executor rejection reason is pulled from `intent_skip_log` — no fabricated local reasons
+
+**Cross-scanner dedup:**
+- `alpha_hot_store.try_acquire_symbol_lock()` mutex at the execution boundary
+- Both `alpha_day_trader` and `day_trade_scanner` now acquire before calling `maybe_route_live`
+- Fails open on lock-service errors (never blocks a legit trade)
+- 120s TTL; reentrant for same setup_id + source
+
+**Break-even protection:**
+- New `alpha_breakeven.py` service, 1-minute scheduler job
+- Arms at +1R measured against frozen (entry - stop) distance
+- Configurable buffer via `ALPHA_BREAKEVEN_BUFFER_BPS` (default 5bps)
+- Stops may only tighten, never widen
+- Break-even event recorded to hot-store setup timeline
+
+**Pattern performance rollups:**
+- `alpha_pattern_performance.compute_rollups()` reads resolved outcomes → per-pattern summary
+- Metrics: sample_n, win_rate, avg_win/loss_r, expectancy_r, profit_factor, median MFE/MAE, avg slippage bps, sample_confidence tier
+- 15-minute scheduler job
+- Endpoints: `GET /api/admin/alpha-daytrader/pattern-performance`, `POST .../recompute`
+- Confidence tiers (low<10, medium<30, high≥30) — never auto-disable a pattern
+
+**Runtime activation controls:**
+- `alpha_runtime_state.py` — Mongo-backed operator overrides
+- Precedence: override → env var → False
+- Endpoints: `GET/POST /api/admin/alpha-daytrader/runtime`
+- Panel toggles change actual runtime behavior, not just display env values
+
+**Frontend Mission Control panel:**
+- `AlphaDayTraderPanel.jsx` under Admin → Alpha Day Trader tab
+- Lifecycle counters (candidates → setups → armed → triggers → intents → broker)
+- Conversion ratios (color-coded; `trigger_to_intent < 95%` shows amber)
+- Pattern performance table (sortable by expectancy)
+- Runtime toggles + force-tick + recompute rollups actions
+- Recent setups + recent outcomes side-by-side
+
+**Preview env activation:**
+- `RISEDUAL_ALPHA_DAYTRADER_SCAN=1` and `_EXECUTE=1` set in `/app/backend/.env`
+- Verified via `/api/admin/alpha-daytrader/runtime` and manual tick
+- **Prod requires operator to set the same 2 env vars + redeploy**
+
+**Test coverage:**
+- 27/27 tests passing (17 Phase A+B + 10 Phase C)
+- Hot store: record/read events, latency, dedup lock (blocking + reentrant + release)
+- Pattern rollup: expectancy math, PF, confidence tiers
+- Break-even: R-multiple math, invalid-stop rejection
+
+**Not shipped (Phase D backlog):**
+- Edge Engine (context-aware confidence modifier — pattern × regime × time × relvol × spread × VWAP × ticker class)
+- Slippage + MFE/MAE writers into `alpha_outcomes` — the schema is there, callers haven't wired the values yet (will happen when a real position closes through the exit monitor)
+
