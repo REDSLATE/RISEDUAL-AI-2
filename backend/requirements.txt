@@ -228,3 +228,4 @@ xgboost==3.2.0
 yarl==1.23.0
 yfinance==1.2.1
 zipp==3.23.0
+hmmlearn==0.3.3

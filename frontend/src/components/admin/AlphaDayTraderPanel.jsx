@@ -68,6 +68,8 @@ export default function AlphaDayTraderPanel() {
   const [outcomes, setOutcomes] = useState([]);
   const [rollups, setRollups] = useState([]);
   const [runtime, setRuntime] = useState(null);
+  const [regime, setRegime] = useState(null);
+  const [edges, setEdges] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
 
@@ -75,18 +77,22 @@ export default function AlphaDayTraderPanel() {
     setLoading(true);
     setErr('');
     try {
-      const [c, s, o, r, rt] = await Promise.all([
+      const [c, s, o, r, rt, rg, eg] = await Promise.all([
         apiGet('/api/admin/alpha-daytrader/counters'),
         apiGet('/api/admin/alpha-daytrader/setups?limit=25'),
         apiGet('/api/admin/alpha-daytrader/outcomes?limit=25'),
         apiGet('/api/admin/alpha-daytrader/pattern-performance'),
         apiGet('/api/admin/alpha-daytrader/runtime'),
+        apiGet('/api/admin/alpha-daytrader/regime'),
+        apiGet('/api/admin/alpha-daytrader/edge'),
       ]);
       setCounters(c);
       setSetups(s.setups || []);
       setOutcomes(o.outcomes || []);
       setRollups(r.rollups || []);
       setRuntime(rt);
+      setRegime(rg);
+      setEdges(eg.rollups || []);
     } catch (e) {
       setErr(String(e.message || e));
     } finally {
@@ -188,6 +194,94 @@ export default function AlphaDayTraderPanel() {
         <div className="text-xs text-zinc-500">
           Env: SCAN={String(runtime?.env?.scan)} · EXECUTE={String(runtime?.env?.execute)}
           {runtime?.updated_at ? ` · overridden ${new Date(runtime.updated_at).toLocaleString()}` : ''}
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-sm font-medium text-zinc-300 mb-2">Market regime (HMM)</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Cell
+            label="Current regime"
+            value={
+              <span className={regime?.label === 'UNKNOWN' ? 'text-zinc-400' : 'text-cyan-300'}>
+                {regime?.label ?? '—'}
+              </span>
+            }
+            hint={regime?.trained_samples ? `${regime.trained_samples} training samples` : 'HMM not trained yet'}
+          />
+          <Cell
+            label="Confidence"
+            value={regime?.probability != null ? `${(regime.probability * 100).toFixed(0)}%` : '—'}
+            hint={regime?.updated_at ? `Updated ${new Date(regime.updated_at).toLocaleString()}` : null}
+          />
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 col-span-2">
+            <div className="text-xs uppercase tracking-wide text-zinc-500 mb-1">Posteriors</div>
+            <div className="text-xs text-zinc-300 space-y-0.5">
+              {regime?.posteriors && Object.keys(regime.posteriors).length
+                ? Object.entries(regime.posteriors)
+                    .filter(([k]) => !k.startsWith('_') && k !== 'reason')
+                    .sort((a, b) => (b[1] || 0) - (a[1] || 0))
+                    .map(([k, v]) => (
+                      <div key={k} className="flex justify-between">
+                        <span>{k}</span>
+                        <span className="font-mono">{typeof v === 'number' ? `${(v * 100).toFixed(0)}%` : String(v)}</span>
+                      </div>
+                    ))
+                : <span className="text-zinc-500">—</span>}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-medium text-zinc-300">Edge modifiers by (pattern × regime)</h3>
+          <span className="text-xs text-zinc-500">
+            &lt;10 samples → DISCOVERING (neutral 1.00×)
+          </span>
+        </div>
+        <div className="overflow-x-auto rounded-lg border border-zinc-800">
+          <table className="min-w-full text-sm text-zinc-300">
+            <thead className="bg-zinc-900/60 text-xs uppercase text-zinc-500">
+              <tr>
+                <th className="px-3 py-2 text-left">Pattern</th>
+                <th className="px-3 py-2 text-left">Regime</th>
+                <th className="px-3 py-2 text-right">Samples</th>
+                <th className="px-3 py-2 text-right">Expectancy R</th>
+                <th className="px-3 py-2 text-right">Modifier</th>
+                <th className="px-3 py-2 text-left">State</th>
+              </tr>
+            </thead>
+            <tbody>
+              {edges.length === 0 ? (
+                <tr><td colSpan={6} className="px-3 py-4 text-center text-zinc-500">
+                  No edge rollups yet. Fill in as trades close with regime + pattern context.
+                </td></tr>
+              ) : edges.map((e) => (
+                <tr key={`${e.pattern}-${e.regime}`} className="border-t border-zinc-800/60">
+                  <td className="px-3 py-2 font-medium">{e.pattern}</td>
+                  <td className="px-3 py-2">{e.regime}</td>
+                  <td className="px-3 py-2 text-right">{e.samples}</td>
+                  <td className={`px-3 py-2 text-right ${
+                    e.expectancy_r > 0 ? 'text-emerald-400' :
+                    e.expectancy_r < 0 ? 'text-red-400' : ''
+                  }`}>{e.expectancy_r ?? '—'}</td>
+                  <td className={`px-3 py-2 text-right font-mono ${
+                    (e.modifier ?? 1) > 1.02 ? 'text-emerald-400' :
+                    (e.modifier ?? 1) < 0.98 ? 'text-amber-400' : ''
+                  }`}>{(e.modifier ?? 1).toFixed(2)}×</td>
+                  <td className="px-3 py-2">
+                    <span className={`inline-block rounded px-2 py-0.5 text-xs ${
+                      e.state === 'POSITIVE' ? 'bg-emerald-900/40 text-emerald-300' :
+                      e.state === 'NEGATIVE' ? 'bg-red-900/40 text-red-300' :
+                      e.state === 'FLAT' ? 'bg-yellow-900/40 text-yellow-300' :
+                      'bg-zinc-800 text-zinc-400'
+                    }`}>{e.state}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 

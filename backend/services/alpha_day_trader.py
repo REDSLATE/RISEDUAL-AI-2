@@ -618,7 +618,13 @@ async def _update_setup_state(db: Any, setup: ActiveSetup) -> None:
 
 async def _record_outcome(db: Any, *, setup: ActiveSetup, intent_id: Optional[str],
                           submitted: bool, filled: bool,
-                          reject_reason: Optional[str]) -> None:
+                          reject_reason: Optional[str],
+                          regime: Optional[str] = None,
+                          time_bucket: Optional[str] = None,
+                          rvol_bucket: Optional[str] = None,
+                          spread_bucket: Optional[str] = None,
+                          edge_modifier: Optional[float] = None,
+                          edge_state: Optional[str] = None) -> None:
     if db is None:
         return
     try:
@@ -636,6 +642,12 @@ async def _record_outcome(db: Any, *, setup: ActiveSetup, intent_id: Optional[st
             "order_submitted": submitted,
             "filled": filled,
             "reject_reason": reject_reason,
+            "regime": regime,
+            "time_bucket": time_bucket,
+            "rvol_bucket": rvol_bucket,
+            "spread_bucket": spread_bucket,
+            "edge_modifier": edge_modifier,
+            "edge_state": edge_state,
             "created_at": datetime.now(timezone.utc),
         })
     except Exception as exc:  # noqa: BLE001
@@ -768,7 +780,39 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
             "confirmation_price": setup.confirmation_price, "price": snap.price,
         })
 
+        # ── regime + edge lookup (both are NON-BLOCKING modifiers) ──
+        regime_label = "UNKNOWN"
+        try:
+            from services.market_regime import get_current as _get_regime
+            regime_doc = await _get_regime(db)
+            regime_label = str(regime_doc.get("label") or "UNKNOWN")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from services import alpha_edge_engine as _edge
+            edge_info = await _edge.lookup(db, pattern=setup.setup_type.value,
+                                            regime=regime_label)
+            t_bucket = _edge.time_bucket(snap.timestamp)
+            r_bucket = _edge.rvol_bucket(snap.relative_volume)
+            s_bucket = _edge.spread_bucket(snap.spread_bps)
+        except Exception:  # noqa: BLE001
+            edge_info = {"state": "DISCOVERING", "modifier": 1.00, "samples": 0}
+            t_bucket = r_bucket = s_bucket = "unknown"
+        modifier = float(edge_info.get("modifier") or 1.0)
+
         intent = create_alpha_intent(setup, snap, None, l2_engine)
+        # Apply edge modifier (cap at 1.0 per spec). NEVER a hard gate.
+        raw_conf = intent.confidence
+        intent.confidence = min(1.0, raw_conf * modifier)
+        intent.reason.update({
+            "regime": regime_label,
+            "edge_state": edge_info.get("state"),
+            "edge_modifier": modifier,
+            "edge_samples": edge_info.get("samples"),
+            "time_bucket": t_bucket,
+            "rvol_bucket": r_bucket,
+            "spread_bucket": s_bucket,
+        })
         intent_ns = time.time_ns()
         alpha_hot_store.record_latency(setup.setup_id, "trigger_to_intent",
                                         max(0, (intent_ns - trigger_ns) // 1_000_000))
@@ -776,15 +820,29 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
         await _bump_counter(db, "intents_created", 1)
         await _record_observation(db, setup.setup_id, "intent_created", {
             "symbol": setup.symbol, "stage": "intent",
-            "intent_id": intent.intent_id, "confidence": intent.confidence,
+            "intent_id": intent.intent_id,
+            "confidence_raw": raw_conf, "confidence": intent.confidence,
             "confirmation_price": intent.confirmation_price,
             "stop_price": intent.stop_price, "target_price": intent.target_price,
+            "regime": regime_label,
+            "edge_state": edge_info.get("state"),
+            "edge_modifier": modifier,
         })
+
+        _outcome_kwargs = {
+            "regime": regime_label,
+            "time_bucket": t_bucket,
+            "rvol_bucket": r_bucket,
+            "spread_bucket": s_bucket,
+            "edge_modifier": modifier,
+            "edge_state": edge_info.get("state"),
+        }
 
         if not exec_on:
             await _record_outcome(db, setup=setup, intent_id=intent.intent_id,
                                    submitted=False, filled=False,
-                                   reject_reason="execute_switch_off")
+                                   reject_reason="execute_switch_off",
+                                   **_outcome_kwargs)
             continue
 
         # ── cross-scanner execution-boundary lock ──
@@ -800,7 +858,8 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
             })
             await _record_outcome(db, setup=setup, intent_id=intent.intent_id,
                                    submitted=False, filled=False,
-                                   reject_reason="exec_lock_conflict")
+                                   reject_reason="exec_lock_conflict",
+                                   **_outcome_kwargs)
             continue
 
         # Hand off to the existing execution pipeline. maybe_route_live
@@ -834,7 +893,8 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
             })
             await _record_outcome(db, setup=setup, intent_id=intent.intent_id,
                                    submitted=True, filled=bool(status == "filled"),
-                                   reject_reason=None)
+                                   reject_reason=None,
+                                   **_outcome_kwargs)
         else:
             # Ask the intent-skip log why the executor rejected. We do
             # NOT invent a reason locally — the executor is the source
@@ -855,7 +915,8 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
             })
             await _record_outcome(db, setup=setup, intent_id=intent.intent_id,
                                    submitted=False, filled=False,
-                                   reject_reason=reject_reason)
+                                   reject_reason=reject_reason,
+                                   **_outcome_kwargs)
             # Release the lock on rejection so the next legitimate
             # signal can try again promptly.
             alpha_hot_store.release_symbol_lock(setup.symbol, setup_id=setup.setup_id)

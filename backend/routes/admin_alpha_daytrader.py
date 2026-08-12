@@ -134,3 +134,36 @@ async def run_breakeven(request: Request):
         raise HTTPException(status_code=403, detail="Owner access required")
     from services.alpha_breakeven import evaluate_and_apply
     return await evaluate_and_apply(db)
+
+
+@router.get("/regime")
+async def regime_state(request: Request):
+    await _require_admin(request)
+    from services.market_regime import get_current
+    return await get_current(db)
+
+
+@router.post("/regime/refit")
+async def regime_refit(request: Request):
+    user = await _require_admin(request)
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
+    from services.market_regime import refit
+    snap = await refit(db)
+    return snap.to_dict()
+
+
+@router.get("/edge")
+async def edge_rollups(request: Request):
+    await _require_admin(request)
+    from services.alpha_edge_engine import read_rollups
+    return {"rollups": await read_rollups(db)}
+
+
+@router.post("/edge/recompute")
+async def edge_recompute(request: Request):
+    user = await _require_admin(request)
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
+    from services.alpha_edge_engine import compute_rollups
+    return await compute_rollups(db)

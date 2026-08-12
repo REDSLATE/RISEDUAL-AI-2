@@ -4248,3 +4248,57 @@ See `/app/memory/test_credentials.md`.
 - Edge Engine (context-aware confidence modifier — pattern × regime × time × relvol × spread × VWAP × ticker class)
 - Slippage + MFE/MAE writers into `alpha_outcomes` — the schema is there, callers haven't wired the values yet (will happen when a real position closes through the exit monitor)
 
+
+## 2026-08-12 — Alpha Phase D: Market Regime (HMM) + Edge Engine
+
+**Market Regime service (`services/market_regime.py`):**
+- 4-state Gaussian HMM (hmmlearn 0.3.3) fit on ~180 days of SPY daily bars
+- 5 features per bar: log-return, 5-day realized vol, volume z-score, body-to-range ratio, gap size
+- States discovered statistically; labels assigned post-hoc from centroids (trend_up / momentum_expansion / risk_off / choppy_meanrevert)
+- Non-blocking guarantee: missing data / untrained model / scoring failure → `label="UNKNOWN"`, callers continue
+- Fitted model pickled to SQLite (`regime_models` table) — survives restarts
+- Compact `alpha_regime_state` doc (single row) in Mongo for the UI
+- Scheduler: `_run_alpha_regime_snapshot` every 30 min, `_run_alpha_regime_refit` every 24h
+
+**Edge Engine (`services/alpha_edge_engine.py`):**
+- Modifier table per spec: DISCOVERING(<10 samples)→1.00 · +0.50R→1.15 · +0.20R→1.07 · 0R→1.00 · −0.20R→0.90 · <−0.20R→0.75
+- Never a hard gate — new setups always get neutral treatment
+- Rollup key: `(pattern × regime)` with time_bucket / rvol_bucket / spread_bucket stamped on outcomes
+- Writes to `alpha_edge_rollups` (compact Mongo docs); raw event feed still lives in SQLite hot store
+- Confidence cap at 1.0 preserved
+- 20-minute scheduler rollup
+
+**Wired into `run_alpha_day_trader_tick`:**
+- After trigger, before executor handoff: fetch regime, look up (pattern×regime) edge, apply modifier to `intent.confidence`
+- Buckets + edge_modifier + edge_state stamped on every `alpha_outcomes` row (so tomorrow's rollups have context)
+- Lifecycle event captures raw + modified confidence so operator can audit the delta
+
+**Admin endpoints (4 new):**
+- `GET  /api/admin/alpha-daytrader/regime`
+- `POST /api/admin/alpha-daytrader/regime/refit` (owner)
+- `GET  /api/admin/alpha-daytrader/edge`
+- `POST /api/admin/alpha-daytrader/edge/recompute` (owner)
+
+**Mission Control panel additions:**
+- Regime tile: current label · confidence % · posteriors bar
+- Edge modifiers table by (pattern × regime): samples · expectancy R · modifier · state pill
+
+**Verified live:**
+- HMM fit on real SPY (160 samples), current regime = choppy_meanrevert @ 100% posterior
+- Refit endpoint working
+- Tick runs cleanly with regime + edge in the loop
+- 39/39 unit tests passing (17 A+B + 10 C + 12 D)
+
+**Files:**
+- NEW `backend/services/market_regime.py` (HMM + persistence)
+- NEW `backend/services/alpha_edge_engine.py` (edge lookup + modifier table)
+- NEW `backend/tests/test_alpha_phase_d.py`
+- MOD `backend/services/alpha_day_trader.py` (regime + edge wired into tick + outcome context stamping)
+- MOD `backend/routes/admin_alpha_daytrader.py` (4 new endpoints)
+- MOD `backend/services/scheduling/jobs.py` (3 new jobs)
+- MOD `backend/server.py` (3 new job entrypoints)
+- MOD `frontend/src/components/admin/AlphaDayTraderPanel.jsx` (regime + edge sections)
+- MOD `backend/requirements.txt` (hmmlearn==0.3.3)
+
+**Prod redeploy needed to activate Phase D on live.**
+
