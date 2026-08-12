@@ -685,7 +685,13 @@ const BrokerConnect = () => {
   useEffect(() => {
     const open = () => setIsModalOpen(true);
     window.addEventListener('risedualai-open-broker-connect', open);
-    return () => window.removeEventListener('risedualai-open-broker-connect', open);
+    // Also listen for the onboarding modal's event name — matches the
+    // naming used elsewhere in the codebase (risedual:open-*).
+    window.addEventListener('risedual:open-broker-connect', open);
+    return () => {
+      window.removeEventListener('risedualai-open-broker-connect', open);
+      window.removeEventListener('risedual:open-broker-connect', open);
+    };
   }, []);
 
   const fetchConnections = useCallback(async () => {

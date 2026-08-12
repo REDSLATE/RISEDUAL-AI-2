@@ -66,13 +66,18 @@ function AppContent() {
     if (typeof window !== 'undefined') window.__risedualActiveView = activeView;
   }, [activeView]);
 
-  // First-login onboarding tour: 2s grace then auto-open if not seen.
+  // First-login onboarding tour: 2s grace then auto-open — but only
+  // after the post-signup onboarding modal has been completed (or the
+  // user is a returning session and it was never shown). Preventing
+  // the two overlays from stacking eliminates the pointer-events
+  // deadlock we hit when both fired on top of each other.
   React.useEffect(() => {
-    if (user && !localStorage.getItem(TOUR_KEY)) {
-      const timer = setTimeout(() => setTourActive(true), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [user]);
+    if (!user) return;
+    if (localStorage.getItem(TOUR_KEY)) return;
+    if (!user.onboarding_completed) return;   // wait for post-signup modal
+    const timer = setTimeout(() => setTourActive(true), 2000);
+    return () => clearTimeout(timer);
+  }, [user, user?.onboarding_completed]);
 
   // Global deep-link nav bus — surfaces like the AI Chat L2 action
   // buttons can route the user to a hub/subtab without prop-drilling.

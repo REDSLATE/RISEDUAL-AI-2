@@ -9,6 +9,7 @@ import PromoBanner from './PromoBanner';
 import ScrollToTop from './ScrollToTop';
 import ModalManager from './ModalManager';
 import OnboardingTour from './OnboardingTour';
+import PostSignupOnboarding from './PostSignupOnboarding';
 
 import ResearchHub from './hubs/ResearchHub';
 import OptionsHub from './hubs/OptionsHub';
@@ -151,6 +152,10 @@ const AuthenticatedShell = ({
       <ScrollToTop />
       <Toaster />
       <OnboardingTour active={tourActive} onComplete={onTourComplete} />
+      <PostSignupOnboardingGate
+        user={user}
+        onStartPlatformTour={onStartTour}
+      />
 
       <ModalManager
         user={user}
@@ -163,3 +168,19 @@ const AuthenticatedShell = ({
 };
 
 export default AuthenticatedShell;
+
+// Small gate so the modal auto-dismisses once ``onboarding_completed``
+// flips true on the user object. Kept inside this file since it's the
+// only place PostSignupOnboarding is mounted.
+function PostSignupOnboardingGate({ user, onStartPlatformTour }) {
+  const [dismissed, setDismissed] = React.useState(false);
+  if (!user) return null;
+  if (user.onboarding_completed || dismissed) return null;
+  return (
+    <PostSignupOnboarding
+      user={user}
+      onDismiss={() => setDismissed(true)}
+      onStartPlatformTour={onStartPlatformTour}
+    />
+  );
+}

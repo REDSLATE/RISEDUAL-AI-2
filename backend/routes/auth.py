@@ -155,6 +155,7 @@ def user_response(user: dict) -> dict:
         "founding_member": user.get("founding_member", False),
         "beta_access": user.get("beta_access", False),
         "trading_mode": user.get("trading_mode", "paper"),
+        "onboarding_completed": bool(user.get("onboarding_completed", False)),
     }
 
 # --- Models ---
