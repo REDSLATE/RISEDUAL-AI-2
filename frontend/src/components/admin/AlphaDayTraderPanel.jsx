@@ -239,7 +239,117 @@ function BrokerComparisonSection({ data, rows, window, onWindowChange }) {
           )}
         </div>
       </div>
+      <SlippageAlertsCard />
       <BrokerAuditTail />
+    </div>
+  );
+}
+
+function SlippageAlertsCard() {
+  const [data, setData] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState('');
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    setErr('');
+    try {
+      const d = await apiGet('/api/admin/alpha-daytrader/slippage-alerts?multiplier=2');
+      setData(d);
+    } catch (e) {
+      setErr(String(e.message || e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const brokers = data?.brokers || [];
+  const anyTriggered = !!data?.any_triggered;
+  return (
+    <div data-testid="slippage-alerts-card" className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 mt-4">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h3 className="text-sm font-medium text-zinc-100">Slippage anomaly detector</h3>
+          <div className="text-xs text-zinc-500">
+            Alerts when a broker&apos;s rolling 1h p50 slippage crosses 2× its 14-day baseline.
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {anyTriggered ? (
+            <span className="text-[10px] uppercase tracking-wider rounded-full border border-red-500/60 bg-red-500/10 text-red-300 px-2 py-0.5" data-testid="slippage-alert-badge">
+              Alert
+            </span>
+          ) : (
+            <span className="text-[10px] uppercase tracking-wider rounded-full border border-emerald-500/40 bg-emerald-500/5 text-emerald-300 px-2 py-0.5">
+              Nominal
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={load}
+            className="text-[10px] uppercase text-zinc-500 hover:text-zinc-300"
+            data-testid="slippage-alerts-refresh"
+          >
+            {loading ? 'loading…' : 'refresh'}
+          </button>
+        </div>
+      </div>
+      {err ? (
+        <div className="text-xs text-red-400">{err}</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {brokers.map((b) => (
+            <div
+              key={b.broker}
+              data-testid={`slippage-broker-${b.broker}`}
+              className={`rounded border p-3 ${
+                b.triggered
+                  ? 'border-red-600/70 bg-red-600/5'
+                  : 'border-zinc-800 bg-zinc-900/40'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm font-semibold text-zinc-100">
+                  {b.broker === 'public' ? 'Public.com' : 'MooMoo'}
+                </div>
+                <div className={`text-[10px] uppercase ${
+                  b.triggered ? 'text-red-300' : 'text-zinc-500'
+                }`}>
+                  {b.triggered ? 'triggered' : (b.reason || 'idle')}
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div>
+                  <div className="text-[10px] uppercase text-zinc-500">Recent p50</div>
+                  <div className={`font-mono text-lg ${
+                    b.triggered ? 'text-red-300' : 'text-zinc-100'
+                  }`}>
+                    {b.recent_p50_bps !== null ? `${b.recent_p50_bps} bps` : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase text-zinc-500">Baseline p50</div>
+                  <div className="font-mono text-lg text-zinc-100">
+                    {b.baseline_p50_bps !== null ? `${b.baseline_p50_bps} bps` : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase text-zinc-500">Threshold</div>
+                  <div className="font-mono text-lg text-zinc-100">
+                    {b.threshold_bps !== null ? `${b.threshold_bps} bps` : '—'}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-[10px] text-zinc-500">
+                <span>samples: recent {b.recent_samples} · baseline {b.baseline_samples}</span>
+                <span>×{b.multiplier}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

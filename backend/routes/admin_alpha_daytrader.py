@@ -242,3 +242,30 @@ async def broker_audit(
     await _require_admin(request)
     from services.broker_router_audit import recent
     return {"switches": await recent(db, limit=limit, bot_id=(bot_id or None))}
+
+
+@router.get("/slippage-alerts")
+async def slippage_alerts(
+    request: Request,
+    multiplier: float = Query(2.0, ge=1.1, le=10.0),
+    recent_window_sec: int = Query(3600, ge=60, le=86_400),
+    baseline_window_sec: int = Query(1_209_600, ge=86_400, le=90 * 86_400),
+    record: bool = Query(False),
+):
+    """Evaluate per-broker rolling slippage vs. historical baseline.
+
+    ``triggered=true`` when the recent p50 slippage crosses
+    ``multiplier × baseline p50`` for that broker. Returns raw metrics
+    so the UI never has to guess why the alert fired.
+    """
+    await _require_admin(request)
+    from services.slippage_anomaly import evaluate_all, recent_alerts
+    live = await evaluate_all(
+        db,
+        multiplier=multiplier,
+        recent_window_sec=recent_window_sec,
+        baseline_window_sec=baseline_window_sec,
+        record=record,
+    )
+    history = await recent_alerts(db, limit=10)
+    return {**live, "history": history}

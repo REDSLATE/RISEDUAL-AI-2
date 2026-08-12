@@ -1,6 +1,7 @@
 import os
 import logging
 import bcrypt
+import httpx
 import jwt
 import secrets
 import uuid
@@ -233,6 +234,119 @@ async def register(req: RegisterRequest, response: Response):
     except Exception:
         logging.exception("Register route failed")
         raise HTTPException(status_code=500, detail="Registration failed")
+
+
+# ── Google / Emergent Auth ──────────────────────────────────────────
+#
+# REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT
+# URLS, THIS BREAKS THE AUTH. Redirect URL is derived on the frontend
+# from window.location.origin.
+
+_EMERGENT_SESSION_DATA_URL = (
+    "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
+)
+
+
+class GoogleSessionRequest(BaseModel):
+    session_id: str = ""  # optional body fallback; header is preferred
+
+
+@auth_router.post("/google/session")
+async def google_session(request: Request, response: Response,
+                          body: Optional[GoogleSessionRequest] = None):
+    """Exchange an Emergent Auth session_id for a first-party JWT.
+
+    Flow:
+        1. Frontend redirected to https://auth.emergentagent.com and back
+           with #session_id=<id>.
+        2. Frontend POSTs this endpoint with the session_id (either as
+           the ``X-Session-ID`` header, per the playbook, or in the body).
+        3. Backend calls Emergent's /session-data to get {id, email,
+           name, picture, session_token}, then upserts the user by
+           email in our existing ``users`` collection and issues the
+           same JWT access/refresh cookies as email/password login.
+
+    We deliberately do NOT run a parallel Emergent session cookie —
+    the app's existing 480+ endpoints all rely on the JWT stored in
+    the ``access_token`` cookie via ``get_current_user``. Re-using it
+    means Google-signed-in users get the same session semantics as
+    everyone else with zero downstream churn.
+    """
+    session_id = (request.headers.get("X-Session-ID")
+                  or request.headers.get("x-session-id")
+                  or (body.session_id if body else "")).strip()
+    if not session_id:
+        raise HTTPException(status_code=400, detail="Missing session_id")
+
+    # Verify with Emergent Auth's session-data endpoint.
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(
+                _EMERGENT_SESSION_DATA_URL,
+                headers={"X-Session-ID": session_id},
+            )
+    except Exception as exc:  # noqa: BLE001
+        logging.warning(f"[google_session] emergent auth call failed: {exc}")
+        raise HTTPException(status_code=502, detail="Auth provider unreachable")
+    if r.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid or expired session_id")
+    try:
+        data = r.json()
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail="Malformed auth provider response")
+
+    email = str(data.get("email") or "").strip().lower()
+    name = str(data.get("name") or "").strip()
+    picture = str(data.get("picture") or "").strip()
+    google_sub = str(data.get("id") or "").strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email missing from provider")
+
+    existing = await db.users.find_one({"email": email})
+    is_new_user = existing is None
+    if existing:
+        # Link Google identity + refresh profile fields, but keep the
+        # existing role/subscription/password_hash intact.
+        updates = {"last_login_at": datetime.now(timezone.utc)}
+        if google_sub and not existing.get("google_id"):
+            updates["google_id"] = google_sub
+        if picture and not existing.get("picture"):
+            updates["picture"] = picture
+        if not existing.get("name") and name:
+            updates["name"] = name
+        await db.users.update_one({"_id": existing["_id"]}, {"$set": updates})
+        user_doc = {**existing, **updates}
+    else:
+        user_doc = {
+            "email": email,
+            "name": name or email.split("@")[0],
+            "picture": picture or None,
+            "google_id": google_sub or None,
+            "role": "user",
+            "subscription_status": "free",
+            "auth_provider": "google",
+            "created_at": datetime.now(timezone.utc),
+            "last_login_at": datetime.now(timezone.utc),
+        }
+        result = await db.users.insert_one(user_doc)
+        user_doc["_id"] = result.inserted_id
+        # Grant signup bonus for genuinely new accounts.
+        try:
+            from services.credit_service import grant_signup_bonus
+            await grant_signup_bonus(str(user_doc["_id"]))
+        except Exception as exc:  # noqa: BLE001
+            logging.warning(f"[google_session] signup credit grant failed: {exc}")
+
+    user_id = str(user_doc["_id"])
+    access = create_access_token(user_id, email)
+    refresh = create_refresh_token(user_id)
+    set_auth_cookies(response, access, refresh)
+    resp = user_response(user_doc)
+    resp["access_token"] = access
+    resp["refresh_token"] = refresh
+    resp["is_new_user"] = is_new_user
+    return resp
+
 
 async def _validate_beta_key(beta_key: str, email: str) -> dict:
     """Validate a beta key and email for redemption. Returns waitlist entry or raises."""

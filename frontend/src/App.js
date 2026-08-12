@@ -8,6 +8,7 @@ import PreAuthRouter from './components/PreAuthRouter';
 import AuthenticatedShell from './components/AuthenticatedShell';
 import MaintenancePage from './components/MaintenancePage';
 import AuthModal from './components/AuthModal';
+import AuthCallback from './components/AuthCallback';
 import { Toaster } from './components/ui/sonner';
 import { STORAGE_KEY as TOUR_KEY } from './components/OnboardingTour';
 import useModals from './hooks/useModals';
@@ -199,10 +200,18 @@ function AppContent() {
 }
 
 function App() {
+  // Emergent Auth callback: if the URL fragment carries a session_id,
+  // render the callback screen before AppContent's hooks fire. The
+  // callback needs AuthContext to call refreshAuth(), so it lives
+  // inside the AuthProvider.
+  const isAuthCallback =
+    typeof window !== 'undefined'
+    && window.location.hash
+    && window.location.hash.includes('session_id=');
   return (
     <ErrorBoundary>
       <AuthProvider>
-        <AppContent />
+        {isAuthCallback ? <AuthCallback /> : <AppContent />}
       </AuthProvider>
     </ErrorBoundary>
   );

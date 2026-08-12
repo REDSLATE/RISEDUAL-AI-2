@@ -143,7 +143,20 @@ export const AuthProvider = ({ children }) => {
     }
   }, [tryRefresh, clearLegacyTokens]);
 
-  useEffect(() => { checkAuth(); }, [checkAuth]);
+  useEffect(() => {
+    // If returning from Emergent Auth OAuth (hash has session_id=),
+    // skip the /auth/me probe — AuthCallback will exchange the
+    // session_id and set the cookies first, then call refreshAuth().
+    // Playbook rule: no client-side cookie assumptions, but this
+    // specific race must be broken to avoid a 401 flash.
+    if (typeof window !== 'undefined'
+        && window.location.hash
+        && window.location.hash.includes('session_id=')) {
+      setLoading(false);
+      return;
+    }
+    checkAuth();
+  }, [checkAuth]);
 
   const login = useCallback(async (email, password) => {
     const res = await fetchWithRetry(`${API}/auth/login`, {

@@ -74,6 +74,36 @@ const AuthForm = ({ tab, onSubmit, error, loading, refCode, onOpenLegal }) => {
         data-testid="auth-submit-btn">
         {loading ? 'Please wait...' : tab === 'login' ? 'Log In' : 'Create Account'}
       </Button>
+
+      <div className="relative my-2" data-testid="auth-divider">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-slate-700/60" />
+        </div>
+        <div className="relative flex justify-center text-[10px] uppercase tracking-wider">
+          <span className="bg-slate-900 px-2 text-slate-500">or</span>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => {
+          // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+          const redirectUrl = window.location.origin + '/';
+          window.location.href =
+            'https://auth.emergentagent.com/?redirect=' + encodeURIComponent(redirectUrl);
+        }}
+        disabled={loading || (tab === 'register' && !agreed)}
+        className="w-full flex items-center justify-center gap-2 bg-white hover:bg-slate-100 disabled:opacity-40 text-slate-800 font-semibold py-3 rounded-xl border border-slate-300 transition"
+        data-testid="auth-google-btn"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.4h6.5c-.3 1.5-1.1 2.7-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.7z"/>
+          <path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-2.9l-3.9-3c-1.1.7-2.5 1.2-4.1 1.2-3.1 0-5.8-2.1-6.7-4.9H1.3v3.1C3.3 21.4 7.3 24 12 24z"/>
+          <path fill="#FBBC05" d="M5.3 14.3c-.2-.7-.4-1.4-.4-2.3 0-.8.1-1.6.4-2.3V6.6H1.3C.5 8.2 0 10 0 12s.5 3.8 1.3 5.4l4-3.1z"/>
+          <path fill="#EA4335" d="M12 4.8c1.8 0 3.4.6 4.6 1.8l3.4-3.4C18 1.2 15.2 0 12 0 7.3 0 3.3 2.6 1.3 6.6l4 3.1C6.2 6.9 8.9 4.8 12 4.8z"/>
+        </svg>
+        {tab === 'login' ? 'Continue with Google' : 'Sign up with Google'}
+      </button>
     </form>
   );
 };
