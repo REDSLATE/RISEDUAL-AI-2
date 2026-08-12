@@ -4404,3 +4404,76 @@ See `/app/memory/test_credentials.md`.
 - No operator-adjustable modifier weighting (deferred until real samples accumulate)
 - No regime-transition alerts
 
+
+## 2026-08-12 — Phase F: MooMoo Integration (V1 — Market Data + Broker Adapters + Router)
+
+Per operator spec: parallel with Public.com · US equities + options schema · live tiny-notional · no auto-fallback · Moomoo US.
+
+### Adapters (both built, correctly separated)
+- **`services/moomoo_market_data_adapter.py`**: `snapshot_quote`, `snapshot_order_book`, `to_level2_snapshot` (Alpha's L2 schema), `market_state`, `entitlements`, lazy shared `OpenQuoteContext`, symbol translation, degraded-when-OpenD-down semantics
+- **`services/moomoo_broker_adapter.py`**: `account_info`, `positions`, `orders`, `fills`, `submit_equity`, `submit_option` (schema-only), `cancel_order`. Transient `unlock_trade` reading `MOOMOO_TRADE_UNLOCK_PASSWORD` from environment only, then re-locking in `finally`. Never logs or persists the password.
+
+### V1 pre-network safety gates on `submit_equity`
+1. `MOOMOO_LIVE_ENABLED` env off → refuse
+2. Missing `MOOMOO_ACC_ID` or no OpenD context → refuse
+3. `qty*price > MOOMOO_MAX_NOTIONAL_USD` (default $50) → refuse
+4. Existing MooMoo position open → refuse (single-position rule)
+5. `MOOMOO_TRADE_UNLOCK_PASSWORD` missing → refuse
+6. RTH-only enforced via `Session.RTH` on `place_order`
+7. Options adapter always returns `options_disabled` unless flag flipped, and even then `options_execution_policy_not_ready` until policy ships
+
+### Broker Router (`services/broker_router.py`)
+- Precedence: intent-forced → per-bot Mongo config → `BROKER_DEFAULT` env
+- Only `{"public", "moomoo"}` accepted; unknown → default (public)
+- **No auto-fallback** — a MooMoo rejection stays observable
+
+### SQLite hot-store table
+- `broker_comparison`: broker, client_order_id, broker_order_id, symbol, side, qty, limit_price, submit_latency_ms, ack_latency_ms, fill_latency_ms, fill_price, slippage_bps, status, error, extra JSON. Written on every MooMoo submit. **Never** duplicated to Mongo.
+
+### Admin routes (7 new)
+- `GET /api/admin/moomoo/status` — non-secret operational status
+- `GET /api/admin/moomoo/entitlements`
+- `GET /api/admin/moomoo/quote/{symbol}`
+- `GET /api/admin/moomoo/order-book/{symbol}`
+- `GET /api/admin/moomoo/account`
+- `GET /api/admin/moomoo/broker-comparison?limit=50`
+
+### Env-key plumbing (values entered by operator into prod secret store — NOT this repo)
+- `MOOMOO_OPEND_HOST` (default `moomoo-opend`)
+- `MOOMOO_OPEND_PORT` (default 11111)
+- `MOOMOO_ACC_ID` — persisted account id only (never credentials)
+- `MOOMOO_TRADE_UNLOCK_PASSWORD` — transient runtime secret
+- `MOOMOO_LIVE_ENABLED`, `MOOMOO_OPTIONS_ENABLED` — feature flags
+- `MOOMOO_MAX_NOTIONAL_USD` (default 50)
+- `BROKER_DEFAULT=public`
+- All placeholders empty in `/app/backend/.env` — actual values NEVER committed
+
+### OpenD deployment (separate ops task — deferred per operator)
+- Official `moomoo-api==10.9.6908` pinned in `requirements.txt`
+- OpenD binary + `OpenD.xml` must be deployed as an independent service (Docker/K8s Deployment), TCP 11111, reachable only from the FastAPI namespace
+- MooMoo login credentials + `login_pwd_md5` + `rsa_private_key` live only inside OpenD.xml on the deployment target
+- Container image built from vendor binary (no official image published)
+
+### Verified
+- 12/12 MooMoo unit tests passing (pre-network safety gates, options gating, router precedence, no credential leak in status)
+- 69/69 total Alpha tests still green
+- 665 routes registered; all 7 MooMoo endpoints return sensible degraded responses when OpenD is unreachable
+- Zero credential leakage in `/status` (regression test in place)
+
+### Not built (deferred, deliberate)
+- OpenD sidecar deployment manifest — operator determines from prod hosting
+- Automatic Public→MooMoo fallback — explicitly not in V1
+- Options autonomous execution — schema only
+- Frontend broker selector on bot config UI — next pass
+- MooMoo L2 wired into `Level2Confirmation` at intent-creation time — the adapter method exists; wiring is a one-line change in `run_alpha_day_trader_tick` once you enable it via `RISEDUAL_ALPHA_L2_SOURCE=moomoo`
+
+### Files
+- NEW `backend/services/moomoo_market_data_adapter.py`
+- NEW `backend/services/moomoo_broker_adapter.py`
+- NEW `backend/services/broker_router.py`
+- NEW `backend/routes/admin_moomoo.py`
+- NEW `backend/tests/test_moomoo_adapters.py`
+- MOD `backend/route_registry.py` (register moomoo router)
+- MOD `backend/requirements.txt` (`moomoo-api==10.9.6908` + deps)
+- MOD `backend/.env` (secret-name placeholders only)
+

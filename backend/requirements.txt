@@ -229,3 +229,6 @@ yarl==1.23.0
 yfinance==1.2.1
 zipp==3.23.0
 hmmlearn==0.3.3
+pycryptodome==3.23.0
+simplejson==4.1.1
+moomoo-api==10.9.6908
