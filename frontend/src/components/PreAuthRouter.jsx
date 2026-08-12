@@ -67,6 +67,7 @@ const PreAuthRouter = ({ user, modals }) => {
       <LandingPage
         onGetStarted={() => setShowWaitlist(true)}
         onLogin={() => { setAuthTab('login'); setShowAuth(true); }}
+        onSignUp={() => { setAuthTab('register'); setShowAuth(true); }}
         onOpenLegal={openLegalTab}
         onTryDemo={() => setShowDemo(true)}
         onOpenBetaRedeem={(key) => {

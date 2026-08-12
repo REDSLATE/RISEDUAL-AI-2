@@ -16,7 +16,7 @@ const NAV_ITEMS = [
 ];
 
 /* ─── Header ─── */
-const Header = ({ onGetStarted, onLogin, onTryDemo }) => {
+const Header = ({ onGetStarted, onLogin, onSignUp, onTryDemo }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   return (
     <header className="sticky top-0 left-0 right-0 z-50 border-b border-white/5 bg-slate-950/80 backdrop-blur-xl" data-testid="landing-header">
@@ -44,7 +44,10 @@ const Header = ({ onGetStarted, onLogin, onTryDemo }) => {
           <button onClick={onLogin} className="text-sm text-slate-300 hover:text-white transition-colors whitespace-nowrap" data-testid="landing-login-btn">
             Log In
           </button>
-          <button onClick={onGetStarted} className="text-sm px-5 py-2 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-medium hover:opacity-90 transition-opacity whitespace-nowrap" data-testid="landing-get-started">
+          <button onClick={onSignUp} className="text-sm px-5 py-2 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-medium hover:opacity-90 transition-opacity whitespace-nowrap" data-testid="landing-signup-btn">
+            Sign Up
+          </button>
+          <button onClick={onGetStarted} className="text-sm text-slate-400 hover:text-white transition-colors whitespace-nowrap" data-testid="landing-get-started">
             Join Waitlist
           </button>
         </nav>
@@ -63,7 +66,10 @@ const Header = ({ onGetStarted, onLogin, onTryDemo }) => {
           <button onClick={() => { setMenuOpen(false); onLogin(); }} className="w-full text-sm px-5 py-2.5 rounded-full border border-slate-600 text-slate-300 hover:text-white font-medium" data-testid="mobile-login-btn">
             Log In
           </button>
-          <button onClick={() => { setMenuOpen(false); onGetStarted(); }} className="w-full text-sm px-5 py-2.5 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-medium">
+          <button onClick={() => { setMenuOpen(false); onSignUp(); }} className="w-full text-sm px-5 py-2.5 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-medium" data-testid="mobile-signup-btn">
+            Sign Up
+          </button>
+          <button onClick={() => { setMenuOpen(false); onGetStarted(); }} className="w-full text-sm px-5 py-2.5 rounded-full border border-slate-700 text-slate-400 font-medium" data-testid="mobile-waitlist-btn">
             Join Waitlist
           </button>
         </div>
@@ -73,7 +79,7 @@ const Header = ({ onGetStarted, onLogin, onTryDemo }) => {
 };
 
 /* ─── Hero ─── */
-const Hero = ({ onGetStarted, onScroll, onTryDemo }) => (
+const Hero = ({ onGetStarted, onScroll, onTryDemo, onSignUp, onLogin }) => (
   <section className="relative pt-16 pb-20 sm:pt-20 sm:pb-28 overflow-hidden" data-testid="landing-hero">
     <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(20,184,166,0.08),transparent_70%)]" />
     <div className="max-w-4xl mx-auto px-4 text-center relative z-10">
@@ -92,12 +98,22 @@ const Hero = ({ onGetStarted, onScroll, onTryDemo }) => (
         <span className="text-rose-400 font-medium">RedEye 1.3</span> argues the other side. Sharpe 1.56, 11.2% max drawdown, autonomous paper trading live.{' '}
         <span className="text-white font-semibold">$55/month.</span> No contracts.
       </p>
-      <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
-        <button onClick={onTryDemo} className="group px-8 py-3.5 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-semibold text-sm flex items-center gap-2 hover:shadow-lg hover:shadow-teal-500/20 transition-all" data-testid="hero-cta">
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4">
+        <button onClick={onSignUp} className="group px-8 py-3.5 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white font-semibold text-sm flex items-center gap-2 hover:shadow-lg hover:shadow-teal-500/20 transition-all" data-testid="hero-signup">
+          Get Started <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+        </button>
+        <button onClick={onTryDemo} className="group px-8 py-3.5 rounded-full border border-teal-500/40 text-teal-300 font-semibold text-sm flex items-center gap-2 hover:border-teal-400 hover:text-white transition-all" data-testid="hero-cta">
           See It Live <Play className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
         </button>
-        <button onClick={onGetStarted} className="px-8 py-3.5 rounded-full border border-teal-500/30 text-teal-400 font-medium text-sm hover:border-teal-400 hover:text-white transition-all" data-testid="hero-waitlist">
-          Join the Waitlist <ArrowRight className="w-4 h-4 inline ml-1" />
+      </div>
+      <div className="flex items-center justify-center gap-3 text-sm text-slate-400 mb-16">
+        <span>Already have an account?</span>
+        <button onClick={onLogin} className="text-teal-400 hover:text-teal-300 font-medium underline underline-offset-2" data-testid="hero-login">
+          Log in
+        </button>
+        <span className="text-slate-700">·</span>
+        <button onClick={onGetStarted} className="text-slate-400 hover:text-white underline underline-offset-2" data-testid="hero-waitlist">
+          Join waitlist
         </button>
       </div>
       <div className="grid grid-cols-3 gap-6 max-w-md mx-auto">
@@ -761,7 +777,7 @@ import BetaBanner from './BetaBanner';
 import BetaSignupModal from './BetaSignupModal';
 
 /* ─── Main Landing Page ─── */
-const LandingPage = ({ onGetStarted, onLogin, onOpenLegal, onTryDemo, onOpenBetaRedeem }) => {
+const LandingPage = ({ onGetStarted, onLogin, onSignUp, onOpenLegal, onTryDemo, onOpenBetaRedeem }) => {
   const [showBeta, setShowBeta] = useState(false);
   const scrollToHow = () => {
     document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' });
@@ -770,8 +786,8 @@ const LandingPage = ({ onGetStarted, onLogin, onOpenLegal, onTryDemo, onOpenBeta
   return (
     <div className="min-h-screen bg-slate-950 text-white overflow-x-hidden" data-testid="landing-page">
       <BetaBanner onClaim={() => setShowBeta(true)} />
-      <Header onGetStarted={onGetStarted} onLogin={onLogin} onTryDemo={onTryDemo} />
-      <Hero onGetStarted={onGetStarted} onScroll={scrollToHow} onTryDemo={onTryDemo} />
+      <Header onGetStarted={onGetStarted} onLogin={onLogin} onSignUp={onSignUp} onTryDemo={onTryDemo} />
+      <Hero onGetStarted={onGetStarted} onScroll={scrollToHow} onTryDemo={onTryDemo} onSignUp={onSignUp} onLogin={onLogin} />
       <QuantLiteCallout />
       <CommercialVideo />
       <HowItWorks />
