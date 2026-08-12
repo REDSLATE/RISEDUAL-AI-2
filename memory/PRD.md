@@ -4477,3 +4477,60 @@ Per operator spec: parallel with Public.com · US equities + options schema · l
 - MOD `backend/requirements.txt` (`moomoo-api==10.9.6908` + deps)
 - MOD `backend/.env` (secret-name placeholders only)
 
+
+## 2026-08-12 — MooMoo Phase F.2: Bot Broker Selector UI + L2 Wire-Up + Deployment Guide
+
+### 1. Bot Broker Selector (create + edit)
+- `CreateBotRequest` gained `broker: str = "public"` field
+- Bot doc now stamps a top-level `broker` field (`"public"` | `"moomoo"`) at insert; bad values coerced to `"public"` so a typo never wires a bot to nothing
+- New route `PATCH /api/bots/{bot_id}/broker` — 400 on invalid value, 404 on unknown bot
+- Frontend `TradingBotPanel.jsx`:
+  - Create form: broker toggle-pair with `Public.com` / `MooMoo` buttons + inline help text
+  - `BotCard`: broker badge (cyan Public / fuchsia MooMoo) + inline switcher next to Delete button, `data-testid` attributes for testability
+  - `changeBotBroker()` handler on the parent component reloads bot list on success
+
+### 2. MooMoo L2 Wire-Up (non-blocking)
+- `alpha_day_trader._fetch_l2_snapshot(symbol)` — reads `RISEDUAL_ALPHA_L2_SOURCE`
+  - `none` (default) → returns `None` → `Level2Confirmation` returns neutral **0.50**
+  - `moomoo` → calls `moomoo_market_data_adapter.to_level2_snapshot` → real `Level2Snapshot`
+- Adapter down → adapter returns `None` → we return `None` → neutral 0.50 preserved
+- L2 source stamped on `intent.reason.l2_source` so audit trail is honest
+- **Critical safety property regression-tested**: `Level2Confirmation.score(None) == 0.50` (L2 is a modifier, never a gate)
+- To activate: set `RISEDUAL_ALPHA_L2_SOURCE=moomoo` in prod env once MooMoo entitlements confirmed (see `docs/OPEND_DEPLOYMENT.md` §8)
+
+### 3. OpenD Deployment Runbook — `/app/docs/OPEND_DEPLOYMENT.md`
+- Vendor artifact sourcing (no official image published)
+- Complete Dockerfile + `entrypoint.sh` that renders `OpenD.xml` from env at start, never logs credentials
+- Two topologies documented:
+  - **A. Sidecar** — single Pod, `127.0.0.1:11111`, 1 replica
+  - **B. Dedicated Deployment + ClusterIP Service** — for backend replicas > 1 (recommended)
+- Two-secret model: `moomoo-opend-secret` (login + MD5 for OpenD only) and `moomoo-backend-secret` (unlock password + acc_id for backend only)
+- Mandatory NetworkPolicy locking OpenD ingress to backend Pods
+- 4-step verification checklist (`/status`, `/entitlements`, `/quote`, `/account`) before flipping `MOOMOO_LIVE_ENABLED=1`
+- Instant rollback via env flip or admin API — **no auto-fallback** preserved
+- Secrets hygiene notes
+
+### Tests
+- 76/76 across all phases passing (A/B/C/D/D+/E/F/F.2)
+- New in F.2:
+  - L2 source defaults to `none`
+  - Off-source path never calls MooMoo adapter (regression against silent leak)
+  - Adapter down → None → neutral 0.50
+  - Adapter up → real snapshot that shifts score above 0.50
+  - Router reads per-bot `broker` field from Mongo
+  - Router falls back to `public` for unknown bot
+
+### Verified end-to-end (preview)
+- POST /api/bots with `broker=moomoo` → doc persisted with broker field
+- PATCH /api/bots/{id}/broker → round-trips
+- Invalid broker → 400 with descriptive detail
+- Delete → 200
+
+### Files
+- NEW `docs/OPEND_DEPLOYMENT.md`
+- NEW `backend/tests/test_alpha_l2_wireup.py`
+- MOD `backend/services/trading_bot/_data_access.py` (broker on create)
+- MOD `backend/routes/trading_bots.py` (broker field + PATCH endpoint)
+- MOD `backend/services/alpha_day_trader.py` (L2 source resolver)
+- MOD `frontend/src/components/TradingBotPanel.jsx` (create form toggle + card badge + inline switcher)
+

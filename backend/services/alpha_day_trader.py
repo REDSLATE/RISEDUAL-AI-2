@@ -686,6 +686,49 @@ async def _candidate_universe(db: Any, *, lookback_minutes: int = 60) -> list[st
 # ─── Main tick ────────────────────────────────────────────────────
 
 
+def _l2_source() -> str:
+    """Which market-data source Alpha uses for Level 2 depth.
+
+    Default is ``none`` (missing depth → neutral 0.50, unchanged).
+    Set ``RISEDUAL_ALPHA_L2_SOURCE=moomoo`` to pull depth from the
+    MooMoo market-data adapter when OpenD is connected. The fallback
+    to neutral 0.50 is preserved whenever the source is unavailable —
+    L2 must never gate a trade.
+    """
+    return (os.environ.get("RISEDUAL_ALPHA_L2_SOURCE") or "none").strip().lower()
+
+
+def _fetch_l2_snapshot(symbol: str) -> Optional[Level2Snapshot]:
+    """Pull an L2 snapshot from the configured source, or return None.
+
+    Returning None triggers the ``Level2Confirmation`` 0.50 neutral
+    fallback per V1 policy — depth is a *modifier*, never a gate.
+    """
+    src = _l2_source()
+    if src == "moomoo":
+        try:
+            from services.moomoo_market_data_adapter import to_level2_snapshot
+            data = to_level2_snapshot(symbol)
+        except Exception:  # noqa: BLE001
+            return None
+        if not isinstance(data, dict):
+            return None
+        try:
+            return Level2Snapshot(
+                symbol=str(data.get("symbol") or symbol),
+                bid_size=float(data.get("bid_size") or 0.0),
+                ask_size=float(data.get("ask_size") or 0.0),
+                book_imbalance=float(data.get("book_imbalance") or 0.0),
+                tape_delta=float(data.get("tape_delta") or 0.0),
+                cancel_rate_bid=float(data.get("cancel_rate_bid") or 0.0),
+                cancel_rate_ask=float(data.get("cancel_rate_ask") or 0.0),
+                imbalance_persistence_ms=int(data.get("imbalance_persistence_ms") or 0),
+            )
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
 async def run_alpha_day_trader_tick(db: Any) -> dict:
     """One scheduler tick. Returns a summary dict for logging.
 
@@ -810,7 +853,8 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
             t_bucket = r_bucket = s_bucket = "unknown"
         modifier = float(edge_info.get("modifier") or 1.0)
 
-        intent = create_alpha_intent(setup, snap, None, l2_engine)
+        intent = create_alpha_intent(setup, snap, _fetch_l2_snapshot(setup.symbol), l2_engine)
+        intent.reason["l2_source"] = _l2_source()
         # Apply edge modifier (cap at 1.0 per spec). NEVER a hard gate.
         raw_conf = intent.confidence
         intent.confidence = min(1.0, raw_conf * modifier)

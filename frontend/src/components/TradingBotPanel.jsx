@@ -24,10 +24,12 @@ const Toggle = ({ enabled, onToggle, testId }) => (
   </button>
 );
 
-const BotCard = ({ bot, onToggle, onDelete, onCopyWebhook }) => {
+const BotCard = ({ bot, onToggle, onDelete, onCopyWebhook, onBrokerChange }) => {
   const Icon = BOT_ICONS[bot.type] || Bot;
   const color = BOT_COLORS[bot.type] || 'text-slate-400';
   const [copied, setCopied] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const currentBroker = (bot.broker || 'public').toLowerCase();
 
   const copyUrl = () => {
     if (!bot.webhook_secret) return;
@@ -37,6 +39,17 @@ const BotCard = ({ bot, onToggle, onDelete, onCopyWebhook }) => {
       toast.success('Webhook URL copied');
       setTimeout(() => setCopied(false), 2000);
     });
+  };
+
+  const switchBroker = async (b) => {
+    if (b === currentBroker || switching) return;
+    setSwitching(true);
+    try {
+      const ok = await onBrokerChange?.(bot.bot_id, b);
+      if (ok) toast.success(`Broker switched to ${b === 'public' ? 'Public.com' : 'MooMoo'}`);
+    } finally {
+      setSwitching(false);
+    }
   };
 
   return (
@@ -53,6 +66,16 @@ const BotCard = ({ bot, onToggle, onDelete, onCopyWebhook }) => {
               <Badge className="text-[8px] bg-slate-700 text-slate-400">{bot.mode?.toUpperCase()}</Badge>
               <Badge className={`text-[8px] ${BOT_COLORS[bot.type]?.replace('text-', 'bg-').replace('400', '500/15')} ${BOT_COLORS[bot.type]}`}>
                 {bot.type?.toUpperCase()}
+              </Badge>
+              <Badge
+                className={`text-[8px] ${
+                  currentBroker === 'moomoo'
+                    ? 'bg-fuchsia-500/15 text-fuchsia-300'
+                    : 'bg-cyan-500/15 text-cyan-300'
+                }`}
+                data-testid={`bot-broker-badge-${bot.bot_id}`}
+              >
+                {currentBroker === 'moomoo' ? 'MOOMOO' : 'PUBLIC'}
               </Badge>
             </div>
           </div>
@@ -105,6 +128,28 @@ const BotCard = ({ bot, onToggle, onDelete, onCopyWebhook }) => {
           </>
         )}
       </div>
+      {/* Broker selector (edit-time) */}
+      <div className="mt-3 flex items-center gap-2" data-testid={`bot-broker-selector-${bot.bot_id}`}>
+        <span className="text-[9px] uppercase tracking-wider text-slate-500">Broker</span>
+        {['public', 'moomoo'].map(b => (
+          <button
+            key={b}
+            type="button"
+            disabled={switching}
+            onClick={() => switchBroker(b)}
+            data-testid={`bot-broker-switch-${bot.bot_id}-${b}`}
+            className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border transition ${
+              currentBroker === b
+                ? (b === 'moomoo'
+                    ? 'bg-fuchsia-500/10 text-fuchsia-300 border-fuchsia-500/40'
+                    : 'bg-cyan-500/10 text-cyan-300 border-cyan-500/40')
+                : 'bg-slate-800/50 text-slate-500 border-slate-700 hover:text-white'
+            } ${switching ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            {b === 'public' ? 'Public' : 'MooMoo'}
+          </button>
+        ))}
+      </div>
       {bot.last_run && <p className="text-slate-600 text-[8px] mt-2">Last run: {new Date(bot.last_run).toLocaleString()}</p>}
     </div>
   );
@@ -114,6 +159,7 @@ const CreateBotForm = ({ onCreated }) => {
   const tradingMode = useTradingMode();
   const [type, setType] = useState('grid');
   const [name, setName] = useState('');
+  const [broker, setBroker] = useState('public');
   // Bots inherit the user's current global trading mode at creation
   // time. The Paper/Live switch lives only in the navbar pill — having
   // a per-bot picker here was a duplicate that confused operators.
@@ -152,7 +198,7 @@ const CreateBotForm = ({ onCreated }) => {
 
       const res = await authFetch(API, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, name: name || `${type.charAt(0).toUpperCase() + type.slice(1)} Bot`, mode, config }),
+        body: JSON.stringify({ type, name: name || `${type.charAt(0).toUpperCase() + type.slice(1)} Bot`, mode, broker, config }),
       });
       if (res.ok) { toast.success('Bot created (OFF by default)'); onCreated(); }
       else { const err = await res.json().catch(() => ({})); toast.error(err.detail || 'Create failed'); }
@@ -195,6 +241,37 @@ const CreateBotForm = ({ onCreated }) => {
           >
             <span>{mode}</span>
             <span className="text-slate-500 text-[8px] font-normal normal-case tracking-normal">navbar</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label className="text-slate-400 text-[10px]">Broker</Label>
+          <div className="grid grid-cols-2 gap-1" data-testid="create-bot-broker">
+            {['public', 'moomoo'].map(b => (
+              <button
+                key={b}
+                type="button"
+                onClick={() => setBroker(b)}
+                data-testid={`create-bot-broker-${b}`}
+                className={`h-8 rounded-md text-[10px] font-bold uppercase tracking-wider border transition ${
+                  broker === b
+                    ? 'bg-[#3DE8D9]/10 text-[#3DE8D9] border-[#3DE8D9]/40'
+                    : 'bg-slate-800/50 text-slate-400 border-slate-700 hover:text-white'
+                }`}
+              >
+                {b === 'public' ? 'Public.com' : 'MooMoo'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <Label className="text-slate-400 text-[10px]">&nbsp;</Label>
+          <div className="text-[9px] text-slate-500 leading-tight pt-2">
+            {broker === 'moomoo'
+              ? 'Routes via MooMoo OpenD (RTH · single position · $50 notional cap in V1). Requires MOOMOO_LIVE_ENABLED=1 in prod.'
+              : 'Default equity broker. Fractional RTH orders.'}
           </div>
         </div>
       </div>
@@ -277,6 +354,22 @@ const TradingBotPanel = ({ onClose }) => {
     } catch { toast.error('Delete error'); }
   };
 
+  const changeBotBroker = async (botId, broker) => {
+    try {
+      const res = await authFetch(`${API}/${botId}/broker`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ broker }),
+      });
+      if (res.ok) { await loadBots(); return true; }
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.detail || 'Broker switch failed');
+      return false;
+    } catch {
+      toast.error('Broker switch error');
+      return false;
+    }
+  };
+
   return (
     <PanelShell onClose={onClose} testId="trading-bot-panel" maxWidth="max-w-2xl">
       <div className="w-full max-h-[90vh] overflow-y-auto bg-[#0B1426] border border-slate-600/30 rounded-2xl">
@@ -317,7 +410,7 @@ const TradingBotPanel = ({ onClose }) => {
                 </div>
               ) : (
                 bots.map((b, i) => (
-                  <BotCard key={b.bot_id || `bot-${i}`} bot={b} onToggle={toggleBot} onDelete={deleteBot} />
+                  <BotCard key={b.bot_id || `bot-${i}`} bot={b} onToggle={toggleBot} onDelete={deleteBot} onBrokerChange={changeBotBroker} />
                 ))
               )}
             </div>

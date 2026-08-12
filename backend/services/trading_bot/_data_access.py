@@ -52,12 +52,18 @@ async def create_bot(user_id: str, bot_data: dict) -> dict:
         return {"error": f"Invalid bot type. Must be: {', '.join(BOT_TYPES)}"}
 
     now = datetime.now(timezone.utc).isoformat()
+    # Broker selection: "public" (default) or "moomoo". Rejected values
+    # fall back to "public" so a typo never wires a bot to nothing.
+    broker = str(bot_data.get("broker") or "public").strip().lower()
+    if broker not in ("public", "moomoo"):
+        broker = "public"
     doc = {
         "user_id": user_id,
         "type": bot_type,
         "name": bot_data.get("name", f"{bot_type.title()} Bot"),
         "enabled": False,  # Always starts OFF
         "mode": bot_data.get("mode", "paper"),  # paper or live
+        "broker": broker,
         "config": _build_config(bot_type, bot_data.get("config", {})),
         "stats": {"trades": 0, "pnl": 0, "signals_received": 0, "signals_executed": 0},
         "created_at": now,

@@ -21,11 +21,16 @@ class CreateBotRequest(BaseModel):
     type: str  # grid, signal, webhook
     name: str = ""
     mode: str = "paper"
+    broker: str = "public"   # "public" | "moomoo"
     config: Optional[dict] = None
 
 
 class ToggleBotRequest(BaseModel):
     enabled: bool
+
+
+class UpdateBrokerRequest(BaseModel):
+    broker: str  # "public" | "moomoo"
 
 
 @router.post("")
@@ -127,6 +132,33 @@ async def update_config(bot_id: str, request: Request):
     if result.get("error"):
         raise HTTPException(status_code=400, detail=result["error"])
     return result
+
+
+@router.patch("/{bot_id}/broker")
+async def update_bot_broker(bot_id: str, request: Request, body: UpdateBrokerRequest):
+    """Switch the broker adapter for a bot ("public" | "moomoo").
+
+    Enforced at the write layer so the bot doc's ``broker`` field is
+    the sole source of truth for ``broker_router.resolve_broker``.
+    """
+    user = await get_current_user(request)
+    broker = (body.broker or "").strip().lower()
+    if broker not in ("public", "moomoo"):
+        raise HTTPException(status_code=400, detail="Broker must be 'public' or 'moomoo'.")
+    from bson import ObjectId
+    from datetime import datetime, timezone
+    try:
+        _id = ObjectId(bot_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid bot_id")
+    user_id = user["_id"] if isinstance(user["_id"], str) else str(user["_id"])
+    res = await _db.trading_bots.update_one(
+        {"_id": _id, "user_id": user_id},
+        {"$set": {"broker": broker, "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Bot not found")
+    return {"bot_id": bot_id, "broker": broker}
 
 
 @router.delete("/{bot_id}")
