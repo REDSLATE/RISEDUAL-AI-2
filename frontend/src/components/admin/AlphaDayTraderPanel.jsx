@@ -239,8 +239,138 @@ function BrokerComparisonSection({ data, rows, window, onWindowChange }) {
           )}
         </div>
       </div>
+      <OverlayStatusBadge />
       <SlippageAlertsCard />
       <BrokerAuditTail />
+    </div>
+  );
+}
+
+function OverlayStatusBadge() {
+  const [state, setState] = React.useState(null);
+  const [showReport, setShowReport] = React.useState(false);
+  const [report, setReport] = React.useState(null);
+
+  const load = React.useCallback(async () => {
+    try {
+      const d = await apiGet('/api/admin/alpha-daytrader/overlay/state');
+      setState(d);
+    } catch (_) { /* noop */ }
+  }, []);
+  React.useEffect(() => { load(); const t = setInterval(load, 30_000); return () => clearInterval(t); }, [load]);
+
+  const loadReport = async () => {
+    try {
+      const d = await apiGet('/api/admin/alpha-daytrader/overlay/transition-report');
+      setReport(d);
+      setShowReport(true);
+    } catch (_) { /* noop */ }
+  };
+
+  if (!state) return null;
+  const isHard = state.mode === 'HARD_GATE';
+  const isFaulted = state.faulted;
+  const dayLabel = isFaulted
+    ? 'FAULTED'
+    : isHard
+      ? 'HARD GATE'
+      : `SHADOW — Day ${state.trading_days_completed} of ${state.trading_days_required}`;
+  const badgeColor = isFaulted
+    ? 'border-red-500/70 bg-red-500/10 text-red-300'
+    : isHard
+      ? 'border-emerald-500/60 bg-emerald-500/10 text-emerald-300'
+      : 'border-amber-500/50 bg-amber-500/10 text-amber-300';
+  return (
+    <div data-testid="overlay-status-badge" className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 mt-4 flex items-center justify-between">
+      <div>
+        <div className="text-[10px] uppercase tracking-wider text-zinc-500">Account overlay</div>
+        <div className="flex items-center gap-2 mt-1">
+          <span
+            data-testid="overlay-status-chip"
+            className={`text-xs uppercase tracking-wider rounded-full border px-2.5 py-0.5 font-mono ${badgeColor}`}
+          >
+            {dayLabel}
+          </span>
+          {isFaulted ? (
+            <span className="text-[11px] text-red-300" data-testid="overlay-fault-reason">
+              {state.fault_reason || 'unknown fault'}
+            </span>
+          ) : null}
+          {isHard && state.hard_gate_at ? (
+            <span className="text-[11px] text-zinc-500">
+              activated {new Date(state.hard_gate_at).toLocaleDateString()}
+            </span>
+          ) : null}
+        </div>
+        <div className="text-[11px] text-zinc-500 mt-1">
+          {isFaulted
+            ? 'Overlay is not activating hard gate. Existing execution controls remain authoritative.'
+            : isHard
+              ? 'BLOCK actually blocks; REDUCE actually reduces size. Per-broker account state only.'
+              : `Recording every would-be verdict for the Day-7 transition report. ${state.days_remaining} trading day(s) remaining.`}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={loadReport}
+        data-testid="overlay-view-report"
+        className="text-[10px] uppercase tracking-wider text-zinc-400 hover:text-zinc-100 border border-zinc-700 rounded px-2 py-1"
+      >
+        Transition report
+      </button>
+      {showReport && report ? (
+        <div className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowReport(false)}>
+          <div className="w-full max-w-xl bg-zinc-900 border border-zinc-800 rounded-lg p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-zinc-100">Account Overlay Transition Report</h3>
+              <button onClick={() => setShowReport(false)} className="text-zinc-500 hover:text-white">×</button>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-xs mb-3">
+              <Stat label="Pass" value={report.counts?.PASS ?? 0} />
+              <Stat label="Reduce" value={report.counts?.REDUCE ?? 0} color="text-amber-300" />
+              <Stat label="Block" value={report.counts?.BLOCK ?? 0} color="text-red-300" />
+              <Stat label="Sizing Δ (USD)" value={`$${report.total_sizing_delta_usd ?? 0}`} />
+              <Stat label="Avoided losses" value={`$${report.avoided_losses_usd ?? 0}`} color="text-emerald-300" />
+              <Stat label="Blocked winners" value={`$${report.blocked_winners_usd ?? 0}`} color="text-red-300" />
+              <Stat label="Broker read fails" value={report.broker_read_failures ?? 0} />
+              <Stat label="Total records" value={report.total_records ?? 0} />
+              <Stat label="Mode" value={report.mode || '—'} />
+            </div>
+            {report.faulted ? (
+              <div className="rounded border border-red-600/60 bg-red-600/5 p-2 text-xs text-red-300 mb-2">
+                Overlay is currently FAULTED — hard-gate activation is deferred until the fault clears.
+              </div>
+            ) : null}
+            <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Recent shadow records</div>
+            <div className="max-h-48 overflow-y-auto rounded border border-zinc-800 text-xs">
+              {(report.records || []).slice(0, 25).map((r, i) => (
+                <div key={i} className="flex items-center justify-between border-b border-zinc-800/60 px-2 py-1">
+                  <span className="font-mono text-zinc-300">
+                    <span className={r.broker === 'public' ? 'text-sky-300' : 'text-fuchsia-300'}>{r.broker}</span> {r.symbol} {r.side}
+                  </span>
+                  <span className={
+                    r.verdict === 'BLOCK' ? 'text-red-400'
+                    : r.verdict === 'REDUCE' ? 'text-amber-300'
+                    : r.verdict === 'FAULTED_READ' ? 'text-red-500'
+                    : 'text-emerald-300'
+                  }>
+                    {r.verdict} · ${r.original_notional} → ${r.proposed_notional}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Stat({ label, value, color = 'text-zinc-100' }) {
+  return (
+    <div className="rounded border border-zinc-800 bg-zinc-950/60 px-2 py-1.5">
+      <div className="text-[10px] uppercase text-zinc-500">{label}</div>
+      <div className={`font-mono text-lg ${color}`}>{value}</div>
     </div>
   );
 }

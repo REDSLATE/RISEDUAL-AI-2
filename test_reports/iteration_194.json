@@ -1,0 +1,32 @@
+{
+  "summary": "Backend-only testing of Alpha Account-Aware Decision Overlay (SHADOW → HARD_GATE after 7 completed U.S. trading days, per-broker isolation, faulted-safety). All 14 unit tests in test_alpha_account_context.py (2) + test_alpha_account_overlay.py (12) pass. New HTTP endpoint suite (test_alpha_overlay_endpoints.py) covers /overlay/state, /overlay/preview (public & moomoo), 422 param validation (broker/side/notional), /overlay/transition-report, plus regressions for broker-comparison, broker-audit, slippage-alerts, /api/onboarding/status, /api/auth/google/session — 14/14 pass. Total for this iteration: 28/28 green.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/admin/alpha-daytrader/overlay/state (unauth)", "issue": "First cold request occasionally exceeds 15s SSL/ingress latency on preview host; had to bump timeout to 45s. Not a code bug — preview cold-start."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_alpha_account_context.py",
+    "/app/backend/tests/test_alpha_account_overlay.py",
+    "/app/backend/tests/test_alpha_overlay_endpoints.py",
+    "/app/test_reports/pytest/alpha_overlay_endpoints.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "alpha_account_overlay.py: _trading_day_finished_ny() uses UTC .time() comparison against dtime(16,0) but _now_ny() returns a NY-tz aware datetime — the comparison works because .time() strips tz, and since _now_ny() is already converted to America/New_York, this is correct. Confirmed via tests.",
+    "Overlay maturation is event-driven (advances on /overlay/state read or evaluate_intent). Documented behaviour, but on a low-traffic preview box with no scheduled probe, the 7-day counter can only advance when the admin or executor touches the overlay. Consider adding a lightweight scheduler tick post-16:00 ET so the transition never lags an operator visit. Non-blocking.",
+    "get_account_context_for() catches broad Exception and returns None → callers correctly mark FAULTED. Good defensive posture; per-broker cache isolation verified structurally in code (broker string keys the _CACHES dict, and only the routed wrapper is built)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_alpha_overlay_endpoints.py (new)"
+  ],
+  "success_rate": {"backend": "100% (28/28 for this iteration; overlay unit suite 14/14 + HTTP suite 14/14)", "frontend": "not tested (backend-only request)"},
+  "test_credentials": "admin@risedual.ai / RiseDual2026! (worked)",
+  "seed_data_creation": "None. /overlay/state read created a doc via first-request insert (already existed per E1 note).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Overlay endpoints live under /api/admin/alpha-daytrader/overlay/{state,preview,transition-report}. State machine is Mongo-persisted (collection alpha_overlay_state, singleton _id='overlay') and shadow evaluations live in alpha_overlay_shadow. If you need to force HARD_GATE for a live test, upsert {mode:'HARD_GATE', trading_days_completed:7, hard_gate_at: <iso>} directly. MooMoo preview correctly returns available:false because OpenD is not running in the preview env — this is the expected happy path, not a failure. Public preview returned live account (9 positions confirmed by E1).",
+  "rca of the issue": "n/a — no bugs found"
+}

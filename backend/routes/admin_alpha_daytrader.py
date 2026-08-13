@@ -269,3 +269,63 @@ async def slippage_alerts(
     )
     history = await recent_alerts(db, limit=10)
     return {**live, "history": history}
+
+
+# ── Account-Aware Decision Overlay ─────────────────────────────────
+@router.get("/overlay/state")
+async def overlay_state(request: Request):
+    """Return overlay mode + 7-day maturation counter + fault state."""
+    await _require_admin(request)
+    from services.alpha_account_overlay import status
+    return await status(db)
+
+
+@router.get("/overlay/preview")
+async def overlay_preview(
+    request: Request,
+    broker: str = Query(..., pattern="^(?i)(public|moomoo)$"),
+    symbol: str = Query(..., min_length=1, max_length=16),
+    side: str = Query(..., pattern="^(?i)(buy|sell|add|cover)$"),
+    notional: float = Query(..., ge=1.0, le=1_000_000.0),
+):
+    """Read-only preview of what the overlay would decide for a
+    hypothetical order against the routed broker's live account.
+    Public orders use Public account state; MooMoo orders use MooMoo
+    account state. Never unions the two."""
+    await _require_admin(request)
+    from services.alpha_account_overlay import (
+        get_account_context_for, evaluate_account_fit,
+    )
+    ctx = await get_account_context_for(broker.lower(), db=db)
+    if ctx is None:
+        return {
+            "available": False,
+            "broker": broker.lower(),
+            "reason": "broker_account_unreachable",
+        }
+    fit = evaluate_account_fit(
+        context=ctx, symbol=symbol.upper(), side=side.upper(),
+        desired_notional=float(notional),
+    )
+    return {
+        "available": True,
+        "broker": broker.lower(),
+        "symbol": symbol.upper(),
+        "side": side.upper(),
+        "desired_notional": float(notional),
+        "verdict": fit.verdict,
+        "size_multiplier": fit.size_multiplier,
+        "reasons": list(fit.reasons),
+        "proposed_notional": round(float(notional) * fit.size_multiplier, 2),
+        "account_context": ctx.to_model_payload(),
+    }
+
+
+@router.get("/overlay/transition-report")
+async def overlay_transition_report(request: Request):
+    """Day-7 transition report — PASS/REDUCE/BLOCK counts, avoided
+    losses, blocked winners, sizing deltas, broker read failures."""
+    await _require_admin(request)
+    from services.alpha_account_overlay import transition_report
+    return await transition_report(db)
+

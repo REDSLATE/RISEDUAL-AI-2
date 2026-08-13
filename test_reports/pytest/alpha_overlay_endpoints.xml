@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="14" time="31.040" timestamp="2026-08-13T04:48:09.263104+00:00" hostname="agent-env-2eb0cc47-bb53-4d7f-9f83-1098068dc5e0"><testcase classname="tests.test_alpha_overlay_endpoints.TestOverlayState" name="test_requires_admin" time="15.242"><failure message="requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='risedual-trading.preview.emergentagent.com', port=443): Read timed out. (read timeout=15)">/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:534: in _make_request
+    response = conn.getresponse()
+               ^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/urllib3/connection.py:571: in getresponse
+    httplib_response = super().getresponse()
+                       ^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/http/client.py:1415: in getresponse
+    response.begin()
+/usr/local/lib/python3.11/http/client.py:330: in begin
+    version, status, reason = self._read_status()
+                              ^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/http/client.py:291: in _read_status
+    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/socket.py:718: in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/ssl.py:1314: in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/ssl.py:1166: in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TimeoutError: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+/root/.venv/lib/python3.11/site-packages/requests/adapters.py:644: in send
+    resp = conn.urlopen(
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:841: in urlopen
+    retries = retries.increment(
+/root/.venv/lib/python3.11/site-packages/urllib3/util/retry.py:490: in increment
+    raise reraise(type(error), error, _stacktrace)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/urllib3/util/util.py:39: in reraise
+    raise value
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:787: in urlopen
+    response = self._make_request(
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:536: in _make_request
+    self._raise_timeout(err=e, url=url, timeout_value=read_timeout)
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:367: in _raise_timeout
+    raise ReadTimeoutError(
+E   urllib3.exceptions.ReadTimeoutError: HTTPSConnectionPool(host='risedual-trading.preview.emergentagent.com', port=443): Read timed out. (read timeout=15)
+
+During handling of the above exception, another exception occurred:
+tests/test_alpha_overlay_endpoints.py:34: in test_requires_admin
+    r = anon_session.get(f"{BASE_URL}/api/admin/alpha-daytrader/overlay/state", timeout=15)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:602: in get
+    return self.request("GET", url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:589: in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:703: in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/adapters.py:690: in send
+    raise ReadTimeout(e, request=request)
+E   requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='risedual-trading.preview.emergentagent.com', port=443): Read timed out. (read timeout=15)</failure></testcase><testcase classname="tests.test_alpha_overlay_endpoints.TestOverlayState" name="test_returns_expected_shape" time="14.063" /><testcase classname="tests.test_alpha_overlay_endpoints.TestOverlayPreview" name="test_public_preview_returns_200" time="0.666" /><testcase classname="tests.test_alpha_overlay_endpoints.TestOverlayPreview" name="test_moomoo_preview_returns_unavailable_gracefully" time="0.085" /><testcase classname="tests.test_alpha_overlay_endpoints.TestOverlayPreview" name="test_invalid_broker_returns_422" time="0.047" /><testcase classname="tests.test_alpha_overlay_endpoints.TestOverlayPreview" name="test_invalid_side_returns_422" time="0.053" /><testcase classname="tests.test_alpha_overlay_endpoints.TestOverlayPreview" name="test_zero_notional_returns_422" time="0.044" /><testcase classname="tests.test_alpha_overlay_endpoints.TestOverlayPreview" name="test_requires_admin" time="0.223" /><testcase classname="tests.test_alpha_overlay_endpoints.TestOverlayTransitionReport" name="test_returns_expected_shape" time="0.049" /><testcase classname="tests.test_alpha_overlay_endpoints.TestExistingEndpointRegressions" name="test_broker_comparison" time="0.048" /><testcase classname="tests.test_alpha_overlay_endpoints.TestExistingEndpointRegressions" name="test_broker_audit" time="0.050" /><testcase classname="tests.test_alpha_overlay_endpoints.TestExistingEndpointRegressions" name="test_slippage_alerts" time="0.050" /><testcase classname="tests.test_alpha_overlay_endpoints.TestExistingEndpointRegressions" name="test_onboarding_status" time="0.046" /><testcase classname="tests.test_alpha_overlay_endpoints.TestExistingEndpointRegressions" name="test_google_session_missing_session_id_returns_400" time="0.141" /></testsuite></testsuites>
