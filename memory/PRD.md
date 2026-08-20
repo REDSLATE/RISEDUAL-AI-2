@@ -1,5 +1,24 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (Overlay post-mortem doc)
+
+### 📄 Account-Aware Overlay post-mortem published
+
+The Account-Aware Decision Layer (Alpha Overlay) that self-promoted from SHADOW → HARD_GATE on a 7-day timer and halted production trading was fully removed earlier this session. To prevent any future agent (or human) from rebuilding the same silent auto-enforcing pattern, a formal post-mortem is now checked into the repo.
+
+**Doc:** [`/app/docs/POSTMORTEM_ACCOUNT_AWARE_OVERLAY.md`](../docs/POSTMORTEM_ACCOUNT_AWARE_OVERLAY.md)
+
+**Highlights (any new "decision gate" MUST follow):**
+- No self-promotion — SHADOW → ENFORCE is a manual operator toggle, never a timer.
+- Ship behind a global kill-switch env var, default OFF.
+- `EXISTING_POSITION` is never a BLOCK (it's a scale-in signal in this codebase).
+- Every block is operator-visible, logged, and has a one-click override endpoint.
+- Rollback must be possible via env var flip / admin endpoint, not a code deploy.
+
+The doc contains a **Pre-Flight Checklist** that must be pasted into any PR that introduces a decision gate over Alpha. Reviewers: reject the PR if the checklist is missing or unchecked.
+
+---
+
 ## Latest Update — 2026-08-06 (Intent producer observability)
 
 ### 🔍 Fixed "why doesn't anything fire?" — from silent to fully instrumented

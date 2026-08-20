@@ -6,6 +6,12 @@ here. Roll an entry from PRD.md → CHANGELOG.md once it's >30 days old or PRD.m
 
 ## 4. What's Been Implemented (cumulative)
 
+### Account-Aware Overlay Post-Mortem Doc (Feb 2026)
+
+Published [`/app/docs/POSTMORTEM_ACCOUNT_AWARE_OVERLAY.md`](../docs/POSTMORTEM_ACCOUNT_AWARE_OVERLAY.md) — an internal post-mortem for the Alpha Overlay incident (SEV-1 production trading halt caused by a silent SHADOW → HARD_GATE auto-promotion after 7 days, compounded by treating `EXISTING_POSITION` as a BLOCK).
+
+The doc codifies **7 non-negotiable rules for future decision gates** and a **pre-flight PR checklist** (kill-switch env var default OFF, no timer-based promotion, EXISTING_POSITION never blocks, operator-visible overrides, reversible without code deploy, etc.). Any future PR that introduces a gate over Alpha must paste and check off the checklist. See doc for full rules.
+
 ### Broker Comparison Panel + MooMoo Options Playbook V1 (Feb 12, 2026)
 
 **Broker Comparison Panel** (`services/broker_comparison_service.py`,
