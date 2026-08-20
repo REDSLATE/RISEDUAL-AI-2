@@ -107,6 +107,8 @@ def enable_live_exec(monkeypatch):
     monkeypatch.setenv("PUBLIC_LIVE_SYMBOLS", "")
     monkeypatch.setenv("PUBLIC_LIVE_MAX_INTRADAY_MOVE_PCT", "4.0")
     monkeypatch.setenv("PUBLIC_LIVE_SYMBOL_COOLDOWN_MIN", "0")
+    # Disable RTH-only gate so tests run any time of day.
+    monkeypatch.setenv("PUBLIC_LIVE_RTH_ONLY", "0")
     yield
 
 

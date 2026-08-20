@@ -125,7 +125,7 @@ class TestScannerCalibrationScope:
                 return _C()
         db.predictions = _Agg()
 
-        out = asyncio.get_event_loop().run_until_complete(
+        out = asyncio.run(
             dts.scan_universe(db, asset_class="equity")
         )
         assert len(out) == 1
@@ -157,7 +157,7 @@ class TestScannerCalibrationScope:
                 return _C()
 
         db = _FakeDB(); db.predictions = _Agg()
-        out = asyncio.get_event_loop().run_until_complete(
+        out = asyncio.run(
             dts.scan_universe(db, asset_class="equity")
         )
         assert len(out) == 1
@@ -184,7 +184,7 @@ class TestScannerCalibrationScope:
                 return _C()
 
         db = _FakeDB(); db.predictions = _Agg()
-        out = asyncio.get_event_loop().run_until_complete(
+        out = asyncio.run(
             dts.scan_universe(db, asset_class="equity")
         )
         assert out[0].score == pytest.approx(0.9167, abs=0.001)
@@ -198,6 +198,7 @@ class TestCooldownGate:
 
         monkeypatch.setenv("RISEDUAL_PUBLIC_LIVE_EXEC", "1")
         monkeypatch.setenv("PUBLIC_LIVE_SYMBOL_COOLDOWN_MIN", "60")
+        monkeypatch.setenv("PUBLIC_LIVE_RTH_ONLY", "0")
 
         db = _FakeDB()
         db.equity_live_trades.rows = [{
@@ -209,7 +210,7 @@ class TestCooldownGate:
         async def _bad_creds(_db): return None
         monkeypatch.setattr(pex, "_aresolve_connect_creds", _bad_creds)
 
-        out = asyncio.get_event_loop().run_until_complete(
+        out = asyncio.run(
             pex.maybe_route_live(db, intent={
                 "symbol": "TEST", "direction": "BUY", "confidence": 0.9,
                 "strategy_id": "sig:v1",
@@ -222,6 +223,7 @@ class TestCooldownGate:
 
         monkeypatch.setenv("RISEDUAL_PUBLIC_LIVE_EXEC", "1")
         monkeypatch.setenv("PUBLIC_LIVE_SYMBOL_COOLDOWN_MIN", "60")
+        monkeypatch.setenv("PUBLIC_LIVE_RTH_ONLY", "0")
 
         db = _FakeDB()
         db.equity_live_trades.rows = [{
@@ -236,7 +238,7 @@ class TestCooldownGate:
             return None
         monkeypatch.setattr(pex, "_aresolve_connect_creds", _no_creds)
 
-        out = asyncio.get_event_loop().run_until_complete(
+        out = asyncio.run(
             pex.maybe_route_live(db, intent={
                 "symbol": "TEST", "direction": "BUY", "confidence": 0.9,
                 "strategy_id": "sig:v1",
@@ -251,7 +253,7 @@ class TestCooldownGate:
 class TestEvidenceMultiplier:
     def test_no_db_returns_1_lookup_error(self):
         from services.public_equity_live_executor import _evidence_multiplier
-        mult, meta = asyncio.get_event_loop().run_until_complete(
+        mult, meta = asyncio.run(
             _evidence_multiplier(None, "any")
         )
         assert mult == 1.0
@@ -262,7 +264,7 @@ class TestEvidenceMultiplier:
     def test_untested_strategy_returns_0_25(self):
         from services.public_equity_live_executor import _evidence_multiplier
         db = _FakeDB()
-        mult, meta = asyncio.get_event_loop().run_until_complete(
+        mult, meta = asyncio.run(
             _evidence_multiplier(db, "brand_new_strategy")
         )
         assert mult == pytest.approx(0.25)
@@ -275,7 +277,7 @@ class TestEvidenceMultiplier:
             "strategy_id": "sig:v1", "notional_multiplier": 0.50,
             "bucket": "ok", "hit_rate": 0.6, "sharpe": 0.4, "trade_count": 12,
         }]
-        mult, meta = asyncio.get_event_loop().run_until_complete(
+        mult, meta = asyncio.run(
             _evidence_multiplier(db, "sig:v1")
         )
         assert mult == pytest.approx(0.50)
@@ -302,7 +304,7 @@ class TestEvidenceWorker:
             for _ in range(6)
         ]
 
-        summary = asyncio.get_event_loop().run_until_complete(
+        summary = asyncio.run(
             evidence_worker.compute_evidence(db)
         )
         assert summary["strategies_evaluated"] == 1
@@ -325,7 +327,7 @@ class TestEvidenceWorker:
              "entry_price": 100.0, "close_price": 101.0}
             for _ in range(3)
         ]
-        summary = asyncio.get_event_loop().run_until_complete(
+        summary = asyncio.run(
             evidence_worker.compute_evidence(db)
         )
         strat = summary["strategies"][0]
@@ -343,7 +345,7 @@ class TestEvidenceWorker:
              "entry_price": 100.0, "close_price": 101.0 + (i * 0.01)}
             for i in range(8)
         ]
-        summary = asyncio.get_event_loop().run_until_complete(
+        summary = asyncio.run(
             evidence_worker.compute_evidence(db)
         )
         strat = summary["strategies"][0]
@@ -353,7 +355,7 @@ class TestEvidenceWorker:
 
     def test_db_none_safe(self):
         from services import evidence_worker
-        out = asyncio.get_event_loop().run_until_complete(
+        out = asyncio.run(
             evidence_worker.compute_evidence(None)
         )
         assert out.get("error") == "no_db"

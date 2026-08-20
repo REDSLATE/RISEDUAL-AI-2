@@ -531,6 +531,10 @@ def test_sidecar_tick_runs_without_mc(tmp_path: Path, monkeypatch: pytest.Monkey
             pass
 
     monkeypatch.setattr(sc, "MCClient", _FakeClient)
+    # 2026-06-23: standalone mode picks LocalMCClient over MCClient.
+    # Patch both so the fake is chosen regardless of the env flag.
+    monkeypatch.setattr(sc, "LocalMCClient", _FakeClient)
+    monkeypatch.setattr(sc, "is_standalone_mode", lambda: False)
 
     side = sc.SovereignSidecar(
         brain="alpha", mode="DTD", mc_base_url="https://x",
@@ -597,6 +601,10 @@ def test_heartbeat_thread_publishes_independently(
             pass
 
     monkeypatch.setattr(sc, "MCClient", _FakeClient)
+    # 2026-06-23: standalone mode picks LocalMCClient over MCClient.
+    # Patch both so the fake is chosen regardless of the env flag.
+    monkeypatch.setattr(sc, "LocalMCClient", _FakeClient)
+    monkeypatch.setattr(sc, "is_standalone_mode", lambda: False)
 
     side = sc.SovereignSidecar(
         brain="alpha", mode="DTD", mc_base_url="https://x",

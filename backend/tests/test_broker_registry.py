@@ -71,7 +71,9 @@ def test_registry_returns_fresh_instances():
 
 def test_registry_declares_supported_providers():
     # Phase 1 invariant — prevents accidental list drift.
-    assert set(SUPPORTED_PROVIDERS) == {"alpaca", "tradier", "tastytrade", "ibkr"}
+    # ``public`` was added when Public.com became the primary equity
+    # broker; its options adapter is still a stub pending upstream API.
+    assert set(SUPPORTED_PROVIDERS) == {"alpaca", "tradier", "tastytrade", "ibkr", "public"}
 
 
 # ── Stub adapter ────────────────────────────────────────────────────

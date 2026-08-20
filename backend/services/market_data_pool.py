@@ -379,8 +379,9 @@ async def _marketstack_daily(api_key: str, symbol: str, limit: int = 90) -> Opti
                 raise RuntimeError("No time series data")
             rows = []
             for v in values:
+                from services.datetime_utils import to_iso_date
                 rows.append({
-                    "date": v.get("date", "")[:10],
+                    "date": to_iso_date(v.get("date")) or "",
                     "open": round(float(v.get("open", 0)), 2),
                     "high": round(float(v.get("high", 0)), 2),
                     "low": round(float(v.get("low", 0)), 2),

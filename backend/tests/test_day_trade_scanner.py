@@ -311,8 +311,11 @@ async def test_gate_blocks_when_target_pending(db):
     from services.day_trade_scanner import (
         TARGETS_COLLECTION, ScanCandidate, apply_gates,
     )
+    # 2026-06-26: gate only blocks on RECENT pending rows (last 10 min).
+    # Seed queued_at=now so the recency window matches.
     db[TARGETS_COLLECTION]._docs.append({
         "symbol": "AAPL", "status": "pending", "target_id": "t1",
+        "queued_at": datetime.now(timezone.utc),
     })
     c = ScanCandidate(symbol="AAPL", asset_class="equity", direction="UP",
                       score=0.92, confidence_raw=0.92,
@@ -376,7 +379,12 @@ async def test_run_scan_writes_target_with_eod_timer(db):
     # 21:00 UTC of today or tomorrow.
     assert target["max_hold_until"].hour == 21
     assert target["max_hold_until"].minute == 0
-    assert target["status"] == "pending"
+    # 2026-06-26 — Phase 4b transitions the row to
+    # ``routed`` on successful executor route or ``executor_skipped``
+    # when the executor returns None (e.g. no broker creds in test).
+    # Both are valid post-write outcomes; ``pending`` is only visible
+    # if the executor call is not reached at all.
+    assert target["status"] in {"pending", "executor_skipped", "routed"}
 
 
 @pytest.mark.asyncio

@@ -81,6 +81,10 @@ ALLOWLIST: dict[str, set[int]] = {
     "services/guard_policy_store.py": {226},
     # start_time is local to function body.
     "services/memory_training_service.py": {296},
+    # _last_symbol_fire_at() returns a datetime that is normalized to
+    # UTC via ``ts.replace(tzinfo=timezone.utc)`` before returning; the
+    # matcher only inspects the immediate window, not the callee.
+    "services/public_equity_live_executor.py": {563},
 }
 
 

@@ -61,6 +61,24 @@ DIRECTION_TOKENS = frozenset({
 # accompanied by a one-line justification — anyone who adds a new
 # entry without one fails review.
 ALLOWLIST: dict[str, str] = {
+    # Vendored RISEDUAL System Atlas package — its models.py accepts
+    # only the post-canonicalised BUY/SELL execution direction set as
+    # the broker-side fingerprint. Cannot import canonical_ai_dir
+    # without breaking the package's zero-dependency contract.
+    "risedual_atlas/models.py": (
+        "Vendored zero-dependency Atlas package — the fingerprint "
+        "layer only accepts post-canonicalised BUY/SELL to build a "
+        "stable identity key. Portability requires no imports from "
+        "services.*"
+    ),
+    "services/atlas_bridge.py": (
+        "Atlas fingerprint adapter — maps every RISEDUAL direction "
+        "variant to the canonical BUY/SELL side that the vendored "
+        "Atlas ledger accepts. This is the single translation seam "
+        "between our internal directions and Atlas's execution "
+        "vocabulary; canonicalising elsewhere would just move the "
+        "tuple to a different site."
+    ),
     # Portable platform survival layer — deliberately zero-dependency
     # so it can be forked into sibling services / run on Railway /
     # Render / VPS without dragging the rest of the codebase along.

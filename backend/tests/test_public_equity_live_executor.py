@@ -29,6 +29,18 @@ from services.public_equity_live_executor import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _disable_rth_gate(monkeypatch):
+    """Public.com's RTH-only session gate (added 2026-08-11) short-
+    circuits with ``market_closed`` when the wall clock is outside
+    9:30-16:00 ET. These executor tests exercise the full call chain
+    and would spuriously fail depending on when the CI runs; disable
+    the gate for the whole file. The gate itself is unit-tested by
+    ``_in_regular_session`` elsewhere."""
+    monkeypatch.setenv("PUBLIC_LIVE_RTH_ONLY", "0")
+    yield
+
+
 # ── Env contract ─────────────────────────────────────────────────────
 
 

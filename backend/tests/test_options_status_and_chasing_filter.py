@@ -102,6 +102,9 @@ def enable_live_exec(monkeypatch):
     monkeypatch.setenv("PUBLIC_LIVE_SYMBOLS", "")
     monkeypatch.setenv("PUBLIC_LIVE_MAX_INTRADAY_MOVE_PCT", "4.0")
     monkeypatch.setenv("PUBLIC_LIVE_SYMBOL_COOLDOWN_MIN", "0")
+    # Disable the RTH-only session gate so tests can run any time of
+    # day. The gate itself is unit-tested separately by _in_regular_session.
+    monkeypatch.setenv("PUBLIC_LIVE_RTH_ONLY", "0")
     yield
 
 

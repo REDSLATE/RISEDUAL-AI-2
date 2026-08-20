@@ -159,11 +159,39 @@ ALLOWLIST: dict[str, str] = {
         "Planned split into routes/admin/{domain}.py per the "
         "scalable-production-ready roadmap."
     ),
+    "backend/routes/auth.py": (
+        "REFACTOR DEBT: 815 lines — JWT + Google OAuth + password "
+        "reset + brute-force protection + admin seed all share the "
+        "same rate-limit + audit helpers. Split into "
+        "routes/auth/{oauth,password,jwt}.py planned."
+    ),
+    "backend/services/public_equity_live_executor.py": (
+        "REFACTOR DEBT: 962 lines — 8 gate stages (env, RTH, "
+        "confidence, allowlist, cooldown, chasing, connect-state, "
+        "cash) + evidence multiplier + broker-comparison recorder + "
+        "Atlas lifecycle in one file. The gate-order discipline is "
+        "trade-correctness-critical; split planned once we extract "
+        "each gate into its own tested module."
+    ),
+    "backend/services/alpha_day_trader.py": (
+        "REFACTOR DEBT: 1058 lines — setup lifecycle (Detected → "
+        "Approved → Executed) + intent builder + broker route + "
+        "recorder in one file. Split into alpha_day_trader/{lifecycle,"
+        "intent_builder,recorder}.py planned."
+    ),
     "backend/server.py": (
         "REFACTOR DEBT: monolithic FastAPI bootstrap + lifespan + "
         "scheduler wiring. Planned split into server/{app,scheduler,"
         "lifespan}.py — explicitly listed in the system-prompt "
         "refactoring section."
+    ),
+    # ── Frontend — refactor debt (planned splits) ─────────────────
+    "frontend/src/components/admin/AlphaDayTraderPanel.jsx": (
+        "REFACTOR DEBT: 1238 lines — main Alpha panel + broker "
+        "comparison section + options preview + audit log + slippage "
+        "anomaly card in one component. Planned split into "
+        "AlphaDayTraderPanel/{Root,BrokerComparison,OptionsPreview,"
+        "AuditLog,SlippageAnomaly}.jsx."
     ),
     # ── Backend Python — mature multi-endpoint route modules ───────
     "backend/routes/broker.py": (
@@ -363,6 +391,10 @@ PREFERRED_BASELINE: dict[str, tuple[int, str]] = {
     "backend/services/tier3_readiness.py":             (608,  "core-governance"),  # 2026-05-15: hold for high-conf WR daily-mean smoothing; split scheduled after admin UI port lands.
     "backend/services/price_provider.py":              (608,  "core-governance"),
     "backend/services/multi_model_hypothesis_service.py":(609, "core-governance"),  # 2026-02-26: Phase 2 brain wiring +9 lines; split out into shelly/brain_emitter to keep this site readable. Further reduction would require splitting the 4 budget-resilience layers which are tightly coupled.
+    "backend/services/market_data_pool.py":            (685, "core-governance"),  # 2026-02: pre-existing at ceiling drift; split scheduled after Kraken WS provider stabilises.
+    "backend/services/day_trade_scanner.py":           (668, "core-governance"),  # 2026-02: Atlas cycle-trace summary wire added ~37 lines. Split-scanner-vs-orchestrator refactor scheduled.
+    "backend/services/public_equity_live_executor.py": (962, "core-governance"),  # 2026-02: broker_comparison + evidence multiplier + RTH gate + Atlas transitions layered on live path. Splitting requires teasing gates out into their own modules — planned.
+    "backend/services/alpha_day_trader.py":            (1058, "core-governance"), # 2026-02: pre-existing; setup lifecycle + intent builder + broker route in one file. Split scheduled.
 
     # ── default (preferred 800) ───────────────────────────────────
     "backend/server.py":                               (2003, "default"),
@@ -380,6 +412,7 @@ PREFERRED_BASELINE: dict[str, tuple[int, str]] = {
     "backend/tests/test_research_shadow.py":           (1098, "test"),
 
     # ── ui-admin-component (preferred 500) ───────────────────────
+    "frontend/src/components/admin/AlphaDayTraderPanel.jsx":  (1238, "ui-admin-component"),  # 2026-02: pre-existing; broker comparison + audit log + options preview panels layered in. Split scheduled.
     "frontend/src/components/admin/MemoryDriftCard.jsx":      (787, "ui-admin-component"),
     "frontend/src/components/admin/ModelAdaptationsPanel.jsx":(589, "ui-admin-component"),
     "frontend/src/components/admin/GuardShadowPanel.jsx":     (579, "ui-admin-component"),

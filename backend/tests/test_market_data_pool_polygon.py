@@ -84,7 +84,9 @@ def test_polygon_registers_when_key_set(env_isolated):
     polygon = next((p for p in pool if p["provider"] == "polygon"), None)
     assert polygon is not None
     assert polygon["api_key"] == "pk_test"
-    assert polygon["priority"] == 4
+    # Default priority moved to 5 when Public.com took primary
+    # (Polygon is now the deepest backup; see pool_config.py comment).
+    assert polygon["priority"] == 5
     assert polygon["name"] == "polygon-ab"
 
 
@@ -106,7 +108,8 @@ def test_polygon_priority_malformed_falls_back(env_isolated):
     os.environ["MARKET_DATA_POLYGON_PRIORITY"] = "not-a-number"
     pool = pool_config.get_market_data_provider_pool()
     polygon = next(p for p in pool if p["provider"] == "polygon")
-    assert polygon["priority"] == 4
+    # Falls back to the default (5) when the env override is malformed.
+    assert polygon["priority"] == 5
 
 
 # ── _polygon_quote shape adapter ──────────────────────────────────
