@@ -19,6 +19,7 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from pydantic import BaseModel
 
 from services.auth_helpers import get_current_user
 
@@ -328,4 +329,42 @@ async def overlay_transition_report(request: Request):
     await _require_admin(request)
     from services.alpha_account_overlay import transition_report
     return await transition_report(db)
+
+
+class _OverlayModePatch(BaseModel):
+    mode: str  # "SHADOW" | "HARD_GATE"
+    reset_counter: bool = False
+
+
+@router.post("/overlay/mode")
+async def overlay_set_mode(request: Request, body: _OverlayModePatch):
+    """Force the overlay mode.
+
+    Emergency operator control — used when HARD_GATE is silently
+    blocking trades and you need to fall back to SHADOW instantly
+    without waiting for a code redeploy. Resetting the counter also
+    resets ``overlay_started_at`` so the 7-day maturation restarts
+    from zero.
+    """
+    await _require_admin(request)
+    from services.alpha_account_overlay import (
+        MODE_SHADOW, MODE_HARD, _save_state,
+    )
+    mode = (body.mode or "").upper()
+    if mode not in (MODE_SHADOW, MODE_HARD):
+        raise HTTPException(status_code=400, detail="mode must be SHADOW or HARD_GATE")
+    from datetime import datetime, timezone
+    patch: dict = {"mode": mode}
+    if mode == MODE_SHADOW:
+        # Clear the hard-gate timestamp so state is consistent.
+        patch["hard_gate_at"] = None
+    else:
+        patch["hard_gate_at"] = datetime.now(timezone.utc).isoformat()
+    if body.reset_counter:
+        patch["trading_days_completed"] = 0
+        patch["last_trading_day_counted"] = None
+        patch["overlay_started_at"] = datetime.now(timezone.utc).isoformat()
+    await _save_state(db, patch)
+    from services.alpha_account_overlay import status
+    return await status(db)
 
