@@ -748,63 +748,6 @@ async def maybe_route_live(
         )
         return None
 
-    # ── Account-Aware Decision Overlay ───────────────────────────
-    # SHADOW for the first 7 U.S. trading days, HARD_GATE after that
-    # unless the overlay is FAULTED. When faulted we fall through to
-    # the pre-existing execution/risk controls (which have their own
-    # gates above) — never silently block, never silently extend
-    # shadow.
-    #
-    # Emergency kill-switch: set ``ALPHA_OVERLAY_DISABLED=1`` in env
-    # to bypass the overlay entirely. Used when HARD_GATE is silently
-    # blocking trades and you need to fall back to pre-overlay
-    # behaviour without a code push.
-    overlay_decision = None
-    _overlay_disabled = (os.environ.get("ALPHA_OVERLAY_DISABLED", "").strip().lower()
-                          in ("1", "true", "yes", "on"))
-    if _overlay_disabled:
-        logger.info("[public-live] symbol=%s account overlay DISABLED via env", symbol)
-    else:
-        try:
-            from services import alpha_account_overlay
-            overlay_decision = await alpha_account_overlay.evaluate_intent(
-                db,
-                broker="public",
-                symbol=symbol,
-                side="BUY" if intent_kind == "open_long" else "SELL",
-                notional=notional,
-            )
-            if overlay_decision.should_block:
-                logger.warning(
-                    "[public-live] symbol=%s BLOCKED by account overlay: %s",
-                    symbol, overlay_decision.reasons,
-                )
-                return None
-            if (overlay_decision.mode == "HARD_GATE"
-                    and overlay_decision.size_multiplier < 0.999
-                    and not overlay_decision.faulted):
-                # Enforced size reduction. Rebuild qty against the reduced
-                # notional; keep the original mark.
-                reduced_notional = overlay_decision.proposed_notional
-                if reduced_notional <= 0:
-                    logger.warning(
-                        "[public-live] symbol=%s BLOCKED by account overlay (size→0): %s",
-                        symbol, overlay_decision.reasons,
-                    )
-                    return None
-                import math as _math
-                qty = _math.ceil((reduced_notional / mark) * 10000.0) / 10000.0
-                notional = reduced_notional
-                logger.info(
-                    "[public-live] symbol=%s RESIZED by account overlay to $%.2f (mult=%.2f) reasons=%s",
-                    symbol, reduced_notional, overlay_decision.size_multiplier,
-                    overlay_decision.reasons,
-                )
-        except Exception as exc:  # noqa: BLE001
-            # Overlay errors must never take down the executor. Fall
-            # through to the existing execution/risk controls.
-            logger.warning("[public-live] account overlay evaluate failed: %s", exc)
-
     # Execute
     client = _public_client(secret_key, account_id)
     if client is None:
@@ -865,23 +808,6 @@ async def maybe_route_live(
             fill_price=float(resp.get("fillPrice") or resp.get("filled_avg_price") or 0.0) or None,
             status=str(resp.get("status") or "accepted"), error=None,
         )
-    except Exception:  # noqa: BLE001
-        pass
-    # Attach the fill/order info back to the overlay's shadow record
-    # so the Day-7 transition report can compute realized outcomes.
-    try:
-        if overlay_decision and overlay_decision.shadow_id:
-            from services import alpha_account_overlay
-            await alpha_account_overlay.attach_shadow_outcome(
-                db, overlay_decision.shadow_id,
-                {
-                    "broker_order_id": str(order_id),
-                    "submitted_qty": qty,
-                    "submitted_notional": round(qty * float(mark or 0.0), 2),
-                    "fill_price": float(resp.get("fillPrice") or resp.get("filled_avg_price") or 0.0) or None,
-                    "status": str(resp.get("status") or "accepted"),
-                },
-            )
     except Exception:  # noqa: BLE001
         pass
     trade_id = str(uuid.uuid4())

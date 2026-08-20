@@ -731,13 +731,11 @@ async def startup_event():
         from services.adversarial_logger import ensure_indexes as _adv_log_indexes
         from services.broker_router_audit import ensure_indexes as _broker_audit_indexes
         from services.slippage_anomaly import ensure_indexes as _slippage_alerts_indexes
-        from services.alpha_account_overlay import ensure_indexes as _overlay_indexes
         await _crypto_audit_indexes(db)
         await _research_cache_indexes(db)
         await _adv_log_indexes(db)
         await _broker_audit_indexes(db)
         await _slippage_alerts_indexes(db)
-        await _overlay_indexes(db)
     except Exception as e:
         logger.debug(f"Crypto audit / research-cache / adv-log / broker-audit indexes: {e}")
 
