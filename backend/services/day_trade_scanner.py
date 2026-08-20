@@ -627,4 +627,42 @@ async def run_scan(db: Any, asset_class: AssetClass) -> ScanResult:
         total_scanned=total_scanned,
     )
     await _write_scan_log(db, result)
+
+    # ── Atlas: fire-and-forget cycle trace summary ──
+    # Records the final terminal_result + stage timings in one
+    # background write. Never blocks the scan cycle. See
+    # /app/backend/services/atlas_bridge.py doctrine pins.
+    try:
+        from services import atlas_bridge as _atlas
+        _t0 = int(started.timestamp() * 1e9)
+        _t1 = int(finished.timestamp() * 1e9)
+        if chosen is None and total_scanned == 0:
+            _terminal = "NO_SETUP"
+        elif chosen is None:
+            _terminal = "BRAIN_HOLD"
+        else:
+            _terminal = "INTENT_CREATED"
+        _atlas.trace_cycle_async(
+            stack="mission_control",
+            lane=asset_class,
+            symbol=chosen.symbol if chosen else None,
+            stages=[
+                {"stage": "market_event", "outcome": "observed", "timestamp_ns": _t0},
+                {"stage": "scanner_decision",
+                 "outcome": "setup_found" if chosen else ("all_blocked" if blocked else "no_setup"),
+                 "timestamp_ns": _t0 + 1,
+                 "details": {"total_scanned": total_scanned, "blocked": blocked,
+                             "survivors": len(survivors)}},
+                {"stage": "intent_created" if chosen else "outcome",
+                 "outcome": "accepted" if chosen else "none",
+                 "timestamp_ns": _t1,
+                 "details": {"chosen_symbol": chosen.symbol if chosen else None}},
+            ],
+            terminal_result=_terminal,
+            reason_code=(chosen.gate_blocker if chosen and not chosen.gate_passed else None),
+            correlation_id=scan_id,
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
     return result

@@ -1,5 +1,32 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (System Atlas wired, safely)
+
+### 🧭 RISEDUAL System Atlas integrated as observation-only
+
+The parked Atlas package is now wired into the trading pipeline through a **fire-and-forget bridge** (`services/atlas_bridge.py`) that is structurally incapable of hanging or slowing a trade — addressing the exact reason it was parked before (SQLite `BEGIN IMMEDIATE` + 5s `busy_timeout` freezing the trade path under contention).
+
+**Safety architecture (see [POSTMORTEM_ACCOUNT_AWARE_OVERLAY.md](../docs/POSTMORTEM_ACCOUNT_AWARE_OVERLAY.md) rule 8):**
+
+- **No synchronous ledger call on the trade-critical path.** Every write is scheduled via `asyncio.create_task(...)` in a thread executor with a **100 ms hard timeout** — timeout cancels the task, trade proceeds untouched.
+- **Observation-only, always.** Duplicate suppression is never enforced — no gate lives here. The overlay lesson applied verbatim.
+- **Kill switch:** `RISEDUAL_ATLAS_ENABLED` env var (default ON). Flip to `0` to disable everything without a code deploy.
+
+**5 seams wired:**
+1. **Startup init** (`server.py`) — creates ledger at `/app/backend/var/risedual_atlas.sqlite3`.
+2. **Intent-ingest claim** (`public_equity_live_executor.maybe_route_live`) — fires an async claim just before `place_order`.
+3. **Lifecycle transitions** — background APPROVED → SUBMITTED → TERMINAL/REJECTED as the broker call resolves.
+4. **Cycle traces** (`day_trade_scanner.run_scan`) — single background batch write per scan (no inline `mark()` calls on the hot path).
+5. **Admin diagnostics** — `GET /api/admin/atlas/{status,intents,traces/{trace_id}}`.
+
+**Latency-budget contract enforced by test suite** (`tests/test_atlas_bridge_latency.py`, 7/7 pass): even with a deliberately-stuck ledger (every write blocks 10 seconds), every bridge helper returns from the caller's perspective in **under 5 ms**. Stuck writes are cancelled by the 100 ms budget.
+
+**Also cleaned up in this drop:**
+- Deleted inert `services/promotion_gate.py` + `services/promotion_gate_service.py` (never wired in, landmine removed).
+- Updated overlay post-mortem doc with rule 8: "No synchronous SQLite/network call on the trade-critical path."
+
+---
+
 ## Latest Update — 2026-02 (Overlay post-mortem doc)
 
 ### 📄 Account-Aware Overlay post-mortem published

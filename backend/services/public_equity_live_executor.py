@@ -754,6 +754,24 @@ async def maybe_route_live(
         return None
     order_side = "buy" if intent_kind == "open_long" else "sell"
     client_order_id = str(uuid.uuid4())
+
+    # ── Atlas: fire-and-forget observational claim. Runs in a
+    # background task with a hard 100 ms budget — Atlas is
+    # structurally incapable of blocking or slowing this trade.
+    # NEVER gates, NEVER awaits synchronously. See
+    # /app/docs/POSTMORTEM_ACCOUNT_AWARE_OVERLAY.md rule 8.
+    _atlas_intent_id: Optional[str] = None
+    try:
+        from services import atlas_bridge as _atlas
+        _atlas_intent_id = _atlas.observe_intent_async({
+            **intent,
+            "symbol": symbol,
+            "direction": "BUY" if intent_kind == "open_long" else "SELL",
+            "strategy_id": strategy_id_raw,
+        })
+    except Exception:  # noqa: BLE001
+        _atlas_intent_id = None
+
     _submit_start_ns = time.time_ns()
     try:
         resp = client.place_order(
@@ -776,6 +794,12 @@ async def maybe_route_live(
             )
         except Exception:  # noqa: BLE001
             pass
+        try:
+            from services import atlas_bridge as _atlas
+            _atlas.transition_async(_atlas_intent_id, "rejected",
+                                    reason_code=f"exception:{exc.__class__.__name__}")
+        except Exception:  # noqa: BLE001
+            pass
         return None
     _ack_ms = (time.time_ns() - _submit_start_ns) // 1_000_000
     if not resp:
@@ -795,6 +819,12 @@ async def maybe_route_live(
             )
         except Exception:  # noqa: BLE001
             pass
+        try:
+            from services import atlas_bridge as _atlas
+            _atlas.transition_async(_atlas_intent_id, "rejected",
+                                    reason_code="empty_response")
+        except Exception:  # noqa: BLE001
+            pass
         return None
 
     order_id = resp.get("id") or ""
@@ -808,6 +838,12 @@ async def maybe_route_live(
             fill_price=float(resp.get("fillPrice") or resp.get("filled_avg_price") or 0.0) or None,
             status=str(resp.get("status") or "accepted"), error=None,
         )
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from services import atlas_bridge as _atlas
+        _atlas.transition_async(_atlas_intent_id, "submitted",
+                                broker_order_id=str(order_id) if order_id else None)
     except Exception:  # noqa: BLE001
         pass
     trade_id = str(uuid.uuid4())
@@ -839,6 +875,12 @@ async def maybe_route_live(
             "(SELL signal — closed long position)",
             symbol, qty, mark, order_id,
         )
+        try:
+            from services import atlas_bridge as _atlas
+            _atlas.transition_async(_atlas_intent_id, "terminal",
+                                    reason_code="close_filled")
+        except Exception:  # noqa: BLE001
+            pass
         return {
             "trade_id": existing_row.get("trade_id") if existing_row else trade_id,
             "broker_id": "public",
@@ -903,6 +945,12 @@ async def maybe_route_live(
         "order_id=%s trade_id=%s",
         symbol, qty, mark, notional, order_id, trade_id,
     )
+    try:
+        from services import atlas_bridge as _atlas
+        _atlas.transition_async(_atlas_intent_id, "terminal",
+                                reason_code="open_filled")
+    except Exception:  # noqa: BLE001
+        pass
     return row
 
 

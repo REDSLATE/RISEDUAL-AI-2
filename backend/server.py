@@ -539,6 +539,23 @@ async def startup_event():
     except Exception as e:  # noqa: BLE001
         logger.warning(f"mc_keys_proxy wire-up failed (non-critical): {e}")
 
+    # RISEDUAL System Atlas — compact SQLite ledger for intent identity,
+    # lifecycle, and cycle traces. Fully observational by default
+    # (RISEDUAL_ATLAS_DEDUPE_ENFORCE OFF). Master kill switch
+    # RISEDUAL_ATLAS_ENABLED (default ON). Fail-soft: any init error
+    # logs + continues — Atlas must never block boot.
+    try:
+        from services.atlas_bridge import init_ledger as _atlas_init
+        _atlas_ledger = _atlas_init()
+        app.state.atlas_ledger = _atlas_ledger
+        logger.info(
+            "[atlas] startup: ledger=%s",
+            "wired" if _atlas_ledger is not None else "disabled",
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[atlas] wire-up failed (non-critical): {e}")
+        app.state.atlas_ledger = None
+
     # Phase 1 — Shelly Federation pipeline singleton.
     # Initialises the 5-Shelly federation (Alpha/Camaro/Chevelle/RedEye + MC)
     # and registers it on the MC emitter so any MC verifier site that

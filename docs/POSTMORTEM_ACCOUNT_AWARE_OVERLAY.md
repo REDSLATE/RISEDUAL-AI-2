@@ -51,6 +51,7 @@ Any component that can prevent Alpha (or any bot) from firing an intent must sat
 5. **Shadow → Enforce is a human decision, not a calendar.** Shadow-mode metrics must be reviewed by the operator before any enforcement is turned on. The system may *recommend* promotion ("N days, X% false-positive rate — consider enforcing"), but the flip is manual.
 6. **No hidden state.** Gate current mode, last transition timestamp, last transition actor, and last N decisions must be queryable via a single admin endpoint. If it isn't in the admin API, it doesn't exist.
 7. **Reversible without a code deploy.** Toggling any gate off (globally or per-symbol) must be doable via env var flip or admin endpoint, not by shipping code. This session's outage required a code deploy to escape.
+8. **No synchronous SQLite/network call on the trade-critical path.** Any new component that persists state (audit log, ledger, telemetry) must be fire-and-forget: schedule via `asyncio.create_task(...)` inside a thread executor, with a hard timeout (≤ 100 ms) that cancels the write and lets the trade proceed. **Rationale:** the RISEDUAL System Atlas ledger uses `BEGIN IMMEDIATE` with a 5-second `busy_timeout`; a single lock contention (multi-worker, WAL checkpoint, competing writer) previously froze the trade path for seconds. Never again.
 
 ---
 

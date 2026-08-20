@@ -6,6 +6,21 @@ here. Roll an entry from PRD.md → CHANGELOG.md once it's >30 days old or PRD.m
 
 ## 4. What's Been Implemented (cumulative)
 
+### RISEDUAL System Atlas — fire-and-forget integration (Feb 2026)
+
+Wired the parked System Atlas package (`risedual_atlas/`, vendored) into the trading pipeline **without adding any synchronous ledger call to the trade path**. Previous Atlas attempts hung/lagged because AtlasLedger uses SQLite `BEGIN IMMEDIATE` + a 5s `busy_timeout`; this integration solves that at the design level.
+
+Files:
+- `services/atlas_bridge.py` — fire-and-forget wrappers (`observe_intent_async`, `transition_async`, `trace_cycle_async`) that schedule ledger writes in a thread executor with a hard 100 ms budget.
+- `routes/admin_atlas.py` — read-only diagnostics: `GET /api/admin/atlas/status|intents|traces/{trace_id}`.
+- `tests/test_atlas_bridge_latency.py` — 7 tests, all pass, including "stuck ledger simulation" proving caller latency < 5 ms even when the ledger is deliberately jammed.
+
+Seams wired: startup init in `server.py`, intent claim + lifecycle transitions in `public_equity_live_executor.py` (APPROVED/SUBMITTED/TERMINAL/REJECTED), cycle-trace summary in `day_trade_scanner.py`.
+
+Kill switch: `RISEDUAL_ATLAS_ENABLED` (default ON). Atlas is **observation-only** — never gates a trade, never enforces dedupe.
+
+Also removed inert files: `services/promotion_gate.py` and `services/promotion_gate_service.py` (never wired anywhere).
+
 ### Account-Aware Overlay Post-Mortem Doc (Feb 2026)
 
 Published [`/app/docs/POSTMORTEM_ACCOUNT_AWARE_OVERLAY.md`](../docs/POSTMORTEM_ACCOUNT_AWARE_OVERLAY.md) — an internal post-mortem for the Alpha Overlay incident (SEV-1 production trading halt caused by a silent SHADOW → HARD_GATE auto-promotion after 7 days, compounded by treating `EXISTING_POSITION` as a BLOCK).
