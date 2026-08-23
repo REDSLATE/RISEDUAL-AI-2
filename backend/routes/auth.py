@@ -642,22 +642,15 @@ async def seed_admin():
     Historical note: there used to be two separate seed blocks — `admin` and
     `owner` (Red Slate Holdings). The Red Slate account was deactivated by
     user directive in Feb 2026, and we consolidated to a single owner at
-    `admin@risedual.ai`. The cleanup below also deletes any lingering
-    `role: merged` Red Slate row on production so the bug where the only
-    `role: owner` user was deactivated (blocking broker live trades) cannot
-    recur.
+    `admin@risedual.ai`. The one-shot cleanup that used to delete any
+    lingering banned-owner rows on startup has been removed (2026-02):
+    the cleanup ran successfully on production long ago, so the loop was
+    a permanent no-op that violated the deployment safety policy
+    ("no destructive DB write on startup"). ``_BANNED_OWNER_EMAILS`` is
+    retained and used at import time to reject a misconfigured
+    ``OWNER_EMAIL`` env var (see :func:`_owner_email`) — that guard is
+    read-only and stays.
     """
-    # One-shot cleanup: remove every banned-owner row (e.g. Red Slate Holdings).
-    # Intentionally unconditional on role — these accounts must never exist
-    # going forward. Safe on every startup: no-op once gone.
-    for banned in _BANNED_OWNER_EMAILS:
-        try:
-            res = await db.users.delete_one({"email": banned})
-            if res.deleted_count:
-                logging.info(f"Seed cleanup: removed banned owner row {banned}.")
-        except Exception as e:
-            logging.warning(f"Seed cleanup for {banned} failed (non-critical): {e}")
-
     # Seed RISEDUAL owner
     if not OWNER_PASSWORD:
         logging.warning("OWNER_PASSWORD not set in .env, skipping owner seed")
