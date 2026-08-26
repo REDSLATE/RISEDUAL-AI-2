@@ -1,0 +1,22 @@
+{
+  "summary": "Verified CI 'Data-Integrity Gate' fix for direction-tuple lint. Ran the 6 pytest files specified in the review request. All 80 tests pass. The ALLOWLIST additions in test_no_local_direction_tuples.py for services/council_consultation.py and services/operator_watchlist.py are recognized, the justification-quality check and 'allowlist entries all exist' check both pass, and no downstream regressions in the executor/routing/audit tests where the council modulator was wired.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_no_local_direction_tuples.py",
+    "/app/backend/tests/test_council_consultation.py",
+    "/app/backend/tests/test_operator_watchlist.py",
+    "/app/backend/tests/test_public_equity_live_executor.py",
+    "/app/backend/tests/test_bot_live_routing.py",
+    "/app/backend/tests/test_intent_audit.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (80/80)", "frontend": "N/A"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Direction-tuple lint fix verified locally. Results per file: test_no_local_direction_tuples.py 4/4, test_council_consultation.py 11/11 (including test_kill_switch_off_forces_modulator_one confirming RISEDUAL_COUNCIL_MODULATE_ENABLED defaults OFF -> modulator=1.0), test_operator_watchlist.py 11/11, test_public_equity_live_executor.py 29/29, test_bot_live_routing.py 9/9, test_intent_audit.py 16/16. Total 80/80 in ~4.2s. Safe to push; CI Data-Integrity Gate should go green.",
+  "rca of the issue": "Root cause: two new service files (services/council_consultation.py, services/operator_watchlist.py) contained legitimate direction-lookalike token sets (norm_direction mapping + _TICKER_STOPLIST) but were not on the direction-tuple lint's ALLOWLIST. Fix (already in code): added both paths to ALLOWLIST in test_no_local_direction_tuples.py with justifications >=20 chars. Verified: lint now passes and no side effects on wired executor tests."
+}

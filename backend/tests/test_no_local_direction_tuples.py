@@ -79,6 +79,25 @@ ALLOWLIST: dict[str, str] = {
         "vocabulary; canonicalising elsewhere would just move the "
         "tuple to a different site."
     ),
+    "services/council_consultation.py": (
+        "Council vocabulary shim — normalises every direction variant "
+        "(LONG/BUY/UP/BULLISH/STRONG_BUY/... etc.) coming from three "
+        "different brain sources into a compact {up, down, flat} space "
+        "used by the modulator. Same pattern as atlas_bridge — a "
+        "translation seam at the boundary between external vocabularies "
+        "and this service's internal 3-symbol space. Cannot be moved "
+        "into canonical_direction because the mapping targets a "
+        "council-specific vocabulary ({up, down, flat}) that's narrower "
+        "than the canonical AI direction set."
+    ),
+    "services/operator_watchlist.py": (
+        "Non-ticker stoplist — the tokens BUY/SELL/LONG/SHORT/UP/DOWN "
+        "are listed here as words that LOOK like tickers when uppercase "
+        "but never are. This is a lexical filter for the free-text "
+        "parser, not a direction semantic. The lint would need "
+        "structural awareness to distinguish; adding the file here is "
+        "the correct scope."
+    ),
     # Portable platform survival layer — deliberately zero-dependency
     # so it can be forked into sibling services / run on Railway /
     # Render / VPS without dragging the rest of the codebase along.
