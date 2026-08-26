@@ -66,3 +66,9 @@ chainlit.md
 # Data and databases
 agenthub/agents/youtube/db
 
+.env
+.env.*
+*.env
+credentials.json
+*.key
+.credentials
