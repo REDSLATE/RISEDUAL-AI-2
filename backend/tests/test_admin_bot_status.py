@@ -114,7 +114,14 @@ async def test_verdict_ok_when_universe_and_regime_are_healthy(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_verdict_holding_when_regime_is_chop(monkeypatch):
+async def test_verdict_chop_regime_arms_mean_reversion_playbook(monkeypatch):
+    """Chop regime is no longer a stand-down state.
+
+    Since 2026-02 Alpha has a mean-reversion pattern family that arms
+    specifically during chop, so the verdict must NOT be "holding".
+    The headline must mention the mean-reversion playbook so the
+    operator sees why Alpha will still trade in chop.
+    """
     now = datetime.now(timezone.utc)
     db = _FakeDB(
         top_universe=[{"symbol": "NVDA", "updated_at": now}],
@@ -129,8 +136,15 @@ async def test_verdict_holding_when_regime_is_chop(monkeypatch):
     ab.set_db(db)
     monkeypatch.setattr(ab, "_require_admin", _fake_admin)
     result = await ab.bot_status(SimpleNamespace())
-    assert result["verdict"]["severity"] == "holding"
-    assert "chop" in result["verdict"]["headline"].lower()
+    # Severity is warn (no live fill on record) but NOT holding —
+    # holding is the old "standing down" state we removed.
+    assert result["verdict"]["severity"] != "holding"
+    headline = result["verdict"]["headline"].lower()
+    details = " ".join(result["verdict"].get("details") or []).lower()
+    # Either the headline or a details line must mention mean-reversion
+    assert "mean-reversion" in headline or "mean-reversion" in details
+    # And the regime label must still be surfaced somewhere
+    assert "chop" in headline or "chop" in details
 
 
 @pytest.mark.asyncio

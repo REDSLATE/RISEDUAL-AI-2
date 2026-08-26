@@ -104,6 +104,53 @@ def _live_confidence_floor() -> float:
     return v
 
 
+def _live_confidence_floor_chop() -> float:
+    """Confidence floor override when the current regime is chop.
+
+    2026-02: Alpha now has a mean-reversion pattern family that
+    arms during chop regimes (see ``alpha_day_trader.MEAN_REVERT_PATTERNS``).
+    Mean-reversion setups naturally score lower than momentum setups
+    (thinner risk-reward, no volume expansion tailwind), so the 0.65
+    momentum-era floor silently prevented every chop-day trade from
+    firing. Default 0.55 keeps a real floor while letting the chop
+    playbook actually fire. Override via ``PUBLIC_LIVE_CONFIDENCE_FLOOR_CHOP``.
+    """
+    raw = (os.environ.get("PUBLIC_LIVE_CONFIDENCE_FLOOR_CHOP") or "").strip()
+    if not raw:
+        return 0.55
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        return 0.55
+    if v < 0.0:
+        return 0.0
+    if v > 0.95:
+        return 0.95
+    return v
+
+
+def _effective_confidence_floor(intent: Mapping[str, Any]) -> tuple[float, str]:
+    """Return (floor, label) — label is ``chop`` or ``default``.
+
+    Reads the intent's ``regime`` / ``fast_regime`` tags stamped by
+    Alpha and picks the chop-relaxed floor when either matches a chop
+    token. Missing regime tags → default floor (no downside vs. the
+    prior behaviour).
+    """
+    def _has_chop(*labels: Any) -> bool:
+        for lbl in labels:
+            if not lbl:
+                continue
+            low = str(lbl).lower()
+            if "chop" in low or "meanrevert" in low or "range" in low:
+                return True
+        return False
+
+    if _has_chop(intent.get("regime"), intent.get("fast_regime")):
+        return _live_confidence_floor_chop(), "chop"
+    return _live_confidence_floor(), "default"
+
+
 def _symbol_cooldown_min() -> int:
     """Per-symbol re-fire cooldown in minutes. Default 60.
 
@@ -530,15 +577,18 @@ async def maybe_route_live(
     # saturation cap from earlier today caps the upper end; this
     # floor sets the lower end.
     confidence = float(intent.get("confidence") or 0.0)
-    floor = _live_confidence_floor()
+    floor, floor_label = _effective_confidence_floor(intent)
     if confidence < floor:
         logger.info(
-            "[public-live] symbol=%s SKIPPED — confidence %.2f below floor %.2f",
-            symbol, confidence, floor,
+            "[public-live] symbol=%s SKIPPED — confidence %.2f below floor %.2f (%s)",
+            symbol, confidence, floor, floor_label,
         )
         await _log_skip(db, symbol=symbol, reason="confidence_floor",
                         intent=intent,
-                        detail={"confidence": confidence, "floor": floor})
+                        detail={"confidence": confidence, "floor": floor,
+                                "floor_label": floor_label,
+                                "regime": intent.get("regime"),
+                                "fast_regime": intent.get("fast_regime")})
         return None
 
     allow = _allowed_symbols()

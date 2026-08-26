@@ -224,13 +224,21 @@ def _build_verdict(
             "details": ["Run POST /api/admin/top-universe/rebuild to seed it"],
         }
 
-    # Regime chop → deliberate stand-down.
+    # Regime chop → mean-reversion playbook now armed (2026-02).
+    # Previously flagged as "Standing down by design"; Alpha now has
+    # a full mean-reversion pattern family (VWAP fade, range-low
+    # bounce, opening-drive fade) that arms specifically during chop
+    # regimes, and the executor confidence floor drops to 0.55 for
+    # chop-tagged intents. So chop is no longer a stand-down state.
     slow_label = (slow or {}).get("label", "") or ""
     fast_label = (fast or {}).get("label", "") or ""
-    if "chop" in slow_label.lower() or "chop" in fast_label.lower() or "meanrevert" in slow_label.lower():
-        severity = "holding"
+    in_chop = ("chop" in slow_label.lower()
+               or "chop" in fast_label.lower()
+               or "meanrevert" in slow_label.lower())
+    if in_chop:
         reason_lines.append(
-            f"Regime = {slow_label or 'unknown'} (slow) / {fast_label or 'unknown'} (fast)"
+            f"Regime = {slow_label or 'unknown'} (slow) / {fast_label or 'unknown'} (fast) — "
+            "mean-reversion playbook armed"
         )
 
     # Last fill recency.
@@ -255,12 +263,12 @@ def _build_verdict(
             f"Top 24h skip reason: {top_skip['reason']} × {top_skip['count']}"
         )
 
-    if severity == "holding":
-        headline = "Standing down by design — market regime is chop"
-    elif severity == "warn":
+    if severity == "warn":
         headline = "Bot healthy but idle — no recent activity to report on"
     elif severity == "broken":
         headline = "Bot appears stuck — see details"
+    elif in_chop:
+        headline = "Bot trading — chop regime, mean-reversion playbook armed"
     else:
         headline = "Bot trading normally"
 

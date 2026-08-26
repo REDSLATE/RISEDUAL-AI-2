@@ -104,11 +104,59 @@ def _min_opportunity_score() -> float:
 
 
 class SetupType(str, Enum):
+    # ── Momentum family (arm best in trending / risk-on regimes) ──
     BREAKOUT = "breakout"
     PULLBACK = "pullback"
     VWAP_RECLAIM = "vwap_reclaim"
     HOD_BREAK = "high_of_day_break"
     MOMENTUM_REACCELERATION = "momentum_reacceleration"
+    # ── Mean-reversion family (arm best in chop regimes) ──
+    # Added 2026-02: previously Alpha only understood momentum, so
+    # ``session_chop``/``choppy_meanrevert`` regimes produced zero
+    # setups (bot sat idle for days). These patterns give Alpha a
+    # play for every regime — long-only (Public.com is cash-only).
+    VWAP_FADE_LONG = "vwap_fade_long"
+    RANGE_LOW_BOUNCE = "range_low_bounce"
+    OPENING_DRIVE_FADE = "opening_drive_fade"
+
+
+# Patterns that thrive in chop regimes (used by the score gain/penalty
+# below). Kept as module-level constants so both the detector and the
+# executor floor logic can share the same taxonomy.
+MEAN_REVERT_PATTERNS: frozenset[str] = frozenset({
+    SetupType.VWAP_FADE_LONG.value,
+    SetupType.RANGE_LOW_BOUNCE.value,
+    SetupType.OPENING_DRIVE_FADE.value,
+    SetupType.PULLBACK.value,  # pullback straddles both families
+})
+
+MOMENTUM_PATTERNS: frozenset[str] = frozenset({
+    SetupType.BREAKOUT.value,
+    SetupType.VWAP_RECLAIM.value,
+    SetupType.HOD_BREAK.value,
+    SetupType.MOMENTUM_REACCELERATION.value,
+})
+
+# Regime labels that indicate a chop / mean-reversion market state.
+# Kept lowercase-substring-matched so upstream label renames don't
+# silently disable the gate.
+CHOP_REGIME_TOKENS: tuple[str, ...] = (
+    "chop",
+    "meanrevert",
+    "range",
+)
+
+
+def _is_chop_regime(*labels: Optional[str]) -> bool:
+    """Return True if any of the provided regime labels reads as chop."""
+    for lbl in labels:
+        if not lbl:
+            continue
+        low = str(lbl).lower()
+        for tok in CHOP_REGIME_TOKENS:
+            if tok in low:
+                return True
+    return False
 
 
 class SetupState(str, Enum):
@@ -315,14 +363,117 @@ class AlphaOpportunityScanner:
 
 
 class AlphaPatternEngine:
-    """Detects candidate setups. Never gates — produces or returns None."""
+    """Detects candidate setups. Never gates — produces or returns None.
 
-    def detect(self, m: MarketSnapshot) -> Optional[ActiveSetup]:
+    ``detect`` accepts an optional regime context so mean-reversion
+    patterns can be armed during chop and momentum patterns can be
+    softly de-emphasized (never suppressed) in the same regime.
+    Missing regime → treated as neutral; every pattern is evaluated.
+    """
+
+    # Score bonuses/penalties applied AFTER a pattern matches so we
+    # keep the raw setup shape checks unchanged and only bias the
+    # confidence signal. Bounded so a pattern's score always stays
+    # in [0, 1].
+    CHOP_BOOST_MEAN_REVERT: float = 0.10
+    CHOP_PENALTY_MOMENTUM: float = 0.05
+
+    def _regime_bias(self, setup: "ActiveSetup", *,
+                     slow_regime: Optional[str],
+                     fast_regime: Optional[str]) -> float:
+        chop = _is_chop_regime(slow_regime, fast_regime)
+        if not chop:
+            return 0.0
+        if setup.setup_type.value in MEAN_REVERT_PATTERNS:
+            return self.CHOP_BOOST_MEAN_REVERT
+        if setup.setup_type.value in MOMENTUM_PATTERNS:
+            return -self.CHOP_PENALTY_MOMENTUM
+        return 0.0
+
+    def detect(
+        self,
+        m: MarketSnapshot,
+        *,
+        slow_regime: Optional[str] = None,
+        fast_regime: Optional[str] = None,
+    ) -> Optional[ActiveSetup]:
         now = m.timestamp
+        chop = _is_chop_regime(slow_regime, fast_regime)
+
+        # ── Mean-reversion family — evaluated FIRST during chop so a
+        # legitimate mean-revert signal isn't shadowed by a weak
+        # momentum match on the same bar. Outside chop these patterns
+        # still fire when the raw shape is present, they just don't
+        # get the score boost.
+        if m.vwap > 0 and m.price > 0:
+            vwap_stretch = (m.vwap - m.price) / m.vwap  # positive when price BELOW vwap
+            # ── VWAP fade long: price stretched ≥0.4% below VWAP,
+            # volume tapering (rvol modest), red bar exhaustion.
+            if (vwap_stretch >= 0.004 and vwap_stretch <= 0.03
+                    and m.relative_volume >= 0.8 and m.relative_volume <= 2.5
+                    and m.pct_change <= -0.3):
+                base = 0.62
+                setup = ActiveSetup(
+                    setup_id=str(uuid.uuid4()),
+                    symbol=m.symbol,
+                    setup_type=SetupType.VWAP_FADE_LONG,
+                    state=SetupState.WATCHING,
+                    detected_at=now,
+                    reference_price=m.price,
+                    # Trigger on reclaim toward VWAP: small move up
+                    trigger_price=m.price * 1.003,
+                    # Invalidate on a fresh new low below current bar
+                    invalidation_price=m.low * 0.997 if m.low > 0 else m.price * 0.99,
+                    score=min(1.0, base + self._regime_bias_by_type(SetupType.VWAP_FADE_LONG.value, chop)),
+                )
+                return setup
+
+        # ── Range low bounce: price at intraday low with low rvol
+        # (sellers exhausted). Common in session_chop.
+        if m.high > 0 and m.low > 0 and m.price > 0 and m.high > m.low:
+            depth = (m.high - m.price) / (m.high - m.low)
+            if (depth >= 0.75  # bottom quarter of the day's range
+                    and m.relative_volume <= 1.5
+                    and m.pct_change >= -3.0  # not in freefall
+                    and m.pct_change <= -0.2):
+                base = 0.60
+                return ActiveSetup(
+                    setup_id=str(uuid.uuid4()),
+                    symbol=m.symbol,
+                    setup_type=SetupType.RANGE_LOW_BOUNCE,
+                    state=SetupState.WATCHING,
+                    detected_at=now,
+                    reference_price=m.price,
+                    trigger_price=m.price * 1.004,
+                    invalidation_price=m.low * 0.995,
+                    score=min(1.0, base + self._regime_bias_by_type(SetupType.RANGE_LOW_BOUNCE.value, chop)),
+                )
+
+        # ── Opening-drive fade: strong AM move that stalled — price
+        # reverting back toward open. Long-only side: gap-down that
+        # is being bought back through the open.
+        if (m.open_price > 0 and m.price > 0 and m.pct_change < 0
+                and m.price >= m.open_price * 0.992
+                and m.price <= m.open_price * 1.002
+                and m.relative_volume >= 1.0):
+            base = 0.63
+            return ActiveSetup(
+                setup_id=str(uuid.uuid4()),
+                symbol=m.symbol,
+                setup_type=SetupType.OPENING_DRIVE_FADE,
+                state=SetupState.WATCHING,
+                detected_at=now,
+                reference_price=m.price,
+                trigger_price=m.open_price * 1.002,
+                invalidation_price=m.low * 0.997 if m.low > 0 else m.price * 0.99,
+                score=min(1.0, base + self._regime_bias_by_type(SetupType.OPENING_DRIVE_FADE.value, chop)),
+            )
+
         # ── VWAP reclaim ──
         if m.vwap > 0:
             vwap_distance = (m.price - m.vwap) / m.vwap
             if 0 <= vwap_distance <= 0.004 and m.relative_volume >= 1.5 and m.volume_acceleration >= 1.1:
+                base = 0.65
                 return ActiveSetup(
                     setup_id=str(uuid.uuid4()),
                     symbol=m.symbol,
@@ -332,12 +483,13 @@ class AlphaPatternEngine:
                     reference_price=m.price,
                     trigger_price=m.price * 1.002,
                     invalidation_price=m.vwap * 0.995,
-                    score=0.65,
+                    score=max(0.0, min(1.0, base + self._regime_bias_by_type(SetupType.VWAP_RECLAIM.value, chop))),
                 )
         # ── High-of-day breakout ──
         if m.price > 0:
             distance_to_high = (m.high - m.price) / m.price
             if 0 <= distance_to_high <= 0.005 and m.relative_volume >= 2.0 and m.volume_acceleration >= 1.25:
+                base = 0.72
                 return ActiveSetup(
                     setup_id=str(uuid.uuid4()),
                     symbol=m.symbol,
@@ -347,10 +499,11 @@ class AlphaPatternEngine:
                     reference_price=m.price,
                     trigger_price=m.high * 1.001,
                     invalidation_price=max(m.vwap, m.price * 0.98),
-                    score=0.72,
+                    score=max(0.0, min(1.0, base + self._regime_bias_by_type(SetupType.HOD_BREAK.value, chop))),
                 )
         # ── Breakout above prior-bar high with rising volume ──
         if m.high > 0 and m.price >= m.high * 0.998 and m.relative_volume >= 2.5:
+            base = 0.70
             return ActiveSetup(
                 setup_id=str(uuid.uuid4()),
                 symbol=m.symbol,
@@ -360,10 +513,11 @@ class AlphaPatternEngine:
                 reference_price=m.price,
                 trigger_price=m.high * 1.002,
                 invalidation_price=max(m.vwap * 0.99, m.price * 0.97),
-                score=0.70,
+                score=max(0.0, min(1.0, base + self._regime_bias_by_type(SetupType.BREAKOUT.value, chop))),
             )
         # ── Pullback: price above VWAP + intraday down move ≥ 1% + volume steady ──
         if m.vwap > 0 and m.price > m.vwap and -3.0 <= m.pct_change <= -0.5 and m.relative_volume >= 1.2:
+            base = 0.62
             return ActiveSetup(
                 setup_id=str(uuid.uuid4()),
                 symbol=m.symbol,
@@ -373,10 +527,11 @@ class AlphaPatternEngine:
                 reference_price=m.price,
                 trigger_price=m.price * 1.005,
                 invalidation_price=m.vwap * 0.99,
-                score=0.62,
+                score=max(0.0, min(1.0, base + self._regime_bias_by_type(SetupType.PULLBACK.value, chop))),
             )
         # ── Momentum re-acceleration: gap up + volume spike ──
         if m.pct_change >= 3.0 and m.volume_acceleration >= 1.5 and m.price >= m.open_price:
+            base = 0.68
             return ActiveSetup(
                 setup_id=str(uuid.uuid4()),
                 symbol=m.symbol,
@@ -386,9 +541,18 @@ class AlphaPatternEngine:
                 reference_price=m.price,
                 trigger_price=m.price * 1.003,
                 invalidation_price=m.open_price * 0.99,
-                score=0.68,
+                score=max(0.0, min(1.0, base + self._regime_bias_by_type(SetupType.MOMENTUM_REACCELERATION.value, chop))),
             )
         return None
+
+    def _regime_bias_by_type(self, setup_type_value: str, chop: bool) -> float:
+        if not chop:
+            return 0.0
+        if setup_type_value in MEAN_REVERT_PATTERNS:
+            return self.CHOP_BOOST_MEAN_REVERT
+        if setup_type_value in MOMENTUM_PATTERNS:
+            return -self.CHOP_PENALTY_MOMENTUM
+        return 0.0
 
 
 # ─── Trigger watcher ──────────────────────────────────────────────
@@ -459,7 +623,13 @@ def _build_intent_dict(intent: TradeIntent) -> dict:
         "source_signal": "alpha_daytrader:v1",
         "prediction_id": intent.intent_id,
         "scan_id": None,
-        "regime": None,
+        # Propagate regime + setup_type up to the executor so the
+        # confidence floor gate can be regime-aware (chop regimes use
+        # a lower floor because mean-reversion setups naturally
+        # score lower than momentum setups).
+        "regime": intent.reason.get("regime"),
+        "fast_regime": intent.reason.get("fast_regime"),
+        "setup_type": intent.reason.get("setup"),
         "predicted_move_pct": None,
         "sovereign_decision_id": None,
         # Extended payload for auditing.
@@ -764,12 +934,36 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
     ranked = scanner.rank(snapshots, top_n=_max_active_setups())
     min_score = _min_opportunity_score()
 
+    # ── Regime context (fetched ONCE per tick, best-effort) ──
+    # Fetched BEFORE pattern detection so mean-reversion setups can
+    # arm during chop and momentum setups can be softly de-emphasized
+    # in the same regime. Regime labels are non-blocking — missing
+    # data becomes UNKNOWN and every pattern is evaluated as usual.
+    tick_slow_regime: Optional[str] = None
+    tick_fast_regime: Optional[str] = None
+    try:
+        from services.market_regime import get_current as _get_regime
+        regime_doc = await _get_regime(db)
+        tick_slow_regime = str(regime_doc.get("label") or "UNKNOWN")
+    except Exception:  # noqa: BLE001
+        tick_slow_regime = "UNKNOWN"
+    try:
+        from services.fast_intraday_regime import get_current as _get_fast
+        fast_doc = await _get_fast(db)
+        tick_fast_regime = str(fast_doc.get("label") or "UNKNOWN")
+    except Exception:  # noqa: BLE001
+        tick_fast_regime = "UNKNOWN"
+
     # ── discovery + pattern detection ──
     new_setups = 0
     for snap, opp_score in ranked:
         if opp_score < min_score:
             continue
-        candidate = patterns.detect(snap)
+        candidate = patterns.detect(
+            snap,
+            slow_regime=tick_slow_regime,
+            fast_regime=tick_fast_regime,
+        )
         if candidate is None:
             continue
         setup, is_new = await _get_or_create_setup(db, candidate)
@@ -826,20 +1020,11 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
         })
 
         # ── regime + edge lookup (both are NON-BLOCKING modifiers) ──
-        regime_label = "UNKNOWN"
-        fast_regime_label = "UNKNOWN"
-        try:
-            from services.market_regime import get_current as _get_regime
-            regime_doc = await _get_regime(db)
-            regime_label = str(regime_doc.get("label") or "UNKNOWN")
-        except Exception:  # noqa: BLE001
-            pass
-        try:
-            from services.fast_intraday_regime import get_current as _get_fast
-            fast_doc = await _get_fast(db)
-            fast_regime_label = str(fast_doc.get("label") or "UNKNOWN")
-        except Exception:  # noqa: BLE001
-            pass
+        # Uses the tick-cached regime labels captured before pattern
+        # detection so a single tick is evaluated with a consistent
+        # regime context end-to-end.
+        regime_label = tick_slow_regime or "UNKNOWN"
+        fast_regime_label = tick_fast_regime or "UNKNOWN"
         try:
             from services import alpha_edge_engine as _edge
             edge_info = await _edge.lookup(db, pattern=setup.setup_type.value,

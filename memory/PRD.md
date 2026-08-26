@@ -1,5 +1,40 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (Chop-regime playbook: Alpha now trades in every regime)
+
+### 🎯 Fixed "Alpha never trades" — mean-reversion pattern family shipped
+
+**Symptom (recurring user complaint):** Alpha would sit idle for days when SPY was in `session_chop` / `choppy_meanrevert`. The Bot Status card confessed *"Standing down by design"* but the user's manual Webull P&L on the same days proved chop *is* tradable — Alpha just didn't know how.
+
+**Root cause:** `AlphaPatternEngine` only shipped 5 momentum-family setups (`VWAP_RECLAIM`, `HOD_BREAK`, `BREAKOUT`, `PULLBACK`, `MOMENTUM_REACCELERATION`). Every one required rising volume + trending price, so during chop the detector produced **zero** setups. Combined with a 0.65 executor confidence floor tuned for momentum, chop days were structurally silent.
+
+**Fix (2-part):**
+1. **Mean-reversion pattern family** in `services/alpha_day_trader.py`:
+   - `VWAP_FADE_LONG` — price stretched 0.4–3% below VWAP, red bar exhaustion (long-only, Public.com is cash-only)
+   - `RANGE_LOW_BOUNCE` — price at bottom quarter of intraday range, low rvol (sellers exhausted)
+   - `OPENING_DRIVE_FADE` — gap-down reclaiming open on rvol ≥ 1.0
+   All three arm outside chop too (raw shape gate), they just get a +0.10 score boost when either slow or fast regime reads as chop. Momentum patterns get a symmetric −0.05 penalty in chop but **never suppressed** (they still fire the same shape checks).
+2. **Regime-aware executor confidence floor** in `services/public_equity_live_executor.py`:
+   - Intents tagged with a chop regime → floor drops to 0.55 (new env `PUBLIC_LIVE_CONFIDENCE_FLOOR_CHOP`, default 0.55)
+   - Intents in trending regimes → floor stays at 0.65 (existing `PUBLIC_LIVE_CONFIDENCE_FLOOR`)
+   - Missing regime → default floor (fail-safe)
+
+**Bot Status update:** `routes/admin_bot_status.py` no longer emits `severity=holding` in chop — headline now reads *"Bot trading — chop regime, mean-reversion playbook armed"*. The old "standing down by design" narrative is gone.
+
+**Test coverage:** New file `tests/test_alpha_mean_reversion_patterns.py` (26 tests, all green): chop-regime detection, per-pattern activation, boost/penalty invariants, effective-floor selection, env override bounds.
+
+**Regression status:** 547 alpha/regime/executor/bot-status tests pass. Existing pattern behaviour is preserved outside chop.
+
+**Files touched:**
+- `services/alpha_day_trader.py` — added `MEAN_REVERT_PATTERNS`, `MOMENTUM_PATTERNS`, `CHOP_REGIME_TOKENS`, `_is_chop_regime`, 3 new `SetupType` values, regime-aware `AlphaPatternEngine.detect(..., slow_regime=, fast_regime=)`, tick-level regime prefetch, regime stamping on the intent dict.
+- `services/public_equity_live_executor.py` — added `_live_confidence_floor_chop()` and `_effective_confidence_floor(intent)`; gate uses the regime-aware floor.
+- `routes/admin_bot_status.py` — chop no longer flagged as `holding`.
+- `tests/test_alpha_mean_reversion_patterns.py` — new (26 tests).
+- `tests/test_admin_bot_status.py` — updated chop verdict test.
+
+---
+
+
 ## Latest Update — 2026-02 (System Atlas wired, safely)
 
 ### 🧭 RISEDUAL System Atlas integrated as observation-only
