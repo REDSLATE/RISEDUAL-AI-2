@@ -80,8 +80,14 @@ def parse_text(text: str) -> list[dict[str, Any]]:
         tickers_in_clause: list[str] = []
         for m in _TICKER_RX.finditer(clause):
             tok = m.group(0)
-            if tok in _TICKER_STOPLIST and not prices:
-                # Skip common non-tickers unless a price hints they're real.
+            if tok in _TICKER_STOPLIST:
+                # Only re-admit a stoplisted token if it's on the soft
+                # allowlist (real ticker AND common English word, e.g.
+                # BE, MU) AND the clause has a nearby price. Otherwise
+                # keep it filtered — a $price near "USD" or "FED" is
+                # never intent to buy USD or FED.
+                if tok in _SOFT_ALLOWLIST and prices:
+                    tickers_in_clause.append(tok)
                 continue
             tickers_in_clause.append(tok)
 
@@ -212,22 +218,27 @@ async def remove_symbol(db: Any, symbol: str) -> int:
 async def coverage_report(db: Any) -> list[dict[str, Any]]:
     """For each active watchlist entry, join the latest
     ``signal_dispatcher`` prediction so ops see which picks Alpha
-    has actually scored. NEVER writes synthetic predictions."""
+    has actually scored. NEVER writes synthetic predictions.
+
+    Note: ``predictions.insert`` in ``prediction_tracker.log_prediction``
+    stores the ISO timestamp under ``timestamp`` (not ``created_at``);
+    the older docstring name was misleading.
+    """
     active = await list_active(db)
     if not active:
         return []
     symbols = [a["symbol"] for a in active]
-    since = datetime.now(timezone.utc) - timedelta(hours=6)
+    since = (datetime.now(timezone.utc) - timedelta(hours=6)).isoformat()
     preds_by_symbol: dict[str, dict[str, Any]] = {}
     cursor = db.predictions.find(
         {
             "symbol": {"$in": symbols},
             "feature": {"$in": ["signal_dispatcher", "paper_trading"]},
-            "created_at": {"$gte": since.isoformat()},
+            "timestamp": {"$gte": since},
         },
         {"_id": 0, "symbol": 1, "direction": 1, "confidence": 1,
-         "calibrated_confidence": 1, "created_at": 1},
-    ).sort("created_at", -1)
+         "calibrated_confidence": 1, "timestamp": 1},
+    ).sort("timestamp", -1)
     async for p in cursor:
         sym = p.get("symbol")
         if sym and sym not in preds_by_symbol:

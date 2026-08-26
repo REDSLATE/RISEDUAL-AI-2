@@ -1,0 +1,20 @@
+{
+  "summary": "Ran the 4 targeted backend test files after code-review fixes for bot-status collection/field names, watchlist coverage_report timestamp field, and watchlist stopword soft-allowlist gate. All 33 tests passed (4 bot-status NEW + 14 operator_watchlist incl. 3 NEW + 11 council + 4 direction-tuple lint). No regressions.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_admin_bot_status.py",
+    "/app/backend/tests/test_operator_watchlist.py",
+    "/app/backend/tests/test_council_consultation.py",
+    "/app/backend/tests/test_no_local_direction_tuples.py",
+    "/app/test_reports/pytest/iteration_196.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (33/33)", "frontend": "n/a"},
+  "seed_data_creation": "none",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 196 verified 3 code-review fixes: (1) admin_bot_status.py collection/field name corrections (top_universe, alpha_regime_state, alpha_fast_regime_state, day_trade_scan_log, intent_skip_log.ts, equity_live_trades.opened_at/intent_kind) — 4/4 new tests pass; (2) operator_watchlist coverage_report now reads predictions.timestamp — new test passes; (3) watchlist stopword bypass gated by _SOFT_ALLOWLIST (BE/MU/GE/GM/F/T/V/C only) — 2/2 new tests confirm FED/SPY filtered, BE admitted. Council (11/11) and direction-tuple lint (4/4) regression-clean. Full suite not re-run per request."
+}

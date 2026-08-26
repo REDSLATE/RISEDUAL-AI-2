@@ -76,23 +76,23 @@ async def bot_status(request: Request):
     # ── Regime (both layers) ────────────────────────────────────────
     slow_regime: dict[str, Any] = {}
     try:
-        row = await db.regime_state_log.find_one(sort=[("timestamp", -1)])
+        row = await db.alpha_regime_state.find_one({"_id": "current"})
         if row:
             slow_regime = {
                 "label": row.get("label"),
                 "probability": row.get("probability"),
-                "updated_at": _iso(row.get("timestamp") or row.get("updated_at")),
+                "updated_at": _iso(row.get("updated_at") or row.get("computed_at")),
             }
     except Exception as exc:  # noqa: BLE001
         slow_regime = {"error": str(exc)}
 
     fast_regime: dict[str, Any] = {}
     try:
-        row = await db.fast_regime_log.find_one(sort=[("timestamp", -1)])
+        row = await db.alpha_fast_regime_state.find_one({"_id": "current"})
         if row:
             fast_regime = {
                 "label": row.get("label"),
-                "updated_at": _iso(row.get("timestamp") or row.get("updated_at")),
+                "updated_at": _iso(row.get("updated_at") or row.get("computed_at")),
             }
     except Exception as exc:  # noqa: BLE001
         fast_regime = {"error": str(exc)}
@@ -100,11 +100,11 @@ async def bot_status(request: Request):
     # ── Universe ────────────────────────────────────────────────────
     universe: dict[str, Any] = {}
     try:
-        count = await db.day_trade_universe.count_documents({})
-        sample = await db.day_trade_universe.find(
-            {}, {"symbol": 1, "asset_class": 1, "_id": 0}
+        count = await db.top_universe.count_documents({})
+        sample = await db.top_universe.find(
+            {}, {"symbol": 1, "tier": 1, "_id": 0}
         ).limit(10).to_list(10)
-        latest = await db.day_trade_universe.find_one(
+        latest = await db.top_universe.find_one(
             {}, {"updated_at": 1, "_id": 0}, sort=[("updated_at", -1)]
         )
         universe = {
@@ -119,7 +119,7 @@ async def bot_status(request: Request):
     # ── Recent scans ────────────────────────────────────────────────
     recent_scans: list[dict[str, Any]] = []
     try:
-        cursor = db.scan_log.find({}).sort("started_at", -1).limit(5)
+        cursor = db.day_trade_scan_log.find({}).sort("started_at", -1).limit(5)
         async for row in cursor:
             chosen = row.get("chosen") or {}
             recent_scans.append({
@@ -134,30 +134,35 @@ async def bot_status(request: Request):
         recent_scans = [{"error": str(exc)}]
 
     # ── Skip reasons (24h) ──────────────────────────────────────────
+    # Alpha's executor skip log is ``intent_skip_log`` with a ``ts`` field.
     skip_reasons: list[dict[str, Any]] = []
     try:
         pipeline = [
-            {"$match": {"timestamp": {"$gte": day_ago}}},
+            {"$match": {"ts": {"$gte": day_ago}}},
             {"$group": {"_id": "$reason", "count": {"$sum": 1}}},
             {"$sort": {"count": -1}},
             {"$limit": 10},
         ]
-        async for row in db.executor_skip_log.aggregate(pipeline):
+        async for row in db.intent_skip_log.aggregate(pipeline):
             skip_reasons.append({"reason": row["_id"], "count": row["count"]})
     except Exception as exc:  # noqa: BLE001
         skip_reasons = [{"error": str(exc)}]
 
     # ── Last live fill ──────────────────────────────────────────────
+    # Row uses ``opened_at`` (open row) or ``closed_at`` (close row); we
+    # sort by ``opened_at`` since that's on every fill. ``kind`` derives
+    # from ``intent_kind``/``side``.
     last_fill: dict[str, Any] = {}
     try:
-        row = await db.equity_live_trades.find_one(sort=[("ts", -1)])
+        row = await db.equity_live_trades.find_one(sort=[("opened_at", -1)])
         if row:
+            ts = row.get("opened_at") or row.get("closed_at")
             last_fill = {
                 "symbol": row.get("symbol"),
-                "kind": row.get("kind"),
-                "notional": row.get("notional"),
-                "ts": _iso(row.get("ts")),
-                "minutes_ago": _minutes_since(row.get("ts")),
+                "kind": row.get("intent_kind") or row.get("side"),
+                "notional": row.get("notional") or row.get("live_notional_usd"),
+                "ts": _iso(ts),
+                "minutes_ago": _minutes_since(ts),
             }
     except Exception as exc:  # noqa: BLE001
         last_fill = {"error": str(exc)}

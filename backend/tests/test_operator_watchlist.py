@@ -192,3 +192,50 @@ async def test_coverage_report_never_writes_predictions():
     assert len(out) == 1
     assert out[0]["symbol"] == "NVDA"
     assert out[0]["has_prediction"] is False
+
+
+@pytest.mark.asyncio
+async def test_coverage_report_reads_timestamp_field():
+    """Regression: prediction docs are written with ``timestamp``
+    (not ``created_at``). Coverage must join on the real field name
+    or every pick shows as an uncovered gap."""
+    db = _FakeDB()
+    now = datetime.now(timezone.utc)
+    recent_iso = now.isoformat()
+    db[ow.WATCHLIST_COLLECTION]._docs = [
+        {"symbol": "AAPL", "expires_at": now + timedelta(hours=1)},
+    ]
+    db.predictions._docs = [{
+        "symbol": "AAPL",
+        "feature": "signal_dispatcher",
+        "direction": "up",
+        "confidence": 0.75,
+        "timestamp": recent_iso,
+    }]
+    out = await ow.coverage_report(db)
+    assert len(out) == 1
+    assert out[0]["symbol"] == "AAPL"
+    assert out[0]["has_prediction"] is True, \
+        "coverage_report must find predictions stored under 'timestamp'"
+    assert out[0]["prediction"]["direction"] == "up"
+
+
+class TestStopwordAdmissionGate:
+    """Regression: a $price near a stoplisted stopword must not
+    re-admit that stopword as a ticker. Only tokens on the SOFT
+    allowlist may be re-admitted when a price is nearby."""
+
+    def test_priced_stopword_not_soft_allowed_is_filtered(self):
+        # FED is stoplisted and NOT on _SOFT_ALLOWLIST — must stay out
+        # even though a $price is in the same clause.
+        picks = ow.parse_text("FED cut rates; SPY closed at $450.10")
+        syms = {p["symbol"] for p in picks}
+        assert "FED" not in syms
+        assert "SPY" not in syms
+
+    def test_priced_soft_allowlist_stopword_is_admitted(self):
+        # BE is stoplisted (common English) but on _SOFT_ALLOWLIST; a
+        # $price signals intent — admit.
+        picks = ow.parse_text("BE target $217.50")
+        syms = {p["symbol"] for p in picks}
+        assert "BE" in syms
