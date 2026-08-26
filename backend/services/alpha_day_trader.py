@@ -829,28 +829,89 @@ async def _record_outcome(db: Any, *, setup: ActiveSetup, intent_id: Optional[st
 # ─── Universe source ──────────────────────────────────────────────
 
 
-async def _candidate_universe(db: Any, *, lookback_minutes: int = 60) -> list[str]:
-    """Pull the symbols Alpha has produced recent predictions on.
+async def _candidate_universe(db: Any, *, lookback_minutes: int = 60,
+                              cap: int = 50) -> list[str]:
+    """Return the union of every symbol source Alpha should scan this tick.
 
-    Reuses the same source as ``day_trade_scanner`` so we don't run
-    two parallel screeners with different tastes. ``AlphaOpportunityScanner``
-    then does its own ranking on freshly-fetched market data.
+    Historically this only pulled ``signal_dispatcher`` / ``paper_trading``
+    predictions from the last 60 minutes. In practice those upstream
+    producers only fire during a narrow window right after the open,
+    so Alpha's universe was starving for 22+ hours a day and every
+    tick returned zero candidates. See:
+        https://github.com/risedual-ai/RISEDUAL/pull/xxx (2026-02)
+
+    The union is ordered by priority so the 50-symbol cap keeps the
+    most operator-intent-heavy symbols even under contention:
+
+    1. **Operator watchlist** — symbols the human explicitly added
+       via the /admin/operator-watchlist UI. Zero-cost, high-signal.
+    2. **Recent signal_dispatcher / paper_trading predictions** —
+       symbols an upstream brain flagged in the last ``lookback_minutes``.
+    3. **top_universe** — the weekly A/B-tier universe rebuild (300+
+       symbols). This is the "always-on" baseline so Alpha keeps
+       scanning even when upstream producers are quiet.
+
+    Missing collections are treated as empty, never as errors — Alpha
+    must keep ticking even when Mongo hiccups on one source.
     """
     if db is None:
         return []
     from datetime import timedelta
+
+    seen: set[str] = set()
+    ordered: list[str] = []
+
+    def _add(sym: Any) -> None:
+        if not sym:
+            return
+        s = str(sym).upper().strip()
+        if not s or s in seen:
+            return
+        seen.add(s)
+        ordered.append(s)
+
+    # 1) Operator watchlist — highest priority (the human said so).
+    try:
+        cursor = db.operator_watchlist.find(
+            {"active": {"$ne": False}},
+            {"_id": 0, "symbol": 1},
+        ).limit(cap)
+        async for row in cursor:
+            _add(row.get("symbol"))
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[alpha_daytrader] operator_watchlist read failed: %s", exc)
+
+    # 2) Recent signal_dispatcher / paper_trading predictions.
     since = (datetime.now(timezone.utc) - timedelta(minutes=lookback_minutes)).isoformat()
     try:
         cursor = db.predictions.aggregate([
             {"$match": {"feature": {"$in": ["signal_dispatcher", "paper_trading"]},
                         "timestamp": {"$gte": since}}},
             {"$group": {"_id": "$symbol"}},
-            {"$limit": 50},
+            {"$limit": cap},
         ])
-        return [row["_id"].upper() for row in await cursor.to_list(length=50) if row.get("_id")]
+        for row in await cursor.to_list(length=cap):
+            _add(row.get("_id"))
     except Exception as exc:  # noqa: BLE001
-        logger.debug("[alpha_daytrader] universe read failed: %s", exc)
-        return []
+        logger.debug("[alpha_daytrader] predictions universe read failed: %s", exc)
+
+    # 3) top_universe — always-on baseline. Prefer A-tier first so
+    # the cap doesn't get consumed by lower-conviction B-tier names.
+    if len(ordered) < cap:
+        remaining = cap - len(ordered)
+        try:
+            cursor = db.top_universe.find(
+                {},
+                {"_id": 0, "symbol": 1, "tier": 1},
+            ).sort([("tier", 1), ("symbol", 1)]).limit(remaining * 3)
+            async for row in cursor:
+                if len(ordered) >= cap:
+                    break
+                _add(row.get("symbol"))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[alpha_daytrader] top_universe read failed: %s", exc)
+
+    return ordered[:cap]
 
 
 # ─── Main tick ────────────────────────────────────────────────────
