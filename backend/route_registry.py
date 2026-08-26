@@ -108,6 +108,7 @@ from routes.admin_retention import router as admin_retention_router, set_db as s
 from routes.admin_evidence import router as admin_evidence_router, set_db as set_admin_evidence_db
 from routes.admin_intent_audit import router as admin_intent_audit_router, set_db as set_admin_intent_audit_db
 from routes.admin_atlas import router as admin_atlas_router, set_db as set_admin_atlas_db
+from routes.admin_bot_status import router as admin_bot_status_router, set_db as set_admin_bot_status_db
 from routes.admin_alpha_daytrader import router as admin_alpha_daytrader_router, set_db as set_admin_alpha_daytrader_db
 from routes.admin_moomoo import router as admin_moomoo_router, set_db as set_admin_moomoo_db
 from routes.onboarding import router as onboarding_router, set_db as set_onboarding_db
@@ -251,6 +252,7 @@ ALL_ROUTERS = [
     admin_evidence_router,
     admin_intent_audit_router,
     admin_atlas_router,
+    admin_bot_status_router,
     admin_alpha_daytrader_router,
     admin_moomoo_router,
     onboarding_router,
@@ -349,6 +351,7 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         set_admin_evidence_db,
         set_admin_intent_audit_db,
         set_admin_atlas_db,
+        set_admin_bot_status_db,
         set_admin_alpha_daytrader_db,
         set_admin_moomoo_db,
         set_onboarding_db,
