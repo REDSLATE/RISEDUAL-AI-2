@@ -648,6 +648,48 @@ async def maybe_route_live(
             symbol, strategy_id_raw, evidence_mult, notional_baseline,
         )
 
+    # ── Council modulator (shadow-first) ──
+    # Consults sovereign + multi-model brains and derives a size
+    # multiplier in [0.25, 1.0]. When
+    # ``RISEDUAL_COUNCIL_MODULATE_ENABLED=1`` the modulator is applied
+    # to the notional; otherwise the shadow value is logged only. The
+    # council can only shrink size, never veto direction, never block.
+    # See services/council_consultation.py doctrine pins.
+    council_result: dict[str, Any] = {}
+    try:
+        from services.council_consultation import consult_council
+        council_result = await consult_council(
+            db,
+            symbol=symbol,
+            alpha_direction="BUY" if intent_kind == "open_long" else "SELL",
+            alpha_confidence=intent.get("confidence"),
+            strategy_id=strategy_id_raw,
+        )
+        _council_mult = float(council_result.get("modulator") or 1.0)
+        _council_shadow = float(council_result.get("shadow_modulator") or 1.0)
+        _council_enforced = bool(council_result.get("enforced"))
+        if _council_enforced and _council_mult < 1.0:
+            _new_notional = max(1.0, notional * _council_mult)
+            logger.info(
+                "[public-live] symbol=%s council dissent=%.2f cons=%s "
+                "mult=%.2f notional %.2f → %.2f (enforced)",
+                symbol, council_result.get("dissent_ratio", 0.0),
+                council_result.get("consensus", "unknown"),
+                _council_mult, notional, _new_notional,
+            )
+            notional = _new_notional
+        elif _council_shadow < 1.0:
+            logger.info(
+                "[public-live] symbol=%s council dissent=%.2f cons=%s "
+                "shadow_mult=%.2f (SHADOW — not applied; set "
+                "RISEDUAL_COUNCIL_MODULATE_ENABLED=1 to apply)",
+                symbol, council_result.get("dissent_ratio", 0.0),
+                council_result.get("consensus", "unknown"),
+                _council_shadow,
+            )
+    except Exception as _council_exc:  # noqa: BLE001
+        logger.debug("[public-live] council consult failed (non-fatal): %s", _council_exc)
+
     try:
         client_pre = _public_client(secret_key, account_id)
         if client_pre is not None:
