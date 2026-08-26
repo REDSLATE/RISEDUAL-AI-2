@@ -13,16 +13,26 @@ contention (multi-worker, WAL checkpoint, competing writer), that
 This bridge fixes that at the design level:
 
 1. **No synchronous SQLite call is ever made from the caller's
-   coroutine.** Every write is scheduled via ``asyncio.create_task``
-   which offloads it to a thread executor.
-2. **Every write has a 100 ms hard timeout.** If the ledger doesn't
-   commit within 100 ms, the task is cancelled and a debug log is
-   emitted. The trade continues untouched.
-3. **Atlas is observation-only.** Duplicate suppression is NEVER
+   coroutine.** Every write is scheduled on a **dedicated bounded
+   ``ThreadPoolExecutor``** (NOT the default one shared with
+   ``market_data_pool``), so a stuck ledger worker can never starve
+   quote/bar fetches on the decision path.
+2. **Every write has a 100 ms hard timeout** at the coroutine layer.
+   The underlying thread cannot be cancelled (Python limitation), but
+   because the pool is dedicated and bounded, a stuck worker only
+   consumes one of Atlas's own slots — never a decision-path thread.
+3. **In-flight Atlas tasks are capped**; when the queue is full,
+   new writes are dropped with a debug log. Cannot back-pressure.
+4. **Atlas is observation-only.** Duplicate suppression is NEVER
    enforced from this bridge — no gate here, ever. This is
    non-negotiable (see the overlay post-mortem doc, rule 8).
-4. **Master kill switch**: ``RISEDUAL_ATLAS_ENABLED`` (default ON).
+5. **Master kill switch**: ``RISEDUAL_ATLAS_ENABLED`` (default ON).
    Set to ``0`` to disable all Atlas activity without a code deploy.
+6. **Task references are retained** in a module-level set (not
+   discarded) so the asyncio event loop keeps a strong reference
+   until the task actually completes — asyncio otherwise holds only
+   a weak reference to bare ``create_task`` results and can GC a
+   suspended task mid-flight.
 
 See /app/docs/POSTMORTEM_ACCOUNT_AWARE_OVERLAY.md.
 """
@@ -32,6 +42,7 @@ import asyncio
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Mapping, Optional
 
 logger = logging.getLogger(__name__)
@@ -40,11 +51,30 @@ logger = logging.getLogger(__name__)
 # Global ledger singleton (installed at startup by server.py).
 _LEDGER: Any = None
 
-# Hard budget per Atlas write. If the ledger doesn't return in this
-# many milliseconds, the task is cancelled and logged. Chosen to be
-# well below any human-perceivable latency AND small enough that a
-# stuck writer can't stack up back-pressure.
+# Hard budget per Atlas write at the coroutine layer. Chosen well
+# below any human-perceivable latency AND small enough that a stuck
+# writer can't stack up back-pressure inside the caller.
 _WRITE_BUDGET_MS: int = 100
+
+# Dedicated pool for Atlas writes. Isolating from the default
+# ``asyncio.to_thread`` pool (which market_data_pool + others share)
+# is what makes the "cannot starve the decision path" claim actually
+# true. 2 workers is enough for a background telemetry sink; more
+# would just queue and burn RAM on stuck locks.
+_ATLAS_POOL: Optional[ThreadPoolExecutor] = None
+
+# Cap in-flight Atlas tasks so a persistently stuck ledger cannot
+# accumulate unbounded threads. Well above the natural per-cycle
+# burst (1 claim + up to 4 transitions + 1 trace = 6) — hitting
+# this cap means Atlas is degraded and we drop new work rather than
+# pile up.
+_MAX_INFLIGHT: int = 32
+
+# Retain hard refs to scheduled tasks — asyncio only keeps a weak
+# reference to bare ``create_task`` results and can GC a suspended
+# task mid-flight, silently losing an Atlas write. Removed in the
+# task's done callback.
+_INFLIGHT: set[asyncio.Task] = set()
 
 
 def _flag(name: str, default: bool) -> bool:
@@ -60,6 +90,15 @@ def atlas_enabled() -> bool:
     return _flag("RISEDUAL_ATLAS_ENABLED", default=True)
 
 
+def _pool() -> ThreadPoolExecutor:
+    global _ATLAS_POOL
+    if _ATLAS_POOL is None:
+        _ATLAS_POOL = ThreadPoolExecutor(
+            max_workers=2, thread_name_prefix="atlas-writer",
+        )
+    return _ATLAS_POOL
+
+
 def set_ledger(ledger: Any) -> None:
     global _LEDGER
     _LEDGER = ledger
@@ -67,6 +106,11 @@ def set_ledger(ledger: Any) -> None:
 
 def get_ledger() -> Any:
     return _LEDGER
+
+
+def inflight_count() -> int:
+    """Diagnostic: how many Atlas tasks are currently in flight."""
+    return len(_INFLIGHT)
 
 
 def init_ledger(db_path: Optional[str] = None) -> Any:
@@ -101,11 +145,21 @@ def init_ledger(db_path: Optional[str] = None) -> Any:
 
 def _schedule(coro_factory):
     """Create a background task that runs ``coro_factory()`` with a
-    100 ms hard timeout. On timeout / exception, log at debug and
-    move on. Returns the ``asyncio.Task`` (or ``None`` if no loop)."""
+    100 ms hard timeout at the coroutine layer. On timeout / exception,
+    log at debug and move on. Returns the ``asyncio.Task`` (or ``None``
+    if no loop / in-flight cap hit)."""
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
+        return None
+
+    # In-flight cap. When Atlas is degraded, drop new work rather than
+    # accumulate unbounded threads/tasks and starve everyone else.
+    if len(_INFLIGHT) >= _MAX_INFLIGHT:
+        logger.debug(
+            "[atlas_bridge] inflight cap (%d) hit — dropping write",
+            _MAX_INFLIGHT,
+        )
         return None
 
     async def _runner():
@@ -116,11 +170,20 @@ def _schedule(coro_factory):
         except Exception as exc:  # noqa: BLE001
             logger.debug("[atlas_bridge] background write failed (non-fatal): %s", exc)
 
-    return loop.create_task(_runner())
+    task = loop.create_task(_runner())
+    _INFLIGHT.add(task)
+    task.add_done_callback(_INFLIGHT.discard)
+    return task
 
 
 def _to_thread(fn, *args, **kwargs):
-    return asyncio.to_thread(fn, *args, **kwargs)
+    """Run ``fn`` on the DEDICATED Atlas thread pool (not the default
+    ``asyncio.to_thread`` pool that ``market_data_pool`` etc. share).
+    A stuck ledger worker can only starve Atlas's own 2 slots — never
+    a decision-path quote/bar fetch. This is what makes the "cannot
+    slow a trade" doctrine actually true."""
+    loop = asyncio.get_running_loop()
+    return loop.run_in_executor(_pool(), lambda: fn(*args, **kwargs))
 
 
 # ── Fingerprint builder (pure, no I/O) ────────────────────────────────
@@ -288,6 +351,7 @@ def trace_cycle_async(
 __all__ = [
     "atlas_enabled",
     "get_ledger",
+    "inflight_count",
     "init_ledger",
     "observe_intent_async",
     "set_ledger",

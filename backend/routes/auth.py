@@ -648,8 +648,8 @@ async def seed_admin():
     a permanent no-op that violated the deployment safety policy
     ("no destructive DB write on startup"). ``_BANNED_OWNER_EMAILS`` is
     retained and used at import time to reject a misconfigured
-    ``OWNER_EMAIL`` env var (see :func:`_owner_email`) — that guard is
-    read-only and stays.
+    ``OWNER_EMAIL`` env var (see :func:`_resolve_owner_email`) — that
+    guard is read-only and stays.
     """
     # Seed RISEDUAL owner
     if not OWNER_PASSWORD:

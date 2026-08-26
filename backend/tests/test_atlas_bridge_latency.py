@@ -205,3 +205,76 @@ async def test_no_running_loop_is_safe():
     t.start()
     t.join(timeout=1.0)
     assert not err, f"transition_async raised in a no-loop thread: {err}"
+
+
+@pytest.mark.asyncio
+async def test_atlas_pool_isolated_from_default_executor():
+    """The doctrine's critical guarantee: a stuck Atlas ledger must
+    NOT slow ``asyncio.to_thread`` calls from other subsystems (e.g.
+    ``market_data_pool.get_quote``). This test proves the Atlas pool
+    is a separate ``ThreadPoolExecutor`` from the default one used
+    by ``asyncio.to_thread``. Without isolation, a stuck SQLite
+    ``BEGIN IMMEDIATE`` could occupy default-pool workers and
+    starve quote/bar fetches on the decision path.
+    """
+    atlas_bridge.set_ledger(_StuckLedger())
+
+    # Fill Atlas's inflight cap with stuck transitions.
+    for i in range(5):
+        atlas_bridge.transition_async(f"stuck-{i}", "approved")
+
+    # Now measure a decision-path-style ``to_thread`` call. If the
+    # Atlas pool were shared with the default one, this would sit
+    # behind the stuck SQLite writers.
+    t0 = time.perf_counter_ns()
+    await asyncio.to_thread(lambda: sum(range(1000)))
+    elapsed_ms = (time.perf_counter_ns() - t0) / 1_000_000
+
+    assert elapsed_ms < 50, (
+        f"decision-path to_thread took {elapsed_ms:.1f} ms while Atlas "
+        f"had stuck writers — pool isolation is broken"
+    )
+
+
+@pytest.mark.asyncio
+async def test_inflight_cap_prevents_unbounded_growth():
+    """A persistently stuck ledger must not allow Atlas tasks to
+    accumulate without bound. Once the cap is hit, new writes are
+    dropped (returned ``None``), not queued."""
+    atlas_bridge.set_ledger(_StuckLedger())
+
+    # Blast the scheduler with far more than the cap allows.
+    for i in range(atlas_bridge._MAX_INFLIGHT + 20):
+        atlas_bridge.transition_async(f"blast-{i}", "approved")
+
+    # Inflight count must plateau at (or below) the cap — never
+    # exceed it. We give the event loop a chance to schedule.
+    await asyncio.sleep(0)
+    assert atlas_bridge.inflight_count() <= atlas_bridge._MAX_INFLIGHT, (
+        f"in-flight cap breached: {atlas_bridge.inflight_count()} "
+        f"> {atlas_bridge._MAX_INFLIGHT}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_tasks_are_retained_until_done():
+    """Fire-and-forget tasks must be strong-ref'd so asyncio's
+    weak-ref GC cannot drop them mid-flight. The bridge stores each
+    task in a module-level set and removes it via ``done_callback``
+    only when actually finished."""
+    fast = _FastLedger()
+    atlas_bridge.set_ledger(fast)
+
+    before = atlas_bridge.inflight_count()
+    atlas_bridge.transition_async("retention-1", "approved")
+    # Immediately after scheduling, the task must be tracked.
+    assert atlas_bridge.inflight_count() == before + 1
+
+    # After completion, it must be removed.
+    for _ in range(50):
+        await asyncio.sleep(0.01)
+        if atlas_bridge.inflight_count() == before:
+            break
+    assert atlas_bridge.inflight_count() == before, (
+        "task was not removed from in-flight set after completion"
+    )

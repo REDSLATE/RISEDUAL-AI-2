@@ -379,12 +379,13 @@ async def test_run_scan_writes_target_with_eod_timer(db):
     # 21:00 UTC of today or tomorrow.
     assert target["max_hold_until"].hour == 21
     assert target["max_hold_until"].minute == 0
-    # 2026-06-26 — Phase 4b transitions the row to
-    # ``routed`` on successful executor route or ``executor_skipped``
-    # when the executor returns None (e.g. no broker creds in test).
-    # Both are valid post-write outcomes; ``pending`` is only visible
-    # if the executor call is not reached at all.
-    assert target["status"] in {"pending", "executor_skipped", "routed"}
+    # 2026-06-26 — Phase 4b transitions the row after the executor
+    # call. The seeded test has no broker creds, so the executor
+    # returns ``None`` deterministically and the status settles at
+    # ``executor_skipped``. Pinning this outcome (not just "any of
+    # {pending, executor_skipped, routed}") keeps the assertion tied
+    # to a real branch and catches a Phase-4b regression.
+    assert target["status"] == "executor_skipped"
 
 
 @pytest.mark.asyncio
