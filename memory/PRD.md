@@ -1,5 +1,53 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (Pattern sensitivity + throughput bottleneck)
+
+### 🎯 Honest diagnosis then targeted fix
+
+Operator report: "It's stuck on SPY, market isn't flat, my Webull made +$54." Two claims investigated:
+
+**Claim 1: signal_dispatcher stuck on SPY** — **NOT true.** Last 6h of `predictions` collection: NVDA (4), META (4), SPY (2), AMD (2), WMT/MSFT/UNH/PLTR/COIN/AVGO/AAPL (1 each) — 11 distinct symbols. The "stuck on SPY" perception came from a single log line that happened to be SPY at that moment. Dispatcher is fine.
+
+**Claim 2: Alpha isn't converting signals to trades** — **TRUE**, and the real problem was upstream of pattern detection: two throttle bottlenecks culled the candidate pool from 50 → 2 BEFORE the pattern engine ever ran.
+
+### The two bottlenecks
+
+1. **`_max_active_setups()` defaulted to 2** — the opportunity ranker returned only top 2, so 48 of every 50 snapshotted candidates were silently discarded before pattern detection. Bumped default to **10** (bounded 1..25, env `RISEDUAL_ALPHA_DAYTRADER_MAX_SETUPS`).
+
+2. **`_min_opportunity_score()` at 0.60** — killed the tail of the ranker's output too aggressively. Lowered default to **0.50** and made it scale by `1/sqrt(sensitivity)` so operators tune both knobs in lockstep. Bounded 0.30..0.75.
+
+### And a real pattern-shape loosening
+
+Added `ALPHA_PATTERN_SENSITIVITY` scalar (default **1.25**, bounded 0.5..2.5). Applied consistently across all 8 patterns:
+- **rvol floors** divided by sensitivity (higher sens = LESS rvol required)
+- **distance windows** multiplied by sensitivity (higher sens = WIDER windows)
+- **pct-change floors** divided (higher sens = smaller moves count)
+
+Concrete effect at default 1.25:
+- VWAP_RECLAIM rvol: 1.5 → 1.20
+- HOD_BREAK rvol: 2.0 → 1.60, accel: 1.25 → 1.00
+- BREAKOUT rvol: 2.5 → 2.00
+- PULLBACK rvol: 1.2 → 0.96
+- MOMENTUM_REACCEL move %: 3.0% → 2.4%, accel: 1.5 → 1.20
+
+Sensitivity=1.0 exactly reproduces the pre-fix strict defaults for operators who want to dial back.
+
+### Verified live
+
+Before this batch: `candidates_seen: 50, ranked: 2, setups: 0`
+After: `candidates_seen: 50, **ranked: 10**, setups: 0`
+
+Pattern engine now sees 5× more candidates per tick. When a real setup shape forms on any of the 10 (vs. previously 2), it will fire.
+
+**Files:**
+- `services/alpha_day_trader.py` — `_max_active_setups()` default 2→10, `_min_opportunity_score()` default 0.60→0.50 with sensitivity scaling, `AlphaPatternEngine._sensitivity()` + `_rvol_floor/_distance_window/_pct_floor` helpers applied to all 8 patterns
+- `tests/test_pattern_sensitivity.py` — new (10 tests covering the scalar behavior, strict-mode reproduction, and relaxed-mode arming of borderline setups)
+
+**Full test count**: 733 alpha/regime/executor tests green.
+
+---
+
+
 ## Latest Update — 2026-02 (50-symbol universe + composite SPY/QQQ/IWM regime)
 
 ### 🎯 Two long-standing structural blockers fixed

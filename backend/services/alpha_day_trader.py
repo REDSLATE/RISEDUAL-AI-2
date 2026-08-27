@@ -81,23 +81,56 @@ async def _effective_flags(db: Any) -> tuple[bool, bool]:
 
 
 def _max_active_setups() -> int:
+    """Max candidates fed to pattern detection per tick.
+
+    2026-02: Bumped default from 2 → 10. At the old default of 2,
+    the opportunity ranker culled 48 of every 50 candidates *before*
+    they ever reached pattern detection — a massive throughput
+    bottleneck upstream of every other loosening we did. Ten is a
+    tuned middle-ground: broad enough that mean-reversion + classical
+    patterns actually get evaluated across the market, tight enough
+    that broker rate-limit budget stays healthy.
+    Bounded 1..25 to prevent runaway. Env: RISEDUAL_ALPHA_DAYTRADER_MAX_SETUPS.
+    """
     raw = (os.environ.get("RISEDUAL_ALPHA_DAYTRADER_MAX_SETUPS") or "").strip()
     if not raw:
-        return 2
+        return 10
     try:
-        return max(1, min(10, int(float(raw))))
+        return max(1, min(25, int(float(raw))))
     except (TypeError, ValueError):
-        return 2
+        return 10
 
 
 def _min_opportunity_score() -> float:
+    """Minimum opportunity-ranker score required before a candidate
+    reaches pattern detection.
+
+    2026-02: Lowered default from 0.60 → 0.50 as part of the pattern
+    sensitivity loosening. At 0.60, the ranker was culling 48 of every
+    50 candidates so pattern detection only saw the top 2 — massive
+    starvation. Under `ALPHA_PATTERN_SENSITIVITY=1.25` the floor also
+    scales down proportionally so operators can tune both in lockstep.
+    """
     raw = (os.environ.get("RISEDUAL_ALPHA_DAYTRADER_MIN_SCORE") or "").strip()
     if not raw:
-        return 0.60
+        base = 0.50
+    else:
+        try:
+            base = max(0.0, min(1.0, float(raw)))
+        except (TypeError, ValueError):
+            base = 0.50
+    # Scale by sensitivity — higher sens = lower floor. Kept as a
+    # mild scalar (1/sqrt) so we don't accidentally open the flood
+    # gate. Bounded 0.30..0.75 as sanity rails.
+    from math import sqrt
+    sens_raw = (os.environ.get("ALPHA_PATTERN_SENSITIVITY") or "").strip()
     try:
-        return max(0.0, min(1.0, float(raw)))
+        sens = float(sens_raw) if sens_raw else 1.25
     except (TypeError, ValueError):
-        return 0.60
+        sens = 1.25
+    sens = max(0.5, min(2.5, sens))
+    scaled = base / sqrt(sens)
+    return max(0.30, min(0.75, scaled))
 
 
 # ─── Enums / dataclasses ──────────────────────────────────────────
@@ -427,6 +460,43 @@ class AlphaPatternEngine:
     CHOP_BOOST_MEAN_REVERT: float = 0.10
     CHOP_PENALTY_MOMENTUM: float = 0.05
 
+    # 2026-02: Sensitivity scalar. Default 1.25 loosens the gates from
+    # the original conservative values (0 fills in 14 days on the live
+    # tape). Applied to:
+    #   * relative-volume floors — DIVIDED by sensitivity, so higher
+    #     sensitivity requires LESS rvol
+    #   * pct-change / distance windows — MULTIPLIED by sensitivity,
+    #     so higher sensitivity WIDENS the window
+    #   * volume-acceleration floors — DIVIDED by sensitivity
+    #
+    # Env: ``ALPHA_PATTERN_SENSITIVITY`` (float, bounded 0.5..2.5).
+    # 1.0 = original strict defaults, 1.25 = current relaxed default,
+    # 1.5+ = aggressive detection (more setups, more noise), 0.75 =
+    # tighten again.
+    @staticmethod
+    def _sensitivity() -> float:
+        raw = (os.environ.get("ALPHA_PATTERN_SENSITIVITY") or "").strip()
+        if not raw:
+            return 1.25
+        try:
+            v = float(raw)
+        except (TypeError, ValueError):
+            return 1.25
+        return max(0.5, min(2.5, v))
+
+    def _rvol_floor(self, base: float) -> float:
+        """Divide by sensitivity — higher sens = lower rvol required."""
+        return base / self._sensitivity()
+
+    def _distance_window(self, base: float) -> float:
+        """Multiply by sensitivity — higher sens = wider window."""
+        return base * self._sensitivity()
+
+    def _pct_floor(self, base: float) -> float:
+        """For move-magnitude floors (e.g. 3% for momentum reaccel).
+        Divide so higher sensitivity requires a SMALLER move."""
+        return base / self._sensitivity()
+
     def _regime_bias(self, setup: "ActiveSetup", *,
                      slow_regime: Optional[str],
                      fast_regime: Optional[str]) -> float:
@@ -471,8 +541,8 @@ class AlphaPatternEngine:
             vwap_stretch = (m.vwap - m.price) / m.vwap  # positive when price BELOW vwap
             # ── VWAP fade long: price stretched ≥0.4% below VWAP,
             # volume tapering (rvol modest), red bar exhaustion.
-            if (vwap_stretch >= 0.004 and vwap_stretch <= 0.03
-                    and m.relative_volume >= 0.8 and m.relative_volume <= 2.5
+            if (vwap_stretch >= self._pct_floor(0.004) and vwap_stretch <= 0.03
+                    and m.relative_volume >= self._rvol_floor(0.8) and m.relative_volume <= 2.5
                     and m.pct_change <= -0.3):
                 base = 0.62
                 setup = ActiveSetup(
@@ -494,7 +564,7 @@ class AlphaPatternEngine:
         # (sellers exhausted). Common in session_chop.
         if m.high > 0 and m.low > 0 and m.price > 0 and m.high > m.low:
             depth = (m.high - m.price) / (m.high - m.low)
-            if (depth >= 0.75  # bottom quarter of the day's range
+            if (depth >= self._pct_floor(0.75)  # bottom quarter of the day's range
                     and m.relative_volume <= 1.5
                     and m.pct_change >= -3.0  # not in freefall
                     and m.pct_change <= -0.2):
@@ -517,7 +587,7 @@ class AlphaPatternEngine:
         if (m.open_price > 0 and m.price > 0 and m.pct_change < 0
                 and m.price >= m.open_price * 0.992
                 and m.price <= m.open_price * 1.002
-                and m.relative_volume >= 1.0):
+                and m.relative_volume >= self._rvol_floor(1.0)):
             base = 0.63
             return ActiveSetup(
                 setup_id=str(uuid.uuid4()),
@@ -534,7 +604,7 @@ class AlphaPatternEngine:
         # ── VWAP reclaim ──
         if m.vwap > 0:
             vwap_distance = (m.price - m.vwap) / m.vwap
-            if 0 <= vwap_distance <= 0.004 and m.relative_volume >= 1.5 and m.volume_acceleration >= 1.1:
+            if 0 <= vwap_distance <= self._distance_window(0.004) and m.relative_volume >= self._rvol_floor(1.5) and m.volume_acceleration >= self._rvol_floor(1.1):
                 base = 0.65
                 return ActiveSetup(
                     setup_id=str(uuid.uuid4()),
@@ -550,7 +620,7 @@ class AlphaPatternEngine:
         # ── High-of-day breakout ──
         if m.price > 0:
             distance_to_high = (m.high - m.price) / m.price
-            if 0 <= distance_to_high <= 0.005 and m.relative_volume >= 2.0 and m.volume_acceleration >= 1.25:
+            if 0 <= distance_to_high <= self._distance_window(0.005) and m.relative_volume >= self._rvol_floor(2.0) and m.volume_acceleration >= self._rvol_floor(1.25):
                 base = 0.72
                 return ActiveSetup(
                     setup_id=str(uuid.uuid4()),
@@ -564,7 +634,7 @@ class AlphaPatternEngine:
                     score=max(0.0, min(1.0, base + self._regime_bias_by_type(SetupType.HOD_BREAK.value, chop))),
                 )
         # ── Breakout above prior-bar high with rising volume ──
-        if m.high > 0 and m.price >= m.high * 0.998 and m.relative_volume >= 2.5:
+        if m.high > 0 and m.price >= m.high * 0.998 and m.relative_volume >= self._rvol_floor(2.5):
             base = 0.70
             return ActiveSetup(
                 setup_id=str(uuid.uuid4()),
@@ -578,7 +648,7 @@ class AlphaPatternEngine:
                 score=max(0.0, min(1.0, base + self._regime_bias_by_type(SetupType.BREAKOUT.value, chop))),
             )
         # ── Pullback: price above VWAP + intraday down move ≥ 1% + volume steady ──
-        if m.vwap > 0 and m.price > m.vwap and -3.0 <= m.pct_change <= -0.5 and m.relative_volume >= 1.2:
+        if m.vwap > 0 and m.price > m.vwap and -3.0 <= m.pct_change <= -0.5 and m.relative_volume >= self._rvol_floor(1.2):
             base = 0.62
             return ActiveSetup(
                 setup_id=str(uuid.uuid4()),
@@ -592,7 +662,7 @@ class AlphaPatternEngine:
                 score=max(0.0, min(1.0, base + self._regime_bias_by_type(SetupType.PULLBACK.value, chop))),
             )
         # ── Momentum re-acceleration: gap up + volume spike ──
-        if m.pct_change >= 3.0 and m.volume_acceleration >= 1.5 and m.price >= m.open_price:
+        if m.pct_change >= self._pct_floor(3.0) and m.volume_acceleration >= self._rvol_floor(1.5) and m.price >= m.open_price:
             base = 0.68
             return ActiveSetup(
                 setup_id=str(uuid.uuid4()),
