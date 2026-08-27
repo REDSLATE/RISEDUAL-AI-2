@@ -118,6 +118,14 @@ class SetupType(str, Enum):
     VWAP_FADE_LONG = "vwap_fade_long"
     RANGE_LOW_BOUNCE = "range_low_bounce"
     OPENING_DRIVE_FADE = "opening_drive_fade"
+    # ── Classical multi-bar chart patterns (bullish only —
+    # Public.com is cash-only). Bearish classical patterns are used
+    # as *invalidation gates* on the same symbol via
+    # ``services/alpha_classical_patterns.has_bearish_veto``, not as
+    # tradeable setups. Ported from IGNISpilot 2026-08.
+    DOUBLE_BOTTOM = "double_bottom"
+    INVERSE_HEAD_SHOULDERS = "inverse_head_and_shoulders"
+    FALLING_WEDGE = "falling_wedge"
 
 
 # Patterns that thrive in chop regimes (used by the score gain/penalty
@@ -136,6 +144,23 @@ MOMENTUM_PATTERNS: frozenset[str] = frozenset({
     SetupType.HOD_BREAK.value,
     SetupType.MOMENTUM_REACCELERATION.value,
 })
+
+# Multi-bar classical patterns. Not regime-boosted — they carry
+# their own confidence numbers from the IGNISpilot rules.
+CLASSICAL_PATTERNS: frozenset[str] = frozenset({
+    SetupType.DOUBLE_BOTTOM.value,
+    SetupType.INVERSE_HEAD_SHOULDERS.value,
+    SetupType.FALLING_WEDGE.value,
+})
+
+# Map classical-pattern names to SetupType so the detector can
+# translate an ``alpha_classical_patterns.PatternAssessment`` into
+# an ``ActiveSetup`` without a big switch.
+_CLASSICAL_NAME_TO_SETUP: dict[str, "SetupType"] = {
+    "double_bottom": SetupType.DOUBLE_BOTTOM,
+    "inverse_head_and_shoulders": SetupType.INVERSE_HEAD_SHOULDERS,
+    "falling_wedge": SetupType.FALLING_WEDGE,
+}
 
 # Regime labels that indicate a chop / mean-reversion market state.
 # Kept lowercase-substring-matched so upstream label renames don't
@@ -185,6 +210,12 @@ class MarketSnapshot:
     pct_change: float
     volume_acceleration: float
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    # 2026-02: last N daily bars (OHLCV dicts) — used by the
+    # classical multi-bar chart-pattern detectors ported from
+    # IGNISpilot (double-bottom, H&S, falling wedge, etc.). Empty
+    # list is a valid state (older snapshots) — detectors just
+    # return no-match rather than crashing.
+    recent_bars: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -312,6 +343,23 @@ async def _snapshot_symbol(symbol: str) -> Optional[MarketSnapshot]:
         if bid > 0 and ask > 0 and mid > 0 and ask > bid:
             spread_bps = (ask - bid) / mid * 10_000.0
 
+    # Slice the last ~10 daily bars for the classical chart-pattern
+    # detectors (double-bottom needs 5, inverse H&S needs 7). Keep
+    # a bit of headroom; detectors slice the tail themselves.
+    recent_bars: list[dict] = []
+    try:
+        for b in bars[-10:]:
+            recent_bars.append({
+                "open": float(b.get("open") or 0.0),
+                "high": float(b.get("high") or 0.0),
+                "low": float(b.get("low") or 0.0),
+                "close": float(b.get("close") or 0.0),
+                "volume": float(b.get("volume") or 0.0),
+                "date": b.get("date") or b.get("datetime") or "",
+            })
+    except (TypeError, ValueError):
+        recent_bars = []
+
     return MarketSnapshot(
         symbol=symbol.upper(),
         price=price,
@@ -327,6 +375,7 @@ async def _snapshot_symbol(symbol: str) -> Optional[MarketSnapshot]:
         spread_bps=spread_bps,
         pct_change=pct_change,
         volume_acceleration=vol_accel,
+        recent_bars=recent_bars,
     )
 
 
@@ -399,6 +448,19 @@ class AlphaPatternEngine:
     ) -> Optional[ActiveSetup]:
         now = m.timestamp
         chop = _is_chop_regime(slow_regime, fast_regime)
+
+        # ── Classical multi-bar patterns FIRST ─────────────────
+        # 1) Bearish patterns act as invalidation gates — if a
+        # confirmed H&S / rising wedge / double top is live on the
+        # same symbol, we refuse to arm any bullish setup this tick.
+        # 2) Confirmed bullish patterns beat everything else on
+        # score (0.74-0.81) so they take precedence over the
+        # single-bar setups when both fire on the same bar.
+        classical_setup = self._detect_classical(m, now)
+        if classical_setup == "veto":
+            return None
+        if classical_setup is not None:
+            return classical_setup
 
         # ── Mean-reversion family — evaluated FIRST during chop so a
         # legitimate mean-revert signal isn't shadowed by a weak
@@ -553,6 +615,61 @@ class AlphaPatternEngine:
         if setup_type_value in MOMENTUM_PATTERNS:
             return -self.CHOP_PENALTY_MOMENTUM
         return 0.0
+
+    def _detect_classical(self, m: MarketSnapshot, now: datetime):
+        """Evaluate multi-bar classical chart patterns.
+
+        Returns one of:
+        * ``"veto"``    — a confirmed bearish pattern is active on
+                          this symbol; caller must not arm any
+                          bullish setup this tick
+        * ``ActiveSetup`` — a confirmed bullish pattern to arm
+        * ``None``      — no classical signal; caller may fall
+                          through to single-bar detectors
+
+        Bars come from ``MarketSnapshot.recent_bars`` (last ~10
+        daily bars). Missing / too-few bars → return None cleanly.
+        """
+        bars = getattr(m, "recent_bars", None) or []
+        if len(bars) < 5:  # smallest classical pattern needs 5 bars
+            return None
+        try:
+            from services.alpha_classical_patterns import (
+                best_bullish, has_bearish_veto,
+            )
+        except Exception:  # noqa: BLE001
+            return None
+
+        # Bearish veto wins: cancel any long attempt this tick.
+        veto = has_bearish_veto(bars)
+        if veto is not None:
+            return "veto"
+
+        bull = best_bullish(bars)
+        if bull is None:
+            return None
+        setup_type = _CLASSICAL_NAME_TO_SETUP.get(bull.pattern)
+        if setup_type is None:
+            return None
+
+        # Invalidation level from the pattern; trigger price is the
+        # neckline/resistance level (breakout confirmation). Fall
+        # back to price-derived values if the pattern didn't stamp
+        # them (defensive — shouldn't happen for confirmed states).
+        trigger = bull.neckline_or_support or (m.price * 1.002)
+        invalid = bull.invalidation_level or (m.price * 0.97)
+
+        return ActiveSetup(
+            setup_id=str(uuid.uuid4()),
+            symbol=m.symbol,
+            setup_type=setup_type,
+            state=SetupState.ARMED,   # confirmed = already broken out
+            detected_at=now,
+            reference_price=m.price,
+            trigger_price=float(trigger),
+            invalidation_price=float(invalid),
+            score=float(bull.confidence),
+        )
 
 
 # ─── Trigger watcher ──────────────────────────────────────────────

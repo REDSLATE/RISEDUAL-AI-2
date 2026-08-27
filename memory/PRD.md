@@ -1,5 +1,44 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (IGNISpilot classical chart patterns ported to Alpha)
+
+### 🎯 Six multi-bar patterns from IGNISpilot handoff → Alpha's engine
+
+**Context:** User shared a sanitized handoff of the IGNISpilot (Camaro/Next.js/Convex) trading assistant. Most of it is TS/Convex plumbing that doesn't port to RISEDUAL's Python stack — but the pattern-detection modules (`camaroBullishPatterns.js`, `camaroBearishPatterns.js`) are pure math with no framework dependency. Ported cleanly.
+
+**Six new patterns added to `AlphaPatternEngine`:**
+
+Bullish (tradeable, arm as `ActiveSetup`):
+- `DOUBLE_BOTTOM` (5 bars, conf 0.78)
+- `INVERSE_HEAD_SHOULDERS` (7 bars, conf 0.81)
+- `FALLING_WEDGE` (6 bars, conf 0.74)
+
+Bearish (Public.com is cash-only — used as *invalidation gates* on longs):
+- `DOUBLE_TOP` / `HEAD_AND_SHOULDERS` / `RISING_WEDGE`
+- When a confirmed bearish pattern is active on a symbol, Alpha **vetoes** any bullish setup this tick (no long entries against a broken structure)
+
+**Data plumbing:** `MarketSnapshot` gained a `recent_bars: list[dict]` field (last 10 OHLC daily bars). Populated in `_snapshot_symbol()` from the same `market_daily()` call Alpha already makes — zero extra API load. Empty `recent_bars` (older snapshots) falls through cleanly to single-bar detectors.
+
+**Engine wiring priority:**
+1. **Classical bearish veto** → return None if a confirmed bearish pattern is live
+2. **Classical bullish confirmed** → return that ActiveSetup (0.74–0.81 score beats single-bar setups)
+3. **Mean-reversion / momentum single-bar patterns** → fall through as before
+
+**Pattern lifecycle** (from IGNISpilot spec): `blocked` → `forming` → `confirmed` → `invalidated`. Only `confirmed` patterns short-circuit the detector; `forming` patterns fall through so momentum setups still fire.
+
+**Tests:** 37 new tests total (16 pure-module + 21 integration + 5 pattern-lifecycle scenarios) locking the exact IGNIS reference confidences (0.78/0.81/0.74) so a future edit can't silently drift them.
+
+**Files:**
+- `services/alpha_classical_patterns.py` — new (461 lines, ported from JS)
+- `services/alpha_day_trader.py` — new SetupType values + `_detect_classical()` in `AlphaPatternEngine` + `recent_bars` on MarketSnapshot
+- `tests/test_alpha_classical_patterns.py` — new (module unit tests)
+- `tests/test_alpha_classical_integration.py` — new (engine wiring tests)
+
+**Full test count:** 589 alpha/regime/executor/bot-status/classical tests green (was 568).
+
+---
+
+
 ## Latest Update — 2026-02 (Chop-regime playbook: Alpha now trades in every regime)
 
 ### 🎯 Fixed "Alpha never trades" — mean-reversion pattern family shipped
