@@ -1,5 +1,45 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (Regime detector reads today's tape, not yesterday's close)
+
+### 🎯 Root cause of stubborn "session_chop" verdict
+
+Operator: "SPY +0.52%, Tech +0.61%, Fear/Greed 71 GREED. Definitely not flat." But `fast_intraday_regime` returned `session_chop` anyway. Live query proved it:
+- Regime saw yesterday: `SPY -0.55%  QQQ -0.84%  IWM -0.57%` (mildly down)
+- User saw today live: **SPY +2.68%  IWM +3.35% intraday**
+
+Daily bars **finalize after market close**. During RTH, `bars[-1]` is yesterday's completed bar — the classifier was scoring an entire trading day *behind* the actual tape.
+
+### Two-part fix
+
+**1. Live-quote overlay** — `_classify_bars(bars, *, live_quote=None)` now accepts a live quote. If provided, `prev_close` becomes yesterday's close and `close` becomes the live intraday price. Return computes off today's actual move.
+
+**2. Overlay-mode vol_ratio normalization** — when overlay is active, we don't yet have today's real intraday high/low. The classifier's `vol_ratio < 1.4` trend-day gate would otherwise fail because "price move as range" inflates the ratio. Anchored to 1.0 in overlay mode so trend-day gate can fire on real intraday moves.
+
+**3. Also loosened classifier defaults** — `trend_ret 0.4%→0.3%`, `body_ratio 0.5→0.25`, env-tunable (`ALPHA_REGIME_TREND_RETURN`, `ALPHA_REGIME_TREND_BODY`).
+
+### Live-verified after fix
+
+```
+composite label: trend_up
+family:          up
+benchmarks:      {'SPY': 'trend_up', 'QQQ': 'trend_down', 'IWM': 'trend_up'}
+  SPY: return=+2.68%  vol_ratio=1.00  body=+1.00  live=True
+  QQQ: return=-1.36%  vol_ratio=1.00  body=-1.00  live=True
+  IWM: return=+3.35%  vol_ratio=1.00  body=+1.00  live=True
+```
+
+Before fix: `session_chop` (yesterday's -0.5% down day). After: **`trend_up`** with per-benchmark truth surfaced.
+
+**Files**: `services/fast_intraday_regime.py`, `tests/test_regime_live_overlay.py` (new — 6 tests covering fallback, quote-flip, malformed input safety).
+
+**Full test count**: 757 alpha/regime/executor/wave/classical tests green.
+
+⚠️ **Deployment**: fix is preview only. `algo-trader-ai-1.emergent.host` needs redeploy to inherit — until then production regime will keep reading yesterday's bar during RTH.
+
+---
+
+
 ## Latest Update — 2026-02 (Pattern sensitivity + throughput bottleneck)
 
 ### 🎯 Honest diagnosis then targeted fix

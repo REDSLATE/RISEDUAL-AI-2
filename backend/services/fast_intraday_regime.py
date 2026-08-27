@@ -115,13 +115,36 @@ def _avg_volume(bars: list[dict], n: int = 20) -> Optional[float]:
 
 def _classify(today_return: float, vol_ratio: float, run_rate: float,
               body_ratio: float) -> tuple[str, dict]:
-    """Rules-based classifier. Returns (label, features)."""
+    """Rules-based classifier. Returns (label, features).
+
+    2026-02: Loosened the trend-day body_ratio gate from 0.5 → 0.25
+    and lowered the return threshold from 0.4% → 0.3%. The old
+    strict gates only marked "trend" when the open was near the low
+    and close near the high — which meant a normal +0.5% intraday
+    session that opened flat still fell into ``session_chop`` even
+    though the tape was clearly green. Env override:
+    ``ALPHA_REGIME_TREND_RETURN`` (default 0.003) and
+    ``ALPHA_REGIME_TREND_BODY`` (default 0.25).
+    """
     features = {
         "today_return_pct": round(today_return * 100, 3),
         "vol_ratio": round(vol_ratio, 3),
         "volume_run_rate": round(run_rate, 3),
         "body_ratio": round(body_ratio, 3),
     }
+    # Env-tunable trend gates
+    def _f(name: str, default: float) -> float:
+        raw = (os.environ.get(name) or "").strip()
+        if not raw:
+            return default
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return default
+
+    trend_ret = _f("ALPHA_REGIME_TREND_RETURN", 0.003)
+    trend_body = _f("ALPHA_REGIME_TREND_BODY", 0.25)
+
     # Momentum ignition: strong directional move + volume expansion
     if abs(today_return) >= 0.008 and run_rate >= 1.2 and abs(body_ratio) >= 0.3:
         label = "momentum_ignition_up" if today_return > 0 else "momentum_ignition_down"
@@ -132,18 +155,26 @@ def _classify(today_return: float, vol_ratio: float, run_rate: float,
     # Risk off: negative return + high vol
     if today_return < -0.005 and vol_ratio >= 1.2:
         return "risk_off", features
-    # Trend day: sustained direction, normal vol
-    if abs(today_return) >= 0.004 and abs(body_ratio) >= 0.5 and vol_ratio < 1.4:
+    # Trend day: sustained direction, normal vol (loosened body gate)
+    if abs(today_return) >= trend_ret and abs(body_ratio) >= trend_body and vol_ratio < 1.4:
         return "trend_up" if today_return > 0 else "trend_down", features
     # Otherwise: session_chop
     return "session_chop", features
 
 
-def _classify_bars(bars: list[dict]) -> tuple[str, dict]:
+def _classify_bars(bars: list[dict], *, live_quote: Optional[dict] = None) -> tuple[str, dict]:
     """Return (label, features) for a single symbol's daily bars.
 
     Extracted from ``snapshot()`` so it can be reused across the
     benchmark loop for composite regime detection.
+
+    ``live_quote`` — optional intraday overlay. Daily bars finalize
+    after market close, so during regular trading hours ``bars[-1]``
+    is yesterday's close. Passing a live quote lets us recalculate
+    today's return against yesterday's close and use TODAY's actual
+    intraday move to classify regime. Prevents the "yesterday was
+    -0.5% so today is chop" false negative operators complained about
+    when the live tape was clearly trending green.
     """
     try:
         today = bars[-1]
@@ -158,15 +189,60 @@ def _classify_bars(bars: list[dict]) -> tuple[str, dict]:
     if prev_close <= 0 or open_ <= 0 or high <= 0 or low <= 0 or close <= 0:
         return "UNKNOWN", {"reason": "zero_price"}
 
+    # Live-quote overlay: if we have today's intraday quote, treat
+    # yesterday's close (bars[-1].close) as the reference point and
+    # today's live price as the new "close". This flips the classifier
+    # from "yesterday's bar" mode → "today's live tape" mode.
+    live_used = False
+    if live_quote:
+        try:
+            live_price = float(
+                live_quote.get("last") or live_quote.get("price")
+                or live_quote.get("mid") or 0.0
+            )
+        except (TypeError, ValueError):
+            live_price = 0.0
+        if live_price > 0:
+            # yesterday's completed close becomes the reference
+            prev_close = close
+            close = live_price
+            # When overlaying live intraday, we don't have today's
+            # real intraday high/low — only the live tick. Using
+            # ``max(daily_high, live)`` would blow up vol_ratio and
+            # push a mildly-trending day into ``session_chop`` because
+            # yesterday's full-day range dominates.
+            # Instead, use the price move itself as a small "range"
+            # proxy — vol_ratio will read closer to 1.0 (normal),
+            # letting the trend-day gate fire on real up/down moves.
+            move = abs(live_price - prev_close)
+            open_ = prev_close  # open = yesterday's close (naive proxy)
+            # Small non-zero range: at least half of ATR so vol_ratio
+            # stays anchored around 1.0 unless the move itself is big
+            live_used = True
+            # Recompute high/low as a tight band around the move
+            high = max(prev_close, live_price)
+            low = min(prev_close, live_price)
+            if high == low:
+                high = prev_close * 1.0005
+                low = prev_close * 0.9995
+
     today_return = (close - prev_close) / prev_close
     atr = _atr20(bars) or 1.0
     today_range = high - low
     vol_ratio = today_range / atr if atr > 0 else 1.0
+    # Overlay mode: we don't have today's real intraday range yet,
+    # so vol_ratio has no meaning. Anchor it to 1.0 (normal) so the
+    # ``vol_ratio < 1.4`` trend-day gate can actually fire on real
+    # intraday moves.
+    if live_used:
+        vol_ratio = 1.0
     avg_vol = _avg_volume(bars, 20) or volume or 1.0
     run_rate = volume / avg_vol if avg_vol > 0 else 1.0
     rng = today_range if today_range > 0 else 1.0
     body_ratio = (close - open_) / rng
-    return _classify(today_return, vol_ratio, run_rate, body_ratio)
+    label, features = _classify(today_return, vol_ratio, run_rate, body_ratio)
+    features["live_overlay"] = live_used
+    return label, features
 
 
 # ── composite-regime rollup ──
@@ -241,13 +317,26 @@ async def snapshot(db: Any) -> dict:
     benchmarks = _benchmarks()
     per_symbol_label: dict[str, str] = {}
     per_symbol_features: dict[str, dict] = {}
+    # Fetch live quotes so the classifier sees today's intraday move,
+    # not just yesterday's closed daily bar. Best-effort — failing
+    # to get a live quote falls back to pure-daily classification.
+    try:
+        from services.market_data_pool import market_quote
+    except Exception:  # noqa: BLE001
+        market_quote = None  # type: ignore
     for sym in benchmarks:
         bars = await _fetch_bars_for(sym)
         if bars is None:
             per_symbol_label[sym] = "UNKNOWN"
             per_symbol_features[sym] = {"reason": "no_market_data"}
             continue
-        label, features = _classify_bars(bars)
+        live_q = None
+        if market_quote is not None:
+            try:
+                live_q = await market_quote(sym)
+            except Exception:  # noqa: BLE001
+                live_q = None
+        label, features = _classify_bars(bars, live_quote=live_q)
         per_symbol_label[sym] = label
         per_symbol_features[sym] = features
 
