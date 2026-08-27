@@ -1,5 +1,45 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (Wave Intelligence per-symbol regime + DANGER veto)
+
+### 🎯 Per-symbol volatility guardrail — Alpha can now see what SPY-level regime can't
+
+**Problem this closes:** Alpha's existing regime detectors are SPY-wide (slow: `choppy_meanrevert`; fast: `session_chop`). If AAPL had a 3σ volatility expansion but SPY was quiet, Alpha had no way to see it and would happily arm a setup into the shock. Wave Intelligence adds a per-symbol observe-only state machine that catches this.
+
+**What shipped (3 slices):**
+
+**P0 — DANGER_PAUSE veto** (safety):
+- Every tick with ≥5 daily bars runs `WaveIntelligenceMachine.evaluate()` on the symbol's own bars
+- Modes: `WAIT` / `TREND_FOLLOW` / `RANGE_GRID` / `DANGER_PAUSE`
+- On `DANGER_PAUSE` (volatility expansion, price shock, wide spread) → **hard skip** with `wave_danger_vetoes` counter bumped
+- Live verified: quiet bars → `RANGE_GRID`; +10% shock bar → `DANGER_PAUSE danger=0.80`
+
+**P1 — Observation persistence** (research):
+- `alpha_wave_observations` Mongo collection with 30-day TTL matching pattern research
+- All observations persisted (not just DANGER) so later we can join against `alpha_outcomes` and answer "did TREND_FOLLOW trades pay better than RANGE_GRID?"
+- Same fire-and-forget pattern as pattern-research log
+
+**P1 — Admin endpoint** (visibility):
+- `GET /api/admin/alpha-daytrader/wave-observations?symbol=&mode=&since_hours=&limit=`
+- Returns rows + `mode_counts` rollup + `danger_leaderboard` (top symbols by max danger)
+
+**Deferred (deliberately, per honesty pitch):**
+- **Wave-mode pattern biasing** — overlaps with existing chop-regime boost for mean-reversion patterns; wait 2-4 weeks of real observations before deciding if a per-symbol bias overlay adds real signal
+- **Grid trading integration** — the `grid_step_price` output is provided by the machine but Alpha doesn't do grid trading
+
+**Files:**
+- `services/wave_intelligence.py` — new (540 lines, unmodified from the user's upload)
+- `services/alpha_wave_persistence.py` — new (audit log + rollups)
+- `services/alpha_day_trader.py` — module-level `WaveIntelligenceMachine` singleton + veto wiring
+- `routes/admin_alpha_daytrader.py` — new `/wave-observations` endpoint
+- `route_registry.py` — TTL indexes on startup
+- `tests/test_alpha_wave.py` — new (12 tests: persistence, filters, rollup, leaderboard, machine sanity)
+
+**Full test count:** 638 alpha/regime/executor/bot-status/classical/fingerprint/research/wave tests green (was 626).
+
+---
+
+
 ## Latest Update — 2026-02 (Economic Fingerprint Dedup + Pattern Research Log)
 
 ### 🎯 Two IGNISpilot-inspired safeguards shipped

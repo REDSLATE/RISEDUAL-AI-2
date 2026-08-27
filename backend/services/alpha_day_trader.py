@@ -943,6 +943,22 @@ async def _record_outcome(db: Any, *, setup: ActiveSetup, intent_id: Optional[st
         logger.debug("[alpha_daytrader] outcome write failed: %s", exc)
 
 
+# Module-level Wave Intelligence singleton — the machine holds a
+# per-symbol LRU state cache for mode hysteresis. Fresh evaluation of
+# the same closed bars is idempotent, so a single machine is safe to
+# share across tick calls.
+_WAVE_MACHINE_INSTANCE = None
+
+
+def _wave_machine():
+    global _WAVE_MACHINE_INSTANCE
+    if _WAVE_MACHINE_INSTANCE is None:
+        from services.wave_intelligence import WaveIntelligenceMachine
+        _WAVE_MACHINE_INSTANCE = WaveIntelligenceMachine()
+    return _WAVE_MACHINE_INSTANCE
+
+
+
 # ─── Universe source ──────────────────────────────────────────────
 
 
@@ -1160,6 +1176,42 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
                 )
         except Exception:  # noqa: BLE001
             pass
+
+        # 2026-02: Wave Intelligence per-symbol regime + DANGER veto.
+        # Runs on the same ``recent_bars`` we already fetch. If the
+        # symbol is in DANGER_PAUSE (volatility expansion, price
+        # shock, wide spread), skip the tick entirely — this is the
+        # per-symbol safety layer Alpha's SPY-level regime can't see.
+        wave_mode: Optional[str] = None
+        try:
+            if snap.recent_bars and len(snap.recent_bars) >= 5:
+                _machine = _wave_machine()
+                wave_obs = _machine.evaluate(
+                    symbol=snap.symbol,
+                    lane="equity",
+                    timeframe="daily",
+                    bars=snap.recent_bars,
+                    spread_bps=snap.spread_bps,
+                )
+                wave_mode = wave_obs.mode.value
+                # Fire-and-forget persistence for later analysis.
+                try:
+                    from services.alpha_wave_persistence import (
+                        record_observation as _record_wave,
+                    )
+                    await _record_wave(db, observation=wave_obs.to_dict())
+                except Exception:  # noqa: BLE001
+                    pass
+                if wave_mode == "DANGER_PAUSE":
+                    await _bump_counter(db, "wave_danger_vetoes", 1)
+                    logger.info(
+                        "[alpha_daytrader] symbol=%s VETO — wave DANGER_PAUSE (danger=%.2f)",
+                        snap.symbol, wave_obs.scores.danger,
+                    )
+                    continue
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[alpha_daytrader] wave eval failed for %s: %s",
+                         snap.symbol, exc)
 
         candidate = patterns.detect(
             snap,

@@ -337,3 +337,45 @@ async def fingerprint_dedup(
         "window_min": int(_os.environ.get("ALPHA_INTENT_DEDUP_WINDOW_MIN") or 15),
     }
 
+
+@router.get("/wave-observations")
+async def wave_observations(
+    request: Request,
+    symbol: str = Query("", max_length=16),
+    mode: str = Query("", max_length=32),
+    since_hours: int = Query(24, ge=1, le=168),
+    limit: int = Query(100, ge=1, le=1000),
+):
+    """Per-symbol Wave Intelligence observations.
+
+    Wave Intelligence classifies each symbol's own bars into one of
+    ``WAIT / TREND_FOLLOW / RANGE_GRID / DANGER_PAUSE``. DANGER_PAUSE
+    is a hard veto — Alpha refuses to arm any setup on symbols in
+    that mode.
+
+    Returns:
+    * ``rows``: newest N observations (filterable)
+    * ``mode_counts``: rollup of mode counts across ``since_hours``
+    * ``danger_leaderboard``: top symbols by max danger score
+    """
+    await _require_admin(request)
+    from services.alpha_wave_persistence import (
+        recent as _recent, mode_counts as _mc,
+        danger_leaderboard as _dl,
+    )
+    rows = await _recent(
+        db,
+        symbol=(symbol.strip() or None),
+        mode=(mode.strip() or None),
+        limit=limit,
+    )
+    counts = await _mc(db, since_hours=since_hours)
+    leaderboard = await _dl(db, since_hours=min(since_hours, 12), limit=10)
+    return {
+        "rows": rows,
+        "returned": len(rows),
+        "mode_counts": counts,
+        "danger_leaderboard": leaderboard,
+        "since_hours": since_hours,
+    }
+
