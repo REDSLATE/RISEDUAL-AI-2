@@ -6,7 +6,7 @@ import pytest
 import requests
 import os
 import time
-from conftest_creds import OWNER_EMAIL, OWNER_PASSWORD, BASE_URL
+from conftest_creds import OWNER_EMAIL, OWNER_PASSWORD
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 

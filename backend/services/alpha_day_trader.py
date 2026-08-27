@@ -1546,6 +1546,67 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
                                    **_outcome_kwargs)
             continue
 
+        # ── EXECUTION-QUOTE GATE ──
+        # Broker data is the source of truth for tradable-price
+        # right-now context. Re-quote the symbol via the
+        # decision-type policy (broker first, vendor as witness)
+        # and REFUSE to submit when:
+        #   * the broker quote is stale (age > freshness ceiling)
+        #   * broker and vendor disagree > drift ceiling
+        #   * the broker has no price at all (symbol not covered /
+        #     broker offline) — in that case we defer this tick so
+        #     the next scan can retry against a healthier broker.
+        # These gates are DIAGNOSTIC-heavy: every reject writes a
+        # ``data_conflict`` / ``broker_quote_missing`` observation
+        # so we can audit exactly why Alpha stood down.
+        broker_confirmed_price: Optional[float] = None
+        try:
+            from services.provider_policy import fetch_execution_quote
+            xq = await fetch_execution_quote(setup.symbol)
+        except Exception as exc:  # noqa: BLE001
+            logger.info(
+                "[alpha_daytrader] execution-quote gate errored for %s: %s",
+                setup.symbol, exc,
+            )
+            xq = None
+        if xq is not None:
+            gate_payload = {
+                "symbol": setup.symbol,
+                "stage": "execution_quote",
+                "source": xq.source,
+                "price": xq.price,
+                "age_seconds": xq.age_seconds,
+                "broker_price": xq.broker_price,
+                "vendor_price": xq.vendor_price,
+                "vendor_source": xq.vendor_source,
+                "disagreement_bps": xq.disagreement_bps,
+                "data_conflict": xq.data_conflict,
+                "reason": xq.reason,
+            }
+            if not xq.execution_allowed:
+                await _record_observation(
+                    db, setup.setup_id, "execution_quote_blocked", gate_payload,
+                )
+                await _record_outcome(
+                    db, setup=setup, intent_id=intent.intent_id,
+                    submitted=False, filled=False,
+                    reject_reason=xq.reason or "execution_quote_blocked",
+                    **_outcome_kwargs,
+                )
+                alpha_hot_store.release_symbol_lock(
+                    setup.symbol, setup_id=setup.setup_id,
+                )
+                continue
+            broker_confirmed_price = xq.price
+            await _record_observation(
+                db, setup.setup_id, "execution_quote_confirmed", gate_payload,
+            )
+            intent.reason["broker_confirmed_price"] = broker_confirmed_price
+            intent.reason["execution_quote_source"] = xq.source
+            intent.reason["execution_quote_age_seconds"] = xq.age_seconds
+            if xq.disagreement_bps is not None:
+                intent.reason["execution_quote_drift_bps"] = xq.disagreement_bps
+
         # Hand off to the existing execution pipeline. maybe_route_live
         # runs Seat → Risk → RoadGuard → Entry Timing → broker. We do NOT
         # bypass any of that. A dict return means the broker submission

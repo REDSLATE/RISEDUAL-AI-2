@@ -5,7 +5,7 @@ Tests for: broker connection, validation, account info, positions, orders, portf
 import pytest
 import requests
 import os
-from conftest_creds import ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL
+from conftest_creds import ADMIN_EMAIL, ADMIN_PASSWORD
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 

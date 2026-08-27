@@ -1,5 +1,56 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (Decision-type-based provider policy — broker-first execution truth, vendor witness + fallback)
+
+### 🎯 The right routing model
+
+Operator: *"Broker data should be primary for execution-time truth. Vendor data should support research, history, and fallback."*
+
+Earlier iterations reduced this to a single flat priority list, which is wrong: a broker is authoritative for "what can I trade at what live price with what buying power right now?" — a vendor is authoritative for "what's the broader history / news / context?" Mixing those two chains was the underlying error behind both "Alpha never trades" (broker rate-limits ate the whole pool) and the earlier over-corrections that flipped it the other way.
+
+### What shipped
+
+**1. `services/provider_policy.py` (new)** — decision-type table:
+
+```python
+PROVIDER_POLICY = {
+  "execution_quote": ["broker", "finnhub", "polygon", "alphavantage"],
+  "account_state":   ["broker"],
+  "positions":       ["broker"],
+  "open_orders":     ["broker"],
+  "intraday_regime": ["broker", "finnhub", "polygon"],
+  "daily_history":   ["polygon", "alphavantage", "finnhub"],
+  "news":            ["finnhub", "alphavantage", "polygon"],
+}
+```
+
+**2. Freshness gate** — `EXECUTION_QUOTE_FRESHNESS_SECS` (default 5s). Broker quotes older than that are not trusted on the execution path.
+
+**3. Disagreement gate** — `EXECUTION_QUOTE_MAX_DRIFT_BPS` (default 50 bps). When broker and vendor disagree beyond the ceiling, the result is flagged `data_conflict=True` and auto-execution is BLOCKED. Upstream must re-quote the broker.
+
+**4. `fetch_broker_quote` / `fetch_vendor_quote`** split in `services/market_data_pool.py` — bypass the MongoDB price cache so the freshness / drift gates always see a real wire-time reading. Every quote is stamped with `fetched_at` (unix seconds) at dispatch.
+
+**5. Alpha wired in** — `alpha_day_trader._run_alpha_tick_impl` calls `fetch_execution_quote(symbol)` immediately before `maybe_route_live`. Rejects observed as `execution_quote_blocked` observations with the full drift/age payload. Confirmed submissions annotate the intent with `broker_confirmed_price`, `execution_quote_source`, and `execution_quote_age_seconds`.
+
+### Tests
+
+- `tests/test_provider_policy.py` (16 tests): policy shape, `get_provider_chain` fallback, drift math, all four gate paths (fresh happy path, stale broker, drift > 50 bps → data_conflict, broker missing, everyone silent, missing `fetched_at`).
+- `tests/test_market_data_broker_vendor_split.py` (5 tests): broker-only dispatch, vendor-only dispatch skipping broker, `fetched_at` stamping.
+
+Full suite: 132 alpha/regime/policy tests green. 4785 total passing (2 pre-existing failures unrelated: `test_no_unguarded_mongo_datetime_math` and `test_broker_sort_and_watchlist_merge` — both reproduced without my changes).
+
+### Files
+
+- `services/provider_policy.py` (new)
+- `services/market_data_pool.py` (`fetch_broker_quote`, `fetch_vendor_quote`, `fetched_at` stamp)
+- `services/alpha_day_trader.py` (execution-quote gate before `maybe_route_live`)
+- `tests/test_provider_policy.py`, `tests/test_market_data_broker_vendor_split.py` (new)
+
+⚠️ **Deployment**: fix is preview only. `algo-trader-ai-1.emergent.host` needs redeploy to inherit — production still routes without the freshness/drift gates until then.
+
+---
+
+
 ## Latest Update — 2026-02 (Regime detector reads today's tape, not yesterday's close)
 
 ### 🎯 Root cause of stubborn "session_chop" verdict

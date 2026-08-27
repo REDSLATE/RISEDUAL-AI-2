@@ -1,7 +1,8 @@
 """Media upload/download routes — admin media manager for videos, images, etc."""
-import os
 import re
 import logging
+import threading
+import time
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Response
 from services.storage_service import MediaService, get_object
 
@@ -9,17 +10,28 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["media"])
 
 
-# Upload IDs are interpolated into a filesystem path (``/tmp/uploads/<id>``).
-# Any non-alphanumeric character — including ``..``, ``/``, ``\`` — would
-# allow path-traversal escapes (e.g. an attacker uploading to
-# ``../../etc/cron.d/foo``). We require strictly safe characters and a
-# tight length range. UUIDs (32 hex + 4 hyphens) and the legacy
+# Upload IDs are interpolated into an in-memory dict key. We still
+# require strictly safe characters to avoid weird IDs polluting logs
+# and to keep the shape compatible with the previous filesystem layout.
+# UUIDs (32 hex + 4 hyphens) and the legacy
 # ``upload_<timestamp>_<rand>`` shape both pass.
 _UPLOAD_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
 
+# In-memory chunk staging. Chunked uploads used to stage in
+# ``/tmp/uploads/`` on the app pod, which is invisible across replicas
+# and gets wiped on deploy. We now keep partial uploads entirely in
+# process memory and only hand the assembled bytes to the durable
+# object-storage service. Single-worker uvicorn keeps this safe today;
+# if we ever scale horizontally the staging store should move to Redis.
+_CHUNK_STAGE: dict[str, dict] = {}
+_CHUNK_STAGE_LOCK = threading.Lock()
+# Anything older than this without a completing chunk is garbage-
+# collected so a stalled client can't pin memory forever.
+_CHUNK_STAGE_TTL_SECS = 60 * 30
+
 
 def _validate_upload_id(upload_id: str) -> str:
-    """Reject anything that could escape ``/tmp/uploads/``.
+    """Reject weird or oversized upload ids.
 
     Returns the validated id on success, raises 400 on failure. The
     error message is intentionally generic — we don't tell an
@@ -31,6 +43,21 @@ def _validate_upload_id(upload_id: str) -> str:
             detail="upload_id must be 8-128 chars of [A-Za-z0-9_-]",
         )
     return upload_id
+
+
+def _gc_stage_locked() -> None:
+    """Drop chunk-stage entries that have gone stale.
+
+    Caller holds ``_CHUNK_STAGE_LOCK``.
+    """
+    now = time.time()
+    stale = [
+        uid
+        for uid, entry in _CHUNK_STAGE.items()
+        if now - entry.get("updated_at", 0) > _CHUNK_STAGE_TTL_SECS
+    ]
+    for uid in stale:
+        _CHUNK_STAGE.pop(uid, None)
 
 
 @router.post("/media/upload")
@@ -73,46 +100,41 @@ async def upload_chunk(
     content_type: str = Form("application/octet-stream"),
 ):
     """Upload a file in chunks for large files. Assembles on last chunk."""
-    import shutil
-
-    # Validate FIRST — never let a malicious upload_id touch the
-    # filesystem. ``os.path.join`` doesn't protect against absolute
-    # path injection, so the regex is the entire guard.
+    # Validate FIRST — never let a malicious upload_id become a dict key.
     upload_id = _validate_upload_id(upload_id)
-    # ``/tmp/uploads`` is shared across processes on this host. The
-    # B108 risk surface is symlink-attack + path-traversal via the
-    # interpolated id. Both are now closed:
-    #   * Regex above strictly limits the id charset (no ``..``, no ``/``)
-    #   * The realpath check below rejects any resolved path that
-    #     escapes the base, catching pre-created symlinks too.
-    # This endpoint is also admin-gated upstream, so the threat
-    # model further narrows to a misbehaving operator session.
-    base_dir = "/tmp/uploads"  # nosec B108
-    chunk_dir = os.path.join(base_dir, upload_id)
-    # Defence-in-depth: even after the regex passes, verify the
-    # resolved path stays inside ``/tmp/uploads``. Catches any
-    # future regex regression without breaking the happy path.
-    real_chunk_dir = os.path.realpath(chunk_dir)
-    real_base = os.path.realpath(base_dir)
-    if not real_chunk_dir.startswith(real_base + os.sep):
-        raise HTTPException(status_code=400, detail="invalid upload path")
-    os.makedirs(chunk_dir, exist_ok=True)
 
     chunk_data = await file.read()
-    chunk_path = os.path.join(chunk_dir, f"chunk_{chunk_index:04d}")
-    with open(chunk_path, "wb") as f:
-        f.write(chunk_data)
+
+    # Stage the chunk entirely in memory. No pod-local staging file.
+    with _CHUNK_STAGE_LOCK:
+        _gc_stage_locked()
+        entry = _CHUNK_STAGE.get(upload_id)
+        if entry is None:
+            entry = {"chunks": {}, "updated_at": time.time()}
+            _CHUNK_STAGE[upload_id] = entry
+        entry["chunks"][chunk_index] = chunk_data
+        entry["updated_at"] = time.time()
+        received = len(entry["chunks"])
 
     logger.info(f"Chunk {chunk_index + 1}/{total_chunks} received for {upload_id}")
 
     # If this is the last chunk, assemble and upload
-    if chunk_index + 1 >= total_chunks:
+    if received >= total_chunks:
         try:
+            with _CHUNK_STAGE_LOCK:
+                entry = _CHUNK_STAGE.pop(upload_id, None)
+            if entry is None:
+                raise HTTPException(status_code=500, detail="chunk stage disappeared")
+
             assembled = bytearray()
             for i in range(total_chunks):
-                cp = os.path.join(chunk_dir, f"chunk_{i:04d}")
-                with open(cp, "rb") as f:
-                    assembled.extend(f.read())
+                part = entry["chunks"].get(i)
+                if part is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"missing chunk {i} of {total_chunks}",
+                    )
+                assembled.extend(part)
 
             svc = MediaService()
             result = await svc.upload(
@@ -122,12 +144,12 @@ async def upload_chunk(
                 uploaded_by="admin",
                 category=category,
             )
-
-            # Cleanup temp chunks
-            shutil.rmtree(chunk_dir, ignore_errors=True)
             return {**result, "complete": True}
+        except HTTPException:
+            raise
         except Exception as e:
-            shutil.rmtree(chunk_dir, ignore_errors=True)
+            with _CHUNK_STAGE_LOCK:
+                _CHUNK_STAGE.pop(upload_id, None)
             logger.error(f"Chunk assembly error: {e}")
             raise HTTPException(status_code=500, detail=f"Assembly failed: {str(e)}")
 

@@ -5,7 +5,7 @@ Tests the split components: AIIntelligence, MacroDashboard, AdminPanel
 import pytest
 import requests
 import os
-from conftest_creds import OWNER_EMAIL, OWNER_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL
+from conftest_creds import OWNER_EMAIL, OWNER_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://risedual-trading.preview.emergentagent.com')
 

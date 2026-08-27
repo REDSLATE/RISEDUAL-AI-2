@@ -12,7 +12,7 @@ import os
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Test credentials from test_credentials.md
-from conftest_creds import BASE_URL
+
 ADMIN_USER_ID = "69d8c194e0cdcd6613a00891"
 
 

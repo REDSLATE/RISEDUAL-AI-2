@@ -6,7 +6,7 @@ Test Admin Panel and User Workspace APIs
 import pytest
 import requests
 import os
-from conftest_creds import ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL, OWNER_EMAIL, OWNER_PASSWORD
+from conftest_creds import ADMIN_EMAIL, OWNER_EMAIL, OWNER_PASSWORD, ADMIN_PASSWORD
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
@@ -17,9 +17,9 @@ BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 # set and producing a misleading "401 Invalid email or password" that
 # masked the brute-force-DoS bug for ~4 weeks.
 OWNER_EMAIL = os.environ.get("OWNER_EMAIL", OWNER_EMAIL)
-OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", OWNER_PASSWORD)
+OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", OWNER_PASSWORD)  # noqa: F811
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", ADMIN_EMAIL)
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", ADMIN_PASSWORD)
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", ADMIN_PASSWORD)  # noqa: F811
 
 
 @pytest.fixture(scope="module")

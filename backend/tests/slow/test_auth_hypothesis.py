@@ -6,7 +6,7 @@ import pytest
 import requests
 import os
 import time
-from conftest_creds import ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL
+from conftest_creds import ADMIN_EMAIL, BASE_URL, ADMIN_PASSWORD
 
 # Allow REACT_APP_BACKEND_URL to override conftest_creds.BASE_URL, but
 # fall back to the imported value rather than the empty string when the
@@ -31,7 +31,7 @@ _skip_if_not_https = pytest.mark.skipif(
 
 # Admin credentials from environment
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", ADMIN_EMAIL)
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", ADMIN_PASSWORD)
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", ADMIN_PASSWORD)  # noqa: F811
 
 # Test user for registration
 TEST_USER_EMAIL = f"test_user_{int(time.time())}@test.com"

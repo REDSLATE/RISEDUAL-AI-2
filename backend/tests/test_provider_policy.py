@@ -1,0 +1,252 @@
+"""Tests for the decision-type-based provider policy.
+
+Covers the three moving pieces:
+
+* ``PROVIDER_POLICY`` table shape / ``get_provider_chain`` fallback
+* ``compute_disagreement_bps`` math
+* ``fetch_execution_quote`` freshness / drift / broker-first gates
+"""
+
+from __future__ import annotations
+
+import time
+
+import pytest
+
+from services import provider_policy
+
+
+# ─────────────────────────────────────────────
+#  Policy table
+# ─────────────────────────────────────────────
+def test_policy_table_has_required_decision_types():
+    """The seven decision types spec'd by the operator must be present.
+
+    Regression guard — if someone renames a key we want the test
+    to fail loudly instead of the caller silently falling back to
+    the execution-quote chain.
+    """
+    required = {
+        "execution_quote",
+        "account_state",
+        "positions",
+        "open_orders",
+        "intraday_regime",
+        "daily_history",
+        "news",
+    }
+    assert required.issubset(provider_policy.PROVIDER_POLICY.keys())
+
+
+def test_execution_quote_puts_broker_first():
+    """Live execution truth = broker first, always."""
+    chain = provider_policy.get_provider_chain("execution_quote")
+    assert chain[0] == "broker"
+    assert "finnhub" in chain
+    assert "polygon" in chain
+
+
+def test_account_state_is_broker_only():
+    """Cash / buying power / positions must never fall back to a
+    vendor — vendors don't know our account."""
+    for dt in ("account_state", "positions", "open_orders"):
+        assert provider_policy.get_provider_chain(dt) == ["broker"]
+
+
+def test_daily_history_is_vendor_first():
+    """Research / backtest should use vendor bars — broker daily
+    bars are often adjusted differently and rate-limited."""
+    chain = provider_policy.get_provider_chain("daily_history")
+    assert chain[0] != "broker"
+    assert "polygon" in chain
+
+
+def test_unknown_decision_type_defaults_to_execution_quote_chain():
+    """A typo shouldn't silently drop the broker off the front."""
+    default = provider_policy.get_provider_chain("something_that_does_not_exist")
+    assert default == provider_policy.get_provider_chain("execution_quote")
+
+
+def test_get_provider_chain_returns_copy_not_reference():
+    """Callers must not be able to mutate the policy table."""
+    chain = provider_policy.get_provider_chain("execution_quote")
+    chain.append("EVIL")
+    assert "EVIL" not in provider_policy.PROVIDER_POLICY["execution_quote"]
+
+
+# ─────────────────────────────────────────────
+#  Drift math
+# ─────────────────────────────────────────────
+def test_compute_disagreement_bps_basic():
+    """A 1% drift is 100 bps by definition."""
+    assert provider_policy.compute_disagreement_bps(100.0, 101.0) == pytest.approx(100.0)
+
+
+def test_compute_disagreement_bps_symmetric_abs():
+    """The function returns absolute drift; up and down 1% agree."""
+    up = provider_policy.compute_disagreement_bps(100.0, 101.0)
+    down = provider_policy.compute_disagreement_bps(100.0, 99.0)
+    assert up == pytest.approx(down)
+
+
+def test_compute_disagreement_bps_zero_reference_is_zero():
+    """A zero reference is undefined; we return 0.0 so callers
+    don't accidentally compare NaN against a threshold."""
+    assert provider_policy.compute_disagreement_bps(0.0, 100.0) == 0.0
+    assert provider_policy.compute_disagreement_bps(-1.0, 100.0) == 0.0
+
+
+def test_compute_disagreement_bps_at_threshold_boundary():
+    """A 0.5% drift = exactly the default 50 bps ceiling. We treat
+    the ceiling as inclusive of "still OK" — the trade path only
+    blocks when drift *exceeds* it."""
+    drift = provider_policy.compute_disagreement_bps(100.0, 100.5)
+    assert drift == pytest.approx(50.0)
+    assert drift <= provider_policy.EXECUTION_MAX_DRIFT_BPS
+
+
+# ─────────────────────────────────────────────
+#  Execution-quote gate
+# ─────────────────────────────────────────────
+def _install_stub_quotes(monkeypatch, *, broker, vendor):
+    """Point the policy module at fake broker / vendor fetchers.
+
+    Each fake returns whatever dict the test asks for (or ``None``).
+    Kept as a helper so every test reads as a data table.
+    """
+    async def _broker(_symbol):
+        return broker
+
+    async def _vendor(_symbol):
+        return vendor
+
+    import services.market_data_pool as pool_mod
+    monkeypatch.setattr(pool_mod, "fetch_broker_quote", _broker)
+    monkeypatch.setattr(pool_mod, "fetch_vendor_quote", _vendor)
+
+
+def _run_gate(symbol: str):
+    """Drive :func:`fetch_execution_quote` from a sync test.
+
+    We deliberately DON'T use ``asyncio.run`` here — it closes the
+    default event loop on exit, which breaks any later test that
+    still relies on the legacy ``asyncio.get_event_loop()`` pattern.
+    A private loop scoped to this call is set up and torn down
+    cleanly instead.
+    """
+    import asyncio
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(provider_policy.fetch_execution_quote(symbol))
+    finally:
+        loop.close()
+
+
+def test_fresh_broker_price_agrees_with_vendor_execution_allowed(monkeypatch):
+    """The happy path: fresh broker, vendor confirms, no drift.
+
+    ``execution_allowed`` must be True, ``source == "broker"``,
+    and the drift number must be recorded for the audit trail
+    even when it's under the ceiling.
+    """
+    now = time.time()
+    _install_stub_quotes(
+        monkeypatch,
+        broker={"price": 150.00, "fetched_at": now, "source": "public"},
+        vendor={"price": 150.05, "fetched_at": now, "source": "finnhub", "provider_name": "finnhub-backup"},
+    )
+    xq = _run_gate("AAPL")
+    assert xq.execution_allowed is True
+    assert xq.source == "broker"
+    assert xq.price == 150.00
+    assert xq.broker_price == 150.00
+    assert xq.vendor_price == 150.05
+    assert xq.disagreement_bps is not None
+    assert xq.disagreement_bps < provider_policy.EXECUTION_MAX_DRIFT_BPS
+    assert xq.data_conflict is False
+    assert xq.reason == "broker_confirmed"
+
+
+def test_stale_broker_quote_blocks_execution(monkeypatch):
+    """Broker price older than the freshness ceiling must not be
+    trusted for auto-execution, even if a vendor confirms it."""
+    old = time.time() - (provider_policy.EXECUTION_FRESHNESS_SECS + 10)
+    _install_stub_quotes(
+        monkeypatch,
+        broker={"price": 150.00, "fetched_at": old, "source": "public"},
+        vendor={"price": 150.00, "fetched_at": time.time(), "source": "finnhub"},
+    )
+    xq = _run_gate("AAPL")
+    assert xq.execution_allowed is False
+    assert xq.reason is not None and "stale" in xq.reason
+    assert xq.source == "broker"
+    assert xq.age_seconds is not None
+    assert xq.age_seconds > provider_policy.EXECUTION_FRESHNESS_SECS
+
+
+def test_broker_vendor_disagreement_over_50bps_blocks_execution(monkeypatch):
+    """The user-spec'd disagreement rule: broker $150 vs vendor
+    $151.50 = 100 bps drift > 50 bps default ceiling → block.
+
+    We must still report the broker price (so the operator can see
+    what the broker said), we must NOT allow auto-execute, and the
+    ``data_conflict`` flag must be True.
+    """
+    now = time.time()
+    _install_stub_quotes(
+        monkeypatch,
+        broker={"price": 150.00, "fetched_at": now, "source": "public"},
+        vendor={"price": 151.50, "fetched_at": now, "source": "finnhub", "provider_name": "finnhub-backup"},
+    )
+    xq = _run_gate("AAPL")
+    assert xq.execution_allowed is False
+    assert xq.data_conflict is True
+    assert xq.disagreement_bps is not None
+    assert xq.disagreement_bps > provider_policy.EXECUTION_MAX_DRIFT_BPS
+    assert xq.reason is not None and "data_conflict" in xq.reason
+    # Broker price still surfaced for the audit trail.
+    assert xq.broker_price == 150.00
+    assert xq.vendor_price == 151.50
+
+
+def test_broker_missing_falls_through_to_vendor_but_blocks_execution(monkeypatch):
+    """When the broker has no quote (symbol not in coverage / broker
+    offline) we return the vendor price for context but block
+    auto-execute. The trade path must re-quote the broker itself.
+    """
+    _install_stub_quotes(
+        monkeypatch,
+        broker=None,
+        vendor={"price": 150.00, "fetched_at": time.time(), "source": "finnhub", "provider_name": "finnhub-backup"},
+    )
+    xq = _run_gate("XYZ")
+    assert xq.execution_allowed is False
+    assert xq.reason == "no_broker_price"
+    assert xq.price == 150.00
+    assert xq.source and xq.source.startswith("vendor:")
+
+
+def test_no_price_from_anyone_returns_disallowed(monkeypatch):
+    """Total blackout — both feeds silent. The gate must fail
+    closed with ``no_price`` and no bogus fields."""
+    _install_stub_quotes(monkeypatch, broker=None, vendor=None)
+    xq = _run_gate("XYZ")
+    assert xq.execution_allowed is False
+    assert xq.reason == "no_price"
+    assert xq.price is None
+    assert xq.broker_price is None
+    assert xq.vendor_price is None
+
+
+def test_broker_price_without_fetched_at_is_treated_as_stale(monkeypatch):
+    """A broker feed that forgets to stamp a timestamp is not
+    trustworthy for the freshness gate. We keep the response but
+    refuse auto-execute so the caller notices."""
+    _install_stub_quotes(
+        monkeypatch,
+        broker={"price": 150.00, "source": "public"},  # no fetched_at
+        vendor={"price": 150.00, "fetched_at": time.time(), "source": "finnhub"},
+    )
+    xq = _run_gate("AAPL")
+    assert xq.execution_allowed is False
+    assert xq.reason is not None and "stale" in xq.reason

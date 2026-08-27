@@ -10,6 +10,7 @@ Usage:
 import os
 import logging
 import asyncio
+import time
 from datetime import datetime, timezone, timedelta
 from typing import Any, Optional
 
@@ -510,6 +511,13 @@ async def _dispatch_quote(provider: ProviderEntry, symbol: str) -> dict:
     if not result:
         raise RuntimeError(f"No data from {provider.name}")
     result["provider_name"] = provider.name
+    # Stamp the wire-off timestamp so ``provider_policy`` can compute
+    # ``age_seconds`` for the freshness gate on the execution path.
+    # Any quote that hasn't been stamped yet gets stamped here — the
+    # per-provider fetchers above may set an earlier ts, but they're
+    # allowed to (broker feeds may attach the broker's own tick time,
+    # which is preferable to our receive time).
+    result.setdefault("fetched_at", time.time())
     return result
 
 
@@ -619,6 +627,75 @@ async def market_daily(symbol: str, outputsize: str = "compact") -> Optional[lis
     except Exception as e:
         logger.error(f"Market daily pool exhausted for {symbol}: {e}")
         return None
+
+
+# ─────────────────────────────────────────────
+#  POLICY-AWARE HELPERS
+# ─────────────────────────────────────────────
+#
+# ``fetch_broker_quote`` and ``fetch_vendor_quote`` split the pool
+# so ``services.provider_policy.fetch_execution_quote`` can enforce
+# broker-first freshness and drift rules on the execution path.
+# They intentionally BYPASS the MongoDB price-cache used by
+# ``market_quote`` — the freshness check needs a wire-time stamp,
+# and a 5-minute cache hit would answer with a quote that's older
+# than our freshness ceiling by construction.
+
+# 2026-02 — providers we treat as "the broker" for policy purposes.
+# Right now this is only Public.com, but it's a set so MooMoo /
+# other broker feeds can be added without a code change.
+_BROKER_PROVIDERS = {"public"}
+
+
+async def fetch_broker_quote(symbol: str) -> Optional[dict]:
+    """Return a live broker quote for ``symbol`` or ``None``.
+
+    Bypasses the MongoDB price cache — every call goes to the
+    broker on the wire so the freshness gate in
+    :mod:`services.provider_policy` sees a real wire-time stamp.
+    """
+    if not market_pool.available:
+        return None
+    broker_providers = [
+        p for p in market_pool.providers if p.provider in _BROKER_PROVIDERS
+    ]
+    if not broker_providers:
+        return None
+    for provider in broker_providers:
+        try:
+            return await _dispatch_quote(provider, symbol)
+        except Exception as exc:  # noqa: BLE001
+            logger.info(
+                "[market_data_pool] broker quote via %s failed for %s: %s",
+                provider.name, symbol, exc,
+            )
+    return None
+
+
+async def fetch_vendor_quote(symbol: str) -> Optional[dict]:
+    """Return a live vendor quote for ``symbol`` (skipping broker
+    providers), or ``None`` when every vendor errors out.
+
+    Bypasses the MongoDB price cache for the same reason as
+    :func:`fetch_broker_quote` — the drift gate needs a real
+    wire-time reading, not a cached one.
+    """
+    if not market_pool.available:
+        return None
+    vendors = [
+        p for p in market_pool.providers if p.provider not in _BROKER_PROVIDERS
+    ]
+    if not vendors:
+        return None
+    for provider in vendors:
+        try:
+            return await _dispatch_quote(provider, symbol)
+        except Exception as exc:  # noqa: BLE001
+            logger.info(
+                "[market_data_pool] vendor quote via %s failed for %s: %s",
+                provider.name, symbol, exc,
+            )
+    return None
 
 
 def market_pool_status() -> dict:
