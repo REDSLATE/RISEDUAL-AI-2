@@ -134,25 +134,97 @@ app.include_router(public_status_router)
 app.include_router(api_router)
 register_all_routers(app)
 
-# CORS — dynamic origin reflection for httpOnly cookie auth.
+# CORS — env-driven allowlist for httpOnly cookie auth.
+#
+# 2026-02 (SEC-001 fix): The prior middleware reflected the caller's
+# ``Origin`` header verbatim and set ``Access-Control-Allow-Credentials``,
+# which means ANY external website could make credentialed requests
+# as a logged-in user. We now match ``Origin`` against a fixed
+# allowlist configured via env vars.
+#
+# Env:
+#   * ``CORS_ALLOWED_ORIGINS`` — comma-separated origin list (preferred).
+#     Example: "https://algo-trader-ai-1.emergent.host,https://risedual-trading.preview.emergentagent.com"
+#   * ``FRONTEND_URL``          — fallback single-origin when the
+#     allowlist env is unset (backwards-compatible with older deploys).
+#   * ``CORS_ALLOW_LOCALHOST``  — set to "1" to additionally allow
+#     http(s)://localhost:* and 127.0.0.1:* for dev.
+#
+# Non-allowed origins get NO ``Access-Control-Allow-*`` headers, which
+# means the browser rejects the response and the attack fails. Cookies
+# still ride (SameSite=None) but attacker JS cannot read the response
+# or complete a preflighted mutation.
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
+
+
+def _load_cors_allowlist() -> set[str]:
+    raw = (os.environ.get("CORS_ALLOWED_ORIGINS") or "").strip()
+    origins: set[str] = set()
+    if raw:
+        for o in raw.split(","):
+            o = o.strip().rstrip("/")
+            if o:
+                origins.add(o)
+    fallback = (os.environ.get("FRONTEND_URL") or "").strip().rstrip("/")
+    if fallback:
+        origins.add(fallback)
+    return origins
+
+
+def _cors_allow_localhost() -> bool:
+    return (os.environ.get("CORS_ALLOW_LOCALHOST") or "").strip().lower() in {"1", "true", "yes"}
+
+
+def _is_localhost_origin(origin: str) -> bool:
+    o = origin.lower()
+    return (
+        o.startswith("http://localhost")
+        or o.startswith("https://localhost")
+        or o.startswith("http://127.0.0.1")
+        or o.startswith("https://127.0.0.1")
+    )
+
+
+def _origin_allowed(origin: str, allowlist: set[str]) -> bool:
+    if not origin:
+        return False
+    norm = origin.rstrip("/")
+    if norm in allowlist:
+        return True
+    if _cors_allow_localhost() and _is_localhost_origin(norm):
+        return True
+    return False
+
 
 class DynamicCORSMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
         origin = request.headers.get("origin", "")
+        allowlist = _load_cors_allowlist()
+        allowed = _origin_allowed(origin, allowlist)
+
         if request.method == "OPTIONS":
             from starlette.responses import Response as StarletteResponse
             resp = StarletteResponse(status_code=204)
-            if origin:
+            if allowed:
                 resp.headers["Access-Control-Allow-Origin"] = origin
                 resp.headers["Access-Control-Allow-Credentials"] = "true"
+            # Always emit Vary so caches don't leak one origin's
+            # response headers to another origin.
+            resp.headers["Vary"] = "Origin"
             resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH"
             resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, X-API-Key"
             resp.headers["Access-Control-Max-Age"] = "600"
             return resp
+
         response = await call_next(request)
-        if origin:
+        # Vary: Origin on every response so shared caches don't
+        # serve a different origin's headers.
+        vary = response.headers.get("Vary", "")
+        response.headers["Vary"] = (
+            "Origin" if not vary else (vary if "Origin" in vary else f"{vary}, Origin")
+        )
+        if allowed:
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Access-Control-Allow-Credentials"] = "true"
         return response

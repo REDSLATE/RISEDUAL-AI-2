@@ -1,5 +1,40 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (SEC-001 fix: CORS allowlist)
+
+### 🔒 Security audit HIGH severity finding closed
+
+**What the audit flagged**: `server.py:143-158` reflected the caller's `Origin` header verbatim into `Access-Control-Allow-Origin` with `Allow-Credentials: true`. Combined with `SameSite=None` login cookies (`routes/auth.py:52-57`), any external website a logged-in operator visited could silently read private trading data or trigger state-changing endpoints as them (place/close orders, toggle Alpha runtime, force ticks).
+
+**Fix shipped**:
+- `DynamicCORSMiddleware` now reads **`CORS_ALLOWED_ORIGINS`** (comma-separated allowlist) with `FRONTEND_URL` fallback for backwards-compat
+- Non-allowlisted origins get NO `Access-Control-Allow-*` headers → browser rejects response, attack fails
+- `Vary: Origin` on every response (allowed or not) so shared caches can't cross-contaminate
+- `CORS_ALLOW_LOCALHOST=1` opt-in for local dev
+- `.env` seeded with the real prod + preview origins: `algo-trader-ai-1.emergent.host,risedual-trading.preview.emergentagent.com,risedual.ai`
+
+**Verified against live backend**:
+
+| Origin | Access-Control-Allow-Origin | Verdict |
+|---|---|---|
+| Preview (allowlisted) | ✅ Present | Working |
+| Prod `algo-trader-ai-1.emergent.host` (allowlisted) | ✅ Present | Working post-redeploy |
+| `evil.com` (attacker) | ❌ Absent | **Blocked** |
+| Preflight from `evil.com` | ❌ Absent | **Blocked** |
+
+**Regression**: 102 auth/cors/middleware tests + 12 new CORS allowlist tests all green.
+
+### Backlog (P3 hardening — not exploitable, deferred)
+- **Broker credential encryption key** (`routes/broker.py:30`) derives from `JWT_SECRET`. Single-secret compromise blows both auth *and* broker creds. Consider splitting into a dedicated `BROKER_CREDS_ENCRYPTION_KEY`.
+
+### Deployment note
+**The fix lives in preview only.** For the prod URL (`algo-trader-ai-1.emergent.host`) to be protected, redeploy. `CORS_ALLOWED_ORIGINS` is already set in `.env` so the deployed backend will pick it up automatically.
+
+**Files:** `backend/server.py` (CORS middleware refactored), `backend/.env` (allowlist populated), `backend/tests/test_cors_allowlist.py` (new, 12 tests).
+
+---
+
+
 ## Latest Update — 2026-02 (Wave Panel UI + Paper trading backlog removed)
 
 ### Wave Panel Card shipped
