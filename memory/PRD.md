@@ -1,5 +1,34 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (Economic Fingerprint Dedup + Pattern Research Log)
+
+### 🎯 Two IGNISpilot-inspired safeguards shipped
+
+**1. Economic Fingerprint Dedup** — prevents duplicate intents piling up on consecutive scanner ticks. Ported from IGNIS's `economic_fingerprint()`. Hashes `(symbol, setup_type, direction, timeframe, ATR-scaled entry_zone bucket)` → SHA-256. Bucket width = `max(atr * 0.25, |entry| * 0.001)` so tiny price wiggles collide (same $185.20 → $185.21 setup dedupes) but real moves don't (185 → 189 fires as a new setup). Dedup window: 15 min (env `ALPHA_INTENT_DEDUP_WINDOW_MIN`). Fingerprints stored in `alpha_intent_fingerprints` collection with 24h TTL. When a duplicate is caught, Alpha bumps `intents_deduplicated` counter and logs an observation for the operator.
+
+**2. Pattern Research Log** — every tick that runs classical assessments writes ALL SIX pattern verdicts (bullish + bearish, including `blocked`/`forming`/`invalidated`) to `alpha_pattern_research`. The negatives are the whole point — needed to answer "how often does a *forming* inverse H&S actually confirm?" 30-day TTL. Fire-and-forget writer (Mongo hiccup never blocks a tick).
+
+**New admin endpoints:**
+- `GET /api/admin/alpha-daytrader/pattern-research?symbol=&pattern=&state=&limit=` — filtered log rows + counts-by-(pattern,state) rollup
+- `GET /api/admin/alpha-daytrader/fingerprint-dedup?symbol=&limit=` — recent fingerprints + current dedup window
+
+**Live verification:** Both round-trips work on production Mongo — collision behaviour ($185.19/$185.21 collide, $185/$189 don't), all 6 assessments persist and read back correctly.
+
+**Files:**
+- `services/alpha_fingerprint.py` — new (pure-math SHA-256 hash, zero deps)
+- `services/alpha_fingerprint_index.py` — new (TTL/compound index management)
+- `services/alpha_pattern_research.py` — new (append-only audit log helpers)
+- `services/alpha_day_trader.py` — dedup check + fingerprint write + research write in tick flow
+- `routes/admin_alpha_daytrader.py` — 2 new read endpoints
+- `route_registry.py` — wires TTL indexes on startup
+- `tests/test_alpha_fingerprint.py` — new (17 tests: collision, direction/symbol/timeframe flips, bad-input safety, penny-stock buckets)
+- `tests/test_alpha_pattern_research.py` — new (9 tests: writes, filters, rollup, failure fail-open)
+
+**Full test count:** 626 alpha/regime/executor/bot-status/classical/fingerprint/research tests green (was 589).
+
+---
+
+
 ## Latest Update — 2026-02 (IGNISpilot classical chart patterns ported to Alpha)
 
 ### 🎯 Six multi-bar patterns from IGNISpilot handoff → Alpha's engine

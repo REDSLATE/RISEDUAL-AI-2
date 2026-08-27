@@ -519,6 +519,8 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
         from services import alpha_decision_log as _adl, alpha_daily_mandate as _adm
         from services.ml import broker_wire as _bw
         from services.ml import camaro_shelly_bridge as _csb
+        from services import alpha_pattern_research as _apr
+        from services import alpha_fingerprint_index as _afi
         import asyncio as _asyncio
         try:
             loop = _asyncio.get_running_loop()
@@ -526,6 +528,9 @@ def wire_db(db: AsyncIOMotorDatabase) -> None:
             loop.create_task(_adm.ensure_indexes(db))
             loop.create_task(_bw.ensure_indexes(db))
             loop.create_task(_csb.ensure_indexes(db))
+            # 2026-02: pattern research log + fingerprint TTL indexes
+            loop.create_task(_apr.ensure_indexes(db))
+            loop.create_task(_afi.ensure_indexes(db))
         except RuntimeError:
             pass
     except Exception as e:

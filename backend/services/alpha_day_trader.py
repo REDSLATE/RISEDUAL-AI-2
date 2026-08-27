@@ -1137,6 +1137,30 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
     for snap, opp_score in ranked:
         if opp_score < min_score:
             continue
+
+        # 2026-02: Persist ALL six classical-pattern assessments
+        # (bullish + bearish, including blocked/forming) so we can
+        # later train models on which patterns actually pay.
+        # Fire-and-forget — never blocks the tick.
+        try:
+            if snap.recent_bars and len(snap.recent_bars) >= 5:
+                from services.alpha_classical_patterns import (
+                    assess_bullish_patterns, assess_bearish_patterns,
+                )
+                from services.alpha_pattern_research import (
+                    record_assessments as _record_research,
+                )
+                all_assessments = (
+                    assess_bullish_patterns(snap.recent_bars)
+                    + assess_bearish_patterns(snap.recent_bars)
+                )
+                await _record_research(
+                    db, symbol=snap.symbol, assessments=all_assessments,
+                    timeframe="daily",
+                )
+        except Exception:  # noqa: BLE001
+            pass
+
         candidate = patterns.detect(
             snap,
             slow_regime=tick_slow_regime,
@@ -1216,6 +1240,56 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
             t_bucket = r_bucket = s_bucket = "unknown"
         modifier = float(edge_info.get("modifier") or 1.0)
 
+        # 2026-02: Economic-fingerprint dedup — hash the (symbol,
+        # setup_type, direction, timeframe, ATR-scaled entry zone)
+        # tuple and refuse to emit a second intent for the same
+        # fingerprint within the dedup window. Prevents 3+ GOOGL
+        # long intents from stacking up on consecutive scanner ticks.
+        try:
+            from services.alpha_fingerprint import economic_fingerprint
+            fp = economic_fingerprint(
+                symbol=setup.symbol,
+                strategy=setup.setup_type.value,
+                direction=("long" if setup.direction == "BUY" else "short"),
+                timeframe="intraday",
+                entry_zone=float(setup.trigger_price or snap.price),
+                atr=abs(float(setup.trigger_price or snap.price)
+                        - float(setup.invalidation_price or snap.price * 0.99)),
+            )
+        except Exception:  # noqa: BLE001
+            fp = None
+
+        if fp:
+            try:
+                from datetime import timedelta as _td
+                dedup_window_min = int(
+                    os.environ.get("ALPHA_INTENT_DEDUP_WINDOW_MIN") or 15
+                )
+                since = (
+                    datetime.now(timezone.utc) - _td(minutes=dedup_window_min)
+                )
+                prior = await db.alpha_intent_fingerprints.find_one({
+                    "fingerprint": fp,
+                    "created_at": {"$gte": since},
+                })
+            except Exception:  # noqa: BLE001
+                prior = None
+            if prior:
+                await _bump_counter(db, "intents_deduplicated", 1)
+                await _record_observation(db, setup.setup_id, "intent_deduplicated", {
+                    "symbol": setup.symbol,
+                    "stage": "dedup",
+                    "reason": "economic_fingerprint",
+                    "fingerprint": fp,
+                    "prior_intent_id": prior.get("intent_id"),
+                    "window_min": dedup_window_min,
+                })
+                logger.info(
+                    "[alpha_daytrader] symbol=%s DEDUPED — fingerprint %s matches recent intent %s",
+                    setup.symbol, fp[:12], prior.get("intent_id"),
+                )
+                continue
+
         intent = create_alpha_intent(setup, snap, _fetch_l2_snapshot(setup.symbol), l2_engine)
         intent.reason["l2_source"] = _l2_source()
         # Apply edge modifier (cap at 1.0 per spec). NEVER a hard gate.
@@ -1230,12 +1304,30 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
             "time_bucket": t_bucket,
             "rvol_bucket": r_bucket,
             "spread_bucket": s_bucket,
+            "economic_fingerprint": fp,
         })
         intent_ns = time.time_ns()
         alpha_hot_store.record_latency(setup.setup_id, "trigger_to_intent",
                                         max(0, (intent_ns - trigger_ns) // 1_000_000))
         triggered_intents += 1
         await _bump_counter(db, "intents_created", 1)
+
+        # 2026-02: Persist the fingerprint so the NEXT tick's dedup
+        # check sees this intent. Kept in a TTL-scoped collection so
+        # old fingerprints self-expire (see ``ensure_indexes``).
+        if fp:
+            try:
+                await db.alpha_intent_fingerprints.insert_one({
+                    "fingerprint": fp,
+                    "intent_id": intent.intent_id,
+                    "symbol": setup.symbol,
+                    "setup_type": setup.setup_type.value,
+                    "trigger_price": setup.trigger_price,
+                    "invalidation_price": setup.invalidation_price,
+                    "created_at": datetime.now(timezone.utc),
+                })
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("[alpha_daytrader] fingerprint write failed: %s", exc)
         await _record_observation(db, setup.setup_id, "intent_created", {
             "symbol": setup.symbol, "stage": "intent",
             "intent_id": intent.intent_id,

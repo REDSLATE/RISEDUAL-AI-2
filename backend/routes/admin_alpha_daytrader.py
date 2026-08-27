@@ -271,3 +271,69 @@ async def slippage_alerts(
     history = await recent_alerts(db, limit=10)
     return {**live, "history": history}
 
+
+@router.get("/pattern-research")
+async def pattern_research(
+    request: Request,
+    symbol: str = Query("", max_length=16),
+    pattern: str = Query("", max_length=48),
+    state: str = Query("", max_length=16),
+    limit: int = Query(100, ge=1, le=1000),
+):
+    """Recent classical-pattern assessments.
+
+    Every Alpha tick with ≥5 recent daily bars writes ALL six
+    IGNISpilot-ported pattern verdicts (bullish + bearish, including
+    ``blocked``/``forming``). This endpoint lets us look at the raw
+    log and (later) build models on which patterns actually pay.
+    """
+    await _require_admin(request)
+    from services.alpha_pattern_research import recent as _recent, counts_by_state
+    rows = await _recent(
+        db,
+        symbol=(symbol.strip() or None),
+        pattern=(pattern.strip() or None),
+        state=(state.strip() or None),
+        limit=limit,
+    )
+    rollup = await counts_by_state(db, symbol=(symbol.strip() or None))
+    return {
+        "rows": rows,
+        "counts_by_pattern_state": rollup,
+        "returned": len(rows),
+    }
+
+
+@router.get("/fingerprint-dedup")
+async def fingerprint_dedup(
+    request: Request,
+    symbol: str = Query("", max_length=16),
+    limit: int = Query(100, ge=1, le=500),
+):
+    """Recent economic-fingerprint entries + the dedup window.
+
+    Shows which intents were fingerprinted and (implicitly) which
+    ones were skipped. Every time you see the same fingerprint
+    appear twice within 15 min, the second one WAS the dedup save.
+    """
+    await _require_admin(request)
+    if db is None:
+        return {"rows": [], "returned": 0, "window_min": 15}
+    import os as _os
+    from services.alpha_fingerprint_index import COLLECTION as _FP_COLL
+    q: dict = {}
+    if symbol.strip():
+        q["symbol"] = symbol.strip().upper()
+    try:
+        cursor = db[_FP_COLL].find(q, {"_id": 0}).sort(
+            "created_at", -1,
+        ).limit(int(limit))
+        rows = await cursor.to_list(length=int(limit))
+    except Exception:  # noqa: BLE001
+        rows = []
+    return {
+        "rows": rows,
+        "returned": len(rows),
+        "window_min": int(_os.environ.get("ALPHA_INTENT_DEDUP_WINDOW_MIN") or 15),
+    }
+
