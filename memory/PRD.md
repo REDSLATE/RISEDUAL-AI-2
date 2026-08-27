@@ -1,5 +1,27 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (Wave Panel UI + Paper trading backlog removed)
+
+### Wave Panel Card shipped
+
+Small admin dashboard card next to `BotStatusCard` in `AlphaDayTraderPanel`:
+
+- **Mode distribution** — grid of 4 tiles (DANGER_PAUSE red / TREND_FOLLOW green / RANGE_GRID sky / WAIT slate) with count + % over the last 4h
+- **Danger leaderboard** — top 5 symbols by max danger score with color-coded progress bars (≥0.72 red, ≥0.5 orange, else slate)
+- **Auto-refresh** every 45s
+- Backed by `GET /api/admin/alpha-daytrader/wave-observations?since_hours=4&limit=50`
+
+Verified with seed data: `SHOCK` symbol at 0.80 danger correctly appears as top row with red bar; TREND_FOLLOW / RANGE_GRID symbols populate the distribution. Component lints clean.
+
+**Files:** `frontend/src/components/admin/WavePanelCard.jsx` (new), `frontend/src/components/admin/AlphaDayTraderPanel.jsx` (import + placement between BotStatusCard and OperatorWatchlistCard).
+
+### Backlog removed: Signal Producer Hunt (`paper_trading` feature)
+
+User explicitly stated they don't want to reintroduce paper trading. Dropping "hunt for the missing signal_dispatcher / paper_trading producer" from the roadmap. Alpha's universe now runs entirely on `top_universe` (312 A-tier) + `operator_watchlist` + any live signal_dispatcher entries — no need to revive paper as an upstream source.
+
+---
+
+
 ## Latest Update — 2026-02 (Wave Intelligence per-symbol regime + DANGER veto)
 
 ### 🎯 Per-symbol volatility guardrail — Alpha can now see what SPY-level regime can't

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Activity, AlertTriangle, CheckCircle2, ExternalLink, Play, RefreshCw, ToggleLeft, ToggleRight, X } from 'lucide-react';
 import BotStatusCard from './BotStatusCard';
 import OperatorWatchlistCard from './OperatorWatchlistCard';
+import WavePanelCard from './WavePanelCard';
 
 const API = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -740,6 +741,11 @@ export default function AlphaDayTraderPanel() {
           refreshes every 30s. This is the fastest "why isn't Alpha
           trading?" answer without DevTools or curl. */}
       <BotStatusCard />
+
+      {/* Per-symbol Wave Intelligence — mode distribution + danger
+          leaderboard. DANGER_PAUSE mode vetoes trades on that symbol
+          without touching Alpha's SPY-level regime state. Auto-45s. */}
+      <WavePanelCard />
 
       {/* Paste research → parsed picks → live coverage against
           Alpha's own predictions. Never injects synthetic signals;
