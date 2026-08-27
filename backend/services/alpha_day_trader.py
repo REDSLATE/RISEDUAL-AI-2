@@ -958,6 +958,45 @@ def _wave_machine():
     return _WAVE_MACHINE_INSTANCE
 
 
+# 2026-02: Seeded 50-symbol floor — mega-caps + sector reps used as
+# a fail-safe when ``top_universe`` is empty (e.g. the weekly rebuild
+# job crashed) or when the operator has zero live signal_dispatcher
+# predictions AND no watchlist entries. Prevents the "collapse to
+# nothing" failure mode operators reported when Alpha stood down for
+# 14 straight days. Kept in code (not env) so it's always present.
+SEEDED_50_SYMBOLS: tuple[str, ...] = (
+    # Mega-cap tech (the workhorse names Alpha's patterns are tuned on)
+    "AAPL", "MSFT", "NVDA", "GOOGL", "GOOG", "AMZN", "META", "TSLA",
+    "AVGO", "TSM", "ORCL", "CRM", "AMD", "ADBE", "NFLX",
+    # Financials
+    "JPM", "V", "MA", "BAC", "WFC", "GS", "MS", "AXP",
+    # Healthcare / consumer defensives
+    "LLY", "UNH", "JNJ", "PFE", "MRK", "ABBV",
+    "WMT", "COST", "PG", "KO", "PEP", "MCD",
+    # Energy / industrials
+    "XOM", "CVX", "CAT", "GE", "BA", "HON",
+    # Communication / other
+    "DIS", "CMCSA", "T", "VZ",
+    # Broad-market / vol vehicles (benchmarks — analysed too, not just for context)
+    "SPY", "QQQ", "IWM", "DIA",
+    # Semiconductor / secular growth
+    "SMH",
+)
+
+
+def _max_symbols_per_tick() -> int:
+    raw = (os.environ.get("ALPHA_MAX_SYMBOLS_PER_TICK") or "").strip()
+    if not raw:
+        return 50
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        return 50
+    # Bound: 1 ≤ n ≤ 100. Anything above 100 risks broker-rate-limit
+    # exhaustion for the market-data pool inside a 5-min tick.
+    return max(1, min(100, n))
+
+
 
 # ─── Universe source ──────────────────────────────────────────────
 
@@ -1044,6 +1083,16 @@ async def _candidate_universe(db: Any, *, lookback_minutes: int = 60,
         except Exception as exc:  # noqa: BLE001
             logger.debug("[alpha_daytrader] top_universe read failed: %s", exc)
 
+    # 4) Seeded 50-symbol floor — always applied last so Alpha still
+    # has a real pool even when ``top_universe`` is empty (weekly
+    # rebuild job crashed, fresh DB, etc.). This is the fail-safe
+    # against the "collapse to nothing" mode operators reported.
+    if len(ordered) < cap:
+        for sym in SEEDED_50_SYMBOLS:
+            if len(ordered) >= cap:
+                break
+            _add(sym)
+
     return ordered[:cap]
 
 
@@ -1118,9 +1167,10 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
     watcher = AlphaTriggerWatcher()
     l2_engine = Level2Confirmation()
 
-    universe_symbols = await _candidate_universe(db)
+    universe_symbols = await _candidate_universe(db, cap=_max_symbols_per_tick())
     snapshots: list[MarketSnapshot] = []
-    for sym in universe_symbols[:20]:  # cap fetches per tick
+    max_per_tick = _max_symbols_per_tick()
+    for sym in universe_symbols[:max_per_tick]:  # env-tunable cap
         snap = await _snapshot_symbol(sym)
         if snap is not None:
             snapshots.append(snap)

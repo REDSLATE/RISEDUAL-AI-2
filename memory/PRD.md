@@ -1,5 +1,47 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (50-symbol universe + composite SPY/QQQ/IWM regime)
+
+### 🎯 Two long-standing structural blockers fixed
+
+Operator diagnosis: "Alpha only analyses 20 symbols per tick and only reads SPY for regime." Both correct. Investigation confirmed:
+
+1. `services/alpha_day_trader.py:1123` — `for sym in universe_symbols[:20]:` capped tick fetches at 20 (was called "cap fetches per tick")
+2. `services/market_regime.py:48` + `services/fast_intraday_regime.py:41` — both hardcoded `_MARKET_PROXY = "SPY"`
+3. **NOT found**: `effective_universe = requested | held`, `symbols[:1..2]`, `MAX_SYMBOLS`, or any code collapsing the universe to held+requested. All 11 operator-named seeded workhorses (AAPL, MSFT, NVDA, GOOGL, AMZN, META, TSLA, JPM, V, JNJ, WMT) verified present in `top_universe` (312 total).
+
+### Fixes shipped
+
+**A. 20 → 50 symbol cap per tick**
+- New `_max_symbols_per_tick()` helper reads `ALPHA_MAX_SYMBOLS_PER_TICK` env (default 50, bounded 1..100 to prevent broker-rate-limit exhaustion)
+- Tick loop uses this cap for both `_candidate_universe()` fetch and the snapshot loop
+- **Verified live**: manual tick now shows `candidates_seen: 50` (was 20)
+
+**B. Composite SPY/QQQ/IWM regime**
+- `services/fast_intraday_regime.py` refactored to loop across `ALPHA_REGIME_BENCHMARKS` (default `SPY,QQQ,IWM`)
+- Per-benchmark labels classified individually, then aggregated with a **majority-vote family rule**: `chop` (session_chop, volatility_expansion), `up` (trend_up, momentum_ignition_up), `down` (trend_down, momentum_ignition_down, risk_off). Family with ≥⌈n/2⌉ wins; modal label within that family is the composite output. No majority → mode label + `family=mixed`
+- Full breakdown persisted on the state doc: `benchmarks: {SPY: ..., QQQ: ..., IWM: ...}` + `composite: {family, family_count, total}` for observability
+- One benchmark returning `UNKNOWN` (broker hiccup) is filtered out of the vote — other two still produce a valid composite
+
+**C. Seeded 50-symbol floor (fail-safe against "collapse to nothing")**
+- New `SEEDED_50_SYMBOLS` tuple in `alpha_day_trader.py` (exact operator-requested mega-caps + sector reps + benchmarks + SMH)
+- Applied as the LAST source in `_candidate_universe()` — so if `top_universe` is empty (weekly rebuild crashed, fresh DB), watchlist empty, and no live signal_dispatcher predictions, Alpha still gets 50 real symbols to scan
+- **Verified live**: `test_all_sources_failing_returns_seeded_floor_not_empty` — Mongo down on all 3 sources still returns 50 symbols
+
+**Files**:
+- `services/alpha_day_trader.py` — `_max_symbols_per_tick()`, `SEEDED_50_SYMBOLS`, tick loop bumped to 50
+- `services/fast_intraday_regime.py` — composite refactor with `_benchmarks()`, `_classify_bars()`, `_aggregate()`
+- `tests/test_universe_and_composite_regime.py` — new (18 tests: seeded floor invariants, cap env bounds, composite aggregation rules, unknown-filtering)
+- `tests/test_alpha_candidate_universe.py` — updated existing tests to reflect the new seeded-floor behavior
+
+**Full test count**: 723 alpha/regime/executor/universe/wave tests green (was 638; +85 in this session).
+
+### Deferred (larger scope)
+- **Real-time streaming**: user proposed "snapshot 50 every 60s, stream top-10 candidates + held positions". Alpha currently ticks every 5min via scheduler — moving to sub-minute streaming is a separate architecture change (broker subscription management, promote/demote FSM). Worth doing but not in this batch.
+
+---
+
+
 ## Latest Update — 2026-02 (SEC-001 fix: CORS allowlist)
 
 ### 🔒 Security audit HIGH severity finding closed

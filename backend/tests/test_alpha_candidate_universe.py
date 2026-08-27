@@ -89,7 +89,12 @@ async def test_top_universe_becomes_the_baseline():
         {"symbol": "MSFT", "tier": "A"},
     ])
     syms = await _candidate_universe(db)
-    assert syms == ["NVDA", "AAPL", "MSFT"]
+    # First three must be the top_universe entries (in order); the
+    # seeded-50 floor then pads out the tail so Alpha never sits on
+    # a stub-sized pool.
+    assert syms[:3] == ["NVDA", "AAPL", "MSFT"]
+    assert len(syms) > 3   # seeded floor kicked in
+    assert len(syms) <= 50
 
 
 @pytest.mark.asyncio
@@ -113,7 +118,9 @@ async def test_operator_watchlist_takes_priority():
 
 @pytest.mark.asyncio
 async def test_dedupe_across_sources():
-    """A symbol appearing in multiple sources shows up exactly once."""
+    """A symbol appearing in multiple sources shows up exactly once
+    even after the seeded-50 floor runs (SEEDED includes NVDA, AAPL,
+    GOOGL, etc.)."""
     db = _FakeDB(
         operator_watchlist=[{"symbol": "GOOGL"}],
         predictions_agg=[{"_id": "GOOGL"}, {"_id": "NVDA"}],
@@ -122,14 +129,21 @@ async def test_dedupe_across_sources():
     )
     syms = await _candidate_universe(db)
     assert syms.count("GOOGL") == 1
-    assert set(syms) == {"GOOGL", "NVDA", "AAPL"}
+    # NVDA + AAPL must still be in there (once each); the seeded
+    # floor may add more names but must not duplicate the above.
+    assert syms.count("NVDA") == 1
+    assert syms.count("AAPL") == 1
+    # First 3 slots reflect the priority ordering
+    assert syms[:3] == ["GOOGL", "NVDA", "AAPL"]
 
 
 @pytest.mark.asyncio
 async def test_normalized_to_upper_case():
     db = _FakeDB(operator_watchlist=[{"symbol": "googl"}, {"symbol": "  aapl "}])
     syms = await _candidate_universe(db)
-    assert syms == ["GOOGL", "AAPL"]
+    # First two entries must be the case-normalised watchlist picks;
+    # seeded floor may add more names after them.
+    assert syms[:2] == ["GOOGL", "AAPL"]
 
 
 @pytest.mark.asyncio
@@ -159,10 +173,15 @@ async def test_predictions_failure_does_not_blank_universe():
 
 
 @pytest.mark.asyncio
-async def test_all_sources_failing_returns_empty_not_crash():
+async def test_all_sources_failing_returns_seeded_floor_not_empty():
+    """Even when every Mongo source fails, Alpha must still get a
+    real pool via the seeded-50 floor — no more 'collapse to nothing'."""
     db = _FakeDB(fail=("operator_watchlist", "predictions", "top_universe"))
     syms = await _candidate_universe(db)
-    assert syms == []
+    # Seeded floor guarantees a full pool
+    assert len(syms) == 50
+    assert "AAPL" in syms
+    assert "NVDA" in syms
 
 
 @pytest.mark.asyncio
@@ -174,4 +193,6 @@ async def test_empty_or_missing_symbol_fields_are_skipped():
                        {"symbol": "AAPL", "tier": "A"}],
     )
     syms = await _candidate_universe(db)
-    assert syms == ["NVDA", "GOOGL", "AAPL"]
+    # Priority order still holds for the first 3 slots; seeded
+    # floor may pad after.
+    assert syms[:3] == ["NVDA", "GOOGL", "AAPL"]

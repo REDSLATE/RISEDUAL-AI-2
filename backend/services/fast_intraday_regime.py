@@ -32,27 +32,60 @@ so Alpha learns things like:
 from __future__ import annotations
 
 import logging
+import os
 import statistics
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-_MARKET_PROXY = "SPY"
+# 2026-02: Benchmark set for composite regime detection.
+#
+# Previously this module hardcoded ``_MARKET_PROXY = "SPY"``, so any
+# chop in SPY marked the entire market as chop even when QQQ/tech or
+# IWM/small-caps were trending clean. Operators complained that Alpha
+# stood down on days when tech was up 2%.
+#
+# Composite rule (majority vote across benchmarks):
+#   * ≥ half of benchmarks return a chop/volatility label → composite = ``session_chop``
+#   * ≥ half return an up-trend label                    → composite = ``trend_up`` (or momentum_ignition_up)
+#   * ≥ half return a down-trend label                   → composite = ``trend_down`` (or risk_off)
+#   * otherwise                                          → composite = mode of the individual labels
+#
+# Env override: ``ALPHA_REGIME_BENCHMARKS=SPY,QQQ,IWM`` (comma-separated).
+_MARKET_PROXY = "SPY"  # kept for backwards-compat readers
 
 
-async def _fetch_bars() -> Optional[list[dict]]:
+def _benchmarks() -> list[str]:
+    raw = (os.environ.get("ALPHA_REGIME_BENCHMARKS") or "").strip()
+    if not raw:
+        return ["SPY", "QQQ", "IWM"]
+    out: list[str] = []
+    for sym in raw.split(","):
+        s = sym.strip().upper()
+        if s and s not in out:
+            out.append(s)
+    return out or ["SPY", "QQQ", "IWM"]
+
+
+async def _fetch_bars_for(symbol: str) -> Optional[list[dict]]:
     try:
         from services.market_data_pool import market_daily
     except Exception:  # noqa: BLE001
         return None
     try:
-        bars = await market_daily(_MARKET_PROXY, outputsize="compact")
+        bars = await market_daily(symbol, outputsize="compact")
     except Exception:  # noqa: BLE001
         return None
     if not isinstance(bars, list) or len(bars) < 25:
         return None
     return bars
+
+
+async def _fetch_bars() -> Optional[list[dict]]:
+    """Back-compat single-benchmark helper (SPY only). Kept for
+    external readers that expect the old shape."""
+    return await _fetch_bars_for(_MARKET_PROXY)
 
 
 def _atr20(bars: list[dict]) -> Optional[float]:
@@ -106,19 +139,12 @@ def _classify(today_return: float, vol_ratio: float, run_rate: float,
     return "session_chop", features
 
 
-async def snapshot(db: Any) -> dict:
-    """Compute the fast intraday regime and persist a compact doc."""
-    bars = await _fetch_bars()
-    if bars is None:
-        result = {
-            "label": "UNKNOWN",
-            "features": {},
-            "reason": "no_market_data",
-            "computed_at": datetime.now(timezone.utc).isoformat(),
-        }
-        await _persist(db, result)
-        return result
+def _classify_bars(bars: list[dict]) -> tuple[str, dict]:
+    """Return (label, features) for a single symbol's daily bars.
 
+    Extracted from ``snapshot()`` so it can be reused across the
+    benchmark loop for composite regime detection.
+    """
     try:
         today = bars[-1]
         prev_close = float(bars[-2].get("close") or 0.0)
@@ -128,16 +154,9 @@ async def snapshot(db: Any) -> dict:
         close = float(today.get("close") or 0.0)
         volume = float(today.get("volume") or 0.0)
     except (TypeError, ValueError, IndexError):
-        result = {"label": "UNKNOWN", "features": {}, "reason": "bad_bar_fields",
-                  "computed_at": datetime.now(timezone.utc).isoformat()}
-        await _persist(db, result)
-        return result
-
+        return "UNKNOWN", {"reason": "bad_bar_fields"}
     if prev_close <= 0 or open_ <= 0 or high <= 0 or low <= 0 or close <= 0:
-        result = {"label": "UNKNOWN", "features": {}, "reason": "zero_price",
-                  "computed_at": datetime.now(timezone.utc).isoformat()}
-        await _persist(db, result)
-        return result
+        return "UNKNOWN", {"reason": "zero_price"}
 
     today_return = (close - prev_close) / prev_close
     atr = _atr20(bars) or 1.0
@@ -147,12 +166,106 @@ async def snapshot(db: Any) -> dict:
     run_rate = volume / avg_vol if avg_vol > 0 else 1.0
     rng = today_range if today_range > 0 else 1.0
     body_ratio = (close - open_) / rng
-    label, features = _classify(today_return, vol_ratio, run_rate, body_ratio)
+    return _classify(today_return, vol_ratio, run_rate, body_ratio)
+
+
+# ── composite-regime rollup ──
+# Label families keep the aggregation readable: any chop/volatility
+# label counts as "chop", any momentum-ignition/trend-up label counts
+# as "up", and mirror for "down". risk_off leans down; volatility_expansion
+# leans chop.
+_CHOP_FAMILY = {"session_chop", "volatility_expansion"}
+_UP_FAMILY = {"trend_up", "momentum_ignition_up"}
+_DOWN_FAMILY = {"trend_down", "momentum_ignition_down", "risk_off"}
+
+
+def _family(label: str) -> str:
+    if label in _CHOP_FAMILY:
+        return "chop"
+    if label in _UP_FAMILY:
+        return "up"
+    if label in _DOWN_FAMILY:
+        return "down"
+    return "unknown"
+
+
+def _aggregate(per_symbol: dict[str, str]) -> tuple[str, dict]:
+    """Return (composite_label, breakdown) from a {symbol: label} map.
+
+    Majority-vote across benchmark families with a graceful fallback
+    to the mode label when no family has a majority.
+    """
+    families = [_family(lab) for lab in per_symbol.values() if lab != "UNKNOWN"]
+    if not families:
+        return "UNKNOWN", {"per_symbol": per_symbol, "reason": "all_unknown"}
+
+    counts: dict[str, int] = {}
+    for f in families:
+        counts[f] = counts.get(f, 0) + 1
+    top_family, top_count = max(counts.items(), key=lambda kv: kv[1])
+    threshold = (len(families) + 1) // 2  # majority = ceil(n/2)
+
+    if top_count >= threshold:
+        # Pick the modal label WITHIN the top family so we don't
+        # silently drop nuance (momentum_ignition_up vs trend_up).
+        candidates = [lab for lab, sym in
+                        [(l, s) for s, l in per_symbol.items()]
+                        if _family(lab) == top_family]
+        modal = max(set(candidates), key=candidates.count)
+        return modal, {
+            "per_symbol": per_symbol,
+            "family": top_family,
+            "family_count": top_count,
+            "total": len(families),
+        }
+
+    # No majority — return the mode symbol label as a best-effort tag.
+    all_labs = [lab for lab in per_symbol.values() if lab != "UNKNOWN"]
+    modal = max(set(all_labs), key=all_labs.count)
+    return modal, {
+        "per_symbol": per_symbol,
+        "family": "mixed",
+        "family_count": top_count,
+        "total": len(families),
+    }
+
+
+async def snapshot(db: Any) -> dict:
+    """Compute the fast intraday regime and persist a compact doc.
+
+    2026-02: Now composite across ``ALPHA_REGIME_BENCHMARKS`` (default
+    SPY + QQQ + IWM) so one bad SPY day doesn't blank Alpha's edge on
+    tech/small-cap days. Individual benchmark labels are exposed in
+    the ``per_symbol`` breakdown for observability.
+    """
+    benchmarks = _benchmarks()
+    per_symbol_label: dict[str, str] = {}
+    per_symbol_features: dict[str, dict] = {}
+    for sym in benchmarks:
+        bars = await _fetch_bars_for(sym)
+        if bars is None:
+            per_symbol_label[sym] = "UNKNOWN"
+            per_symbol_features[sym] = {"reason": "no_market_data"}
+            continue
+        label, features = _classify_bars(bars)
+        per_symbol_label[sym] = label
+        per_symbol_features[sym] = features
+
+    composite_label, breakdown = _aggregate(per_symbol_label)
+    # Attach the primary-benchmark features so downstream consumers
+    # still see the SPY numbers they used to read.
+    primary_features = (per_symbol_features.get(_MARKET_PROXY)
+                         or next(iter(per_symbol_features.values()), {}))
     result = {
-        "label": label,
-        "features": features,
+        "label": composite_label,
+        "features": primary_features,
+        "benchmarks": per_symbol_label,
+        "per_benchmark_features": per_symbol_features,
+        "composite": breakdown,
         "computed_at": datetime.now(timezone.utc).isoformat(),
     }
+    if composite_label == "UNKNOWN":
+        result["reason"] = breakdown.get("reason", "no_market_data")
     await _persist(db, result)
     return result
 
