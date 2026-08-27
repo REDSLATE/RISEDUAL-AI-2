@@ -41,6 +41,44 @@ from conftest_creds import ADMIN_EMAIL, ADMIN_PASSWORD, BASE_URL  # noqa: E402
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 DB_NAME = os.environ.get("DB_NAME", "risedual_db")
 
+
+# One private event loop shared by every ``_run_async`` call in this
+# module. Motor's ``AsyncIOMotorClient`` binds to whatever loop is
+# running when its first coroutine executes, so all subsequent
+# operations need to be driven on the *same* loop — creating a
+# fresh loop per call closed the loop underneath the fixture-scoped
+# client and produced ``RuntimeError: Event loop is closed``.
+#
+# We also don't call ``asyncio.set_event_loop`` — that would pollute
+# the thread's default loop and re-introduce the original leak that
+# broke downstream tests.
+_MODULE_LOOP: asyncio.AbstractEventLoop | None = None
+
+
+def _get_loop() -> asyncio.AbstractEventLoop:
+    global _MODULE_LOOP
+    if _MODULE_LOOP is None or _MODULE_LOOP.is_closed():
+        _MODULE_LOOP = asyncio.new_event_loop()
+    return _MODULE_LOOP
+
+
+def _run_async(coro):
+    """Drive an async coroutine from a sync pytest body on the
+    module-scoped loop. See ``_MODULE_LOOP`` above for why the loop
+    is shared rather than created per-call.
+    """
+    return _get_loop().run_until_complete(coro)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _close_module_loop():
+    """Tear the private loop down at module exit."""
+    yield
+    global _MODULE_LOOP
+    if _MODULE_LOOP is not None and not _MODULE_LOOP.is_closed():
+        _MODULE_LOOP.close()
+    _MODULE_LOOP = None
+
 # -----------------------------------------------------------------------
 #  HTTP fixtures
 # -----------------------------------------------------------------------
@@ -170,7 +208,7 @@ class TestWatchlistMergeFailsafe:
                 "_test_marker": True,
             })
 
-        asyncio.get_event_loop().run_until_complete(_run())
+        _run_async(_run())
 
         try:
             r = admin_session.get(f"{BASE_URL}/api/workspace/watchlist", timeout=30)
@@ -184,7 +222,7 @@ class TestWatchlistMergeFailsafe:
                 await mongo_db.broker_connections.delete_many(
                     {"_test_marker": True, "user_id": user_id},
                 )
-            asyncio.get_event_loop().run_until_complete(_cleanup())
+            _run_async(_cleanup())
 
 
 # -----------------------------------------------------------------------
@@ -250,7 +288,7 @@ class TestPositionsSortInProcess:
             broker_module, "_get_or_refresh_client", fake_get_or_refresh_client,
         )
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = _run_async(
             broker_module.get_positions("public", _make_request_stub(user_id)),
         )
 
@@ -293,7 +331,7 @@ class TestPositionsSortInProcess:
             broker_module, "_get_or_refresh_client", fake_get_or_refresh_client,
         )
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = _run_async(
             broker_module.get_orders("public", _make_request_stub("u1"), "all"),
         )
 
@@ -330,7 +368,7 @@ class TestSyncWatchlistFieldName:
             await mongo_db.watchlists.delete_one({"user_id": user_id})
             return doc
 
-        doc = asyncio.get_event_loop().run_until_complete(_run())
+        doc = _run_async(_run())
         assert doc is not None
         tickers = doc.get("tickers", [])
         # Existing MANUAL_X preserved
@@ -354,7 +392,7 @@ class TestSyncWatchlistFieldName:
             await mongo_db.watchlists.delete_one({"user_id": user_id})
             return doc
 
-        doc = asyncio.get_event_loop().run_until_complete(_run())
+        doc = _run_async(_run())
         assert doc is not None, "upsert didn't create a doc"
         tickers = set(doc.get("tickers", []))
         # Normalised uppercase + trimmed
@@ -369,7 +407,7 @@ class TestMongoIndexes:
     def test_trade_orders_indexes(self, mongo_db):
         async def _idx():
             return await mongo_db.trade_orders.list_indexes().to_list(length=50)
-        indexes = asyncio.get_event_loop().run_until_complete(_idx())
+        indexes = _run_async(_idx())
         names = {i["name"] for i in indexes}
         # symbol_asc + user_symbol should exist
         assert "symbol_asc" in names, f"trade_orders indexes: {names}"
@@ -378,7 +416,7 @@ class TestMongoIndexes:
     def test_paper_trades_indexes(self, mongo_db):
         async def _idx():
             return await mongo_db.paper_trades.list_indexes().to_list(length=50)
-        indexes = asyncio.get_event_loop().run_until_complete(_idx())
+        indexes = _run_async(_idx())
         names = {i["name"] for i in indexes}
         assert "symbol_asc" in names, f"paper_trades indexes: {names}"
         assert "ticker_asc" in names, f"paper_trades indexes: {names}"
@@ -386,7 +424,7 @@ class TestMongoIndexes:
     def test_watchlists_indexes(self, mongo_db):
         async def _idx():
             return await mongo_db.watchlists.list_indexes().to_list(length=50)
-        indexes = asyncio.get_event_loop().run_until_complete(_idx())
+        indexes = _run_async(_idx())
         names = {i["name"] for i in indexes}
         assert "user_id_idx" in names, f"watchlists indexes: {names}"
 
@@ -421,7 +459,7 @@ class TestMergeBrokerHoldings:
                 "tickers": ["AAPL", "META"],
             })
 
-        asyncio.get_event_loop().run_until_complete(_prepare())
+        _run_async(_prepare())
 
         async def fake_get_or_refresh_client(uid, bid, conn):
             return _StubClient(positions=[
@@ -443,7 +481,7 @@ class TestMergeBrokerHoldings:
             )
             return merged, doc
 
-        merged, doc = asyncio.get_event_loop().run_until_complete(_run())
+        merged, doc = _run_async(_run())
         assert merged == ["AAPL", "BAC", "JPM", "META"], f"got {merged}"
         # Persistence: newly-discovered symbols should be in the stored tickers
         assert doc is not None
@@ -470,7 +508,7 @@ class TestMergeBrokerHoldings:
                 "_test_marker": True,
             })
 
-        asyncio.get_event_loop().run_until_complete(_prepare())
+        _run_async(_prepare())
 
         async def fake_get_or_refresh_client(uid, bid, conn):
             raise RuntimeError("simulated broker outage")
@@ -488,6 +526,6 @@ class TestMergeBrokerHoldings:
             )
             return merged
 
-        merged = asyncio.get_event_loop().run_until_complete(_run())
+        merged = _run_async(_run())
         # Broker failed → manual list returned unchanged (sorted).
         assert merged == ["AAPL", "META"], f"got {merged}"

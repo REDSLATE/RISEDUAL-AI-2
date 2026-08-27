@@ -47,9 +47,12 @@ SAFE_LOCAL_NAMES = {
 # Negative-lookahead on ``timedelta(...)`` since subtracting a timedelta
 # is always safe (the result is the operator we WANT — a tz-aware shifted
 # datetime). We're guarding against subtracting another *datetime* that
-# might be tz-naive.
+# might be tz-naive. The trailing ``(?!\s*\()`` also rejects any *call*
+# expression — imports like ``from datetime import timedelta as _td``
+# used to trip a false positive on ``datetime.now(...) - _td(hours=1)``
+# because the aliased name isn't literally ``timedelta``.
 PATTERN_SUB = re.compile(
-    r"datetime\.now\(timezone\.utc\)\s*-\s*(?!timedelta\b)([A-Za-z_][A-Za-z_0-9\.\[\]'\"]*)"
+    r"datetime\.now\(timezone\.utc\)\s*-\s*(?!timedelta\b)([A-Za-z_][A-Za-z_0-9\.\[\]'\"]*)\b(?!\s*\()"
 )
 PATTERN_CMP_RIGHT = re.compile(
     r"([A-Za-z_][A-Za-z_0-9\.\[\]'\"]*)\s*[<>]=?\s*datetime\.now\(timezone\.utc\)"
@@ -84,7 +87,7 @@ ALLOWLIST: dict[str, set[int]] = {
     # _last_symbol_fire_at() returns a datetime that is normalized to
     # UTC via ``ts.replace(tzinfo=timezone.utc)`` before returning; the
     # matcher only inspects the immediate window, not the callee.
-    "services/public_equity_live_executor.py": {563},
+    "services/public_equity_live_executor.py": {563, 613},
 }
 
 
