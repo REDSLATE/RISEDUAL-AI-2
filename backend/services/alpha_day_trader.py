@@ -133,6 +133,63 @@ def _min_opportunity_score() -> float:
     return max(0.30, min(0.75, scaled))
 
 
+# ─── selective opportunity floor ─────────────────────────────────
+#
+# The Why-Not-Trade diagnostic (2026-02) showed 8 of every 10 ranked
+# candidates were being culled by the global floor even though their
+# features (up 4-8%, rvol 2.5x) are exactly the moves Alpha should
+# be trading. A single flat floor treats an NVDA momentum candle
+# and an unloved microcap sitting at flat volume identically.
+#
+# ``_family_floor`` classifies each snapshot into one of four
+# operator-defined families and returns the appropriate floor. The
+# families and floors are 1:1 with the values the operator specified
+# in-thread — kept as constants so tuning is one edit, not a hunt.
+
+_FLOOR_LARGE_CAP_MOMO: float = 0.35
+_FLOOR_PENNY_BREAKOUT: float = 0.38
+_FLOOR_SHORT_BREAKDOWN: float = 0.36
+_FLOOR_LOW_VOL_NO_NEWS: float = 0.447   # default (matches sqrt(0.2))
+
+
+def _family_floor(snap: "MarketSnapshot", *, default_floor: float) -> tuple[float, str]:
+    """Classify the candidate and return ``(floor, family_tag)``.
+
+    ``default_floor`` is the global ``_min_opportunity_score()`` and
+    is used verbatim for anything that doesn't fit a specific
+    family — no candidate ever gets a LOOSER floor than a family
+    it doesn't qualify for. That preserves the original safety net:
+    a candidate with no interesting features never gets waved
+    through by a family floor it doesn't match.
+    """
+    price = getattr(snap, "price", 0.0) or 0.0
+    pct = getattr(snap, "pct_change", 0.0) or 0.0
+    rvol = getattr(snap, "relative_volume", 0.0) or 0.0
+
+    # Order matters — a penny-stock breakout is also a "positive move
+    # with high rvol" so we detect it FIRST and let the more general
+    # large-cap-momo case pick up everything else.
+    if 0.0 < price <= 5.0 and pct >= 3.0 and rvol >= 2.0:
+        return _FLOOR_PENNY_BREAKOUT, "penny_breakout"
+
+    # Short-side breakdown: sharp down move with real participation.
+    # Applies to any price band — a large-cap breakdown is just as
+    # tradeable as a microcap one via the SHORT_SIDE_EXHAUSTION long.
+    if pct <= -2.0 and rvol >= 0.5:
+        return _FLOOR_SHORT_BREAKDOWN, "short_breakdown"
+
+    # Large-cap momentum: real name, up on real volume. Price floor
+    # is deliberately low ($20) so an NVDA-shaped $40 stock still
+    # qualifies, but a $3 microcap does not (it would have hit the
+    # penny-breakout branch first if it was really moving).
+    if price >= 20.0 and pct >= 0.5 and rvol >= 1.5:
+        return _FLOOR_LARGE_CAP_MOMO, "large_cap_momo"
+
+    # Default — the historical global floor. Applies to low-volume /
+    # no-news setups that we don't want firing on weak signals.
+    return max(_FLOOR_LOW_VOL_NO_NEWS, default_floor), "low_vol_no_news"
+
+
 # ─── Enums / dataclasses ──────────────────────────────────────────
 
 
@@ -151,6 +208,12 @@ class SetupType(str, Enum):
     VWAP_FADE_LONG = "vwap_fade_long"
     RANGE_LOW_BOUNCE = "range_low_bounce"
     OPENING_DRIVE_FADE = "opening_drive_fade"
+    # Short-side exhaustion long: PLTR-shaped -7.5% moves where the
+    # current bar is stabilizing (price holding near open, rvol not
+    # in freefall). Added after the Why-Not-Trade diagnostic showed
+    # these moves were dying at ``no_pattern_match``. Long-only
+    # entry (buy the bounce) — we do NOT open shorts on Public.com.
+    SHORT_SIDE_EXHAUSTION = "short_side_exhaustion"
     # ── Classical multi-bar chart patterns (bullish only —
     # Public.com is cash-only). Bearish classical patterns are used
     # as *invalidation gates* on the same symbol via
@@ -168,6 +231,7 @@ MEAN_REVERT_PATTERNS: frozenset[str] = frozenset({
     SetupType.VWAP_FADE_LONG.value,
     SetupType.RANGE_LOW_BOUNCE.value,
     SetupType.OPENING_DRIVE_FADE.value,
+    SetupType.SHORT_SIDE_EXHAUSTION.value,
     SetupType.PULLBACK.value,  # pullback straddles both families
 })
 
@@ -600,6 +664,44 @@ class AlphaPatternEngine:
                 invalidation_price=m.low * 0.997 if m.low > 0 else m.price * 0.99,
                 score=min(1.0, base + self._regime_bias_by_type(SetupType.OPENING_DRIVE_FADE.value, chop)),
             )
+
+        # ── Short-side exhaustion long: sharp decline that's
+        # STABILIZING. Fires on PLTR-shaped moves the operator saw
+        # dying at ``no_pattern_match``:
+        #   * pct_change -3% .. -12%       (sharp but not free-fall)
+        #   * relative_volume 0.5 .. 3.0   (not still panicking)
+        #   * current bar showing hold     (price ≥ low * 1.003 OR
+        #                                    price ≥ open * 0.995)
+        # Public.com is cash-only, so we enter LONG (buy the bounce)
+        # — never open a short. Kept in the mean-reversion family
+        # so it gets the chop-regime score boost.
+        if (m.price > 0
+                and -12.0 <= m.pct_change <= -3.0
+                and self._rvol_floor(0.5) <= m.relative_volume <= 3.0):
+            price_stable = False
+            if m.low > 0 and m.price >= m.low * 1.003:
+                price_stable = True
+            elif m.open_price > 0 and m.price >= m.open_price * 0.995:
+                price_stable = True
+            if price_stable:
+                base = 0.58
+                return ActiveSetup(
+                    setup_id=str(uuid.uuid4()),
+                    symbol=m.symbol,
+                    setup_type=SetupType.SHORT_SIDE_EXHAUSTION,
+                    state=SetupState.WATCHING,
+                    detected_at=now,
+                    reference_price=m.price,
+                    # Trigger on a small reclaim — we want CONFIRMATION
+                    # that buyers are pushing through the current bar,
+                    # not just a dead-cat bounce.
+                    trigger_price=m.price * 1.005,
+                    # Invalidate on a fresh low. If we don't have a
+                    # session low, fall back to a hard 1.5% stop.
+                    invalidation_price=(m.low * 0.997) if m.low > 0 else (m.price * 0.985),
+                    score=min(1.0, base + self._regime_bias_by_type(
+                        SetupType.SHORT_SIDE_EXHAUSTION.value, chop)),
+                )
 
         # ── VWAP reclaim ──
         if m.vwap > 0:
@@ -1123,7 +1225,20 @@ async def _candidate_universe(db: Any, *, lookback_minutes: int = 60,
     except Exception as exc:  # noqa: BLE001
         logger.debug("[alpha_daytrader] operator_watchlist read failed: %s", exc)
 
-    # 2) Recent signal_dispatcher / paper_trading predictions.
+    # 2) Live intraday movers (Alpha Vantage TOP_GAINERS_LOSERS).
+    #    Added 2026-02 so Alpha sees NVDA-type moves and small-cap
+    #    breakouts as they happen — the static watchlists have no
+    #    idea a stock spiked 12% on a headline five minutes ago.
+    #    Best-effort: an AV rate limit / down endpoint just skips.
+    try:
+        from services.alpha_live_movers import get_mover_symbols
+        mover_syms = await get_mover_symbols(db, limit=min(30, cap))
+        for sym in mover_syms:
+            _add(sym)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[alpha_daytrader] live_movers read failed: %s", exc)
+
+    # 3) Recent signal_dispatcher / paper_trading predictions.
     since = (datetime.now(timezone.utc) - timedelta(minutes=lookback_minutes)).isoformat()
     try:
         cursor = db.predictions.aggregate([
@@ -1137,7 +1252,7 @@ async def _candidate_universe(db: Any, *, lookback_minutes: int = 60,
     except Exception as exc:  # noqa: BLE001
         logger.debug("[alpha_daytrader] predictions universe read failed: %s", exc)
 
-    # 3) top_universe — always-on baseline. Prefer A-tier first so
+    # 4) top_universe — always-on baseline. Prefer A-tier first so
     # the cap doesn't get consumed by lower-conviction B-tier names.
     if len(ordered) < cap:
         remaining = cap - len(ordered)
@@ -1153,7 +1268,7 @@ async def _candidate_universe(db: Any, *, lookback_minutes: int = 60,
         except Exception as exc:  # noqa: BLE001
             logger.debug("[alpha_daytrader] top_universe read failed: %s", exc)
 
-    # 4) Seeded 50-symbol floor — always applied last so Alpha still
+    # 5) Seeded 50-symbol floor — always applied last so Alpha still
     # has a real pool even when ``top_universe`` is empty (weekly
     # rebuild job crashed, fresh DB, etc.). This is the fail-safe
     # against the "collapse to nothing" mode operators reported.
@@ -1271,18 +1386,26 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
     # ── discovery + pattern detection ──
     new_setups = 0
     for snap, opp_score in ranked:
+        # Selective floor by candidate family. See ``_family_floor``
+        # for the rules — the Why-Not-Trade diagnostic proved a
+        # single flat floor was culling ~80% of ranked candidates
+        # including large-cap momo names the operator wanted traded.
+        family_floor, family_tag = _family_floor(snap, default_floor=min_score)
+
         # Synthetic setup_id for pre-setup rejections so the
         # ``why-not-trade`` aggregator can group them. Real setups
         # get real IDs generated by ``AlphaPatternEngine.detect``
         # once they clear these gates.
         pretick_id = f"pretick:{snap.symbol}:{time.time_ns()}"
 
-        if opp_score < min_score:
+        if opp_score < family_floor:
             await _record_observation(db, pretick_id, "opportunity_score_rejected", {
                 "symbol": snap.symbol,
                 "stage": "pre_pattern",
                 "reason": "score_below_floor",
                 "opp_score": round(float(opp_score), 4),
+                "family_floor": round(float(family_floor), 4),
+                "family_tag": family_tag,
                 "min_score": min_score,
             })
             continue

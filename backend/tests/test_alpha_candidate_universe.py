@@ -10,11 +10,27 @@ Guardrails:
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
 
 import pytest
 
 from services.alpha_day_trader import _candidate_universe
+from services import alpha_live_movers
+
+
+# ─── stub out the AV live-movers source ─────────────────────────
+#
+# ``_candidate_universe`` calls ``alpha_live_movers.get_mover_symbols``
+# as source #2 (right after operator_watchlist). We don't want that
+# hitting the real Alpha Vantage endpoint from unit tests — it would
+# both slow the suite and make ordering non-deterministic. Every
+# test in this module gets an empty movers list unless it opts in.
+
+@pytest.fixture(autouse=True)
+def _no_live_movers(monkeypatch):
+    async def _empty(_db, *, limit=30, include_sides=None):
+        return []
+    monkeypatch.setattr(alpha_live_movers, "get_mover_symbols", _empty)
+    yield
 
 
 class _FakeCursor:
@@ -196,3 +212,58 @@ async def test_empty_or_missing_symbol_fields_are_skipped():
     # Priority order still holds for the first 3 slots; seeded
     # floor may pad after.
     assert syms[:3] == ["NVDA", "GOOGL", "AAPL"]
+
+
+@pytest.mark.asyncio
+async def test_live_movers_inserted_between_watchlist_and_predictions(monkeypatch):
+    """The AV live-movers source is #2 — between operator watchlist
+    (source #1) and predictions (source #3). A gainer must appear
+    before a stale predictions symbol so Alpha sees real intraday
+    moves before it wastes tickets on yesterday's names."""
+    async def _movers(_db, *, limit=30, include_sides=None):
+        return ["NVDA", "TSLA"]
+    monkeypatch.setattr(alpha_live_movers, "get_mover_symbols", _movers)
+
+    db = _FakeDB(
+        operator_watchlist=[{"symbol": "SWVL"}],
+        predictions_agg=[{"_id": "GOOGL"}],
+        top_universe=[{"symbol": "AAPL", "tier": "A"}],
+    )
+    syms = await _candidate_universe(db)
+    # 1) watchlist  2) movers  3) predictions  4) top_universe
+    assert syms[:4] == ["SWVL", "NVDA", "TSLA", "GOOGL"]
+    assert "AAPL" in syms
+
+
+@pytest.mark.asyncio
+async def test_live_movers_failure_does_not_blank_universe(monkeypatch):
+    """AV rate-limited / down → movers returns [] and the other
+    sources still populate the universe."""
+    async def _boom(_db, *, limit=30, include_sides=None):
+        raise RuntimeError("AV down")
+    monkeypatch.setattr(alpha_live_movers, "get_mover_symbols", _boom)
+
+    db = _FakeDB(
+        operator_watchlist=[{"symbol": "SWVL"}],
+        top_universe=[{"symbol": "AAPL", "tier": "A"}],
+    )
+    syms = await _candidate_universe(db)
+    assert "SWVL" in syms
+    assert "AAPL" in syms
+
+
+@pytest.mark.asyncio
+async def test_live_movers_deduped_against_other_sources(monkeypatch):
+    """If AV returns a symbol that's already in the operator
+    watchlist, it must NOT be duplicated — position stays with the
+    higher-priority source (watchlist)."""
+    async def _movers(_db, *, limit=30, include_sides=None):
+        return ["SWVL", "NVDA"]
+    monkeypatch.setattr(alpha_live_movers, "get_mover_symbols", _movers)
+
+    db = _FakeDB(operator_watchlist=[{"symbol": "SWVL"}])
+    syms = await _candidate_universe(db)
+    # SWVL must appear exactly once, at the watchlist position (0).
+    assert syms.count("SWVL") == 1
+    assert syms[0] == "SWVL"
+    assert "NVDA" in syms

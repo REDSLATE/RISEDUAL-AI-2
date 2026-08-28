@@ -1,5 +1,62 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (Selective floor + live movers + short-breakdown pattern — Alpha starts firing setups)
+
+### 🎯 Went from 0 → 2 setups per tick
+
+The Why-Not-Trade diagnostic revealed the real bottleneck: 8/10 candidates were dying at the flat 0.447 opportunity floor even when they had NVDA-shaped features. After this patch:
+
+**Live tick, market closed**:
+```
+48 candidates → 10 ranked → 2 setups detected → 2 triggered → 2 intents → 0 broker-confirmed → 0 submitted
+```
+
+The new ceiling is broker coverage — AV's live movers (AESPW, ANGHW, KLXER, etc.) aren't quoted by Public.com, so the execution-quote gate correctly refuses to fire on them (`no_broker_price` / `data_conflict`). This is the *right* failure mode; the circuit breaker item now makes real sense as the next step.
+
+### What shipped
+
+**1. Selective opportunity floor** (`_family_floor(snap, default_floor)`):
+
+| Family | Rule | Floor |
+|---|---|---|
+| `penny_breakout` | price ≤ $5, +3%+, rvol ≥ 2.0 | 0.38 |
+| `short_breakdown` | pct ≤ -2%, rvol ≥ 0.5 | 0.36 |
+| `large_cap_momo` | price ≥ $20, +0.5%+, rvol ≥ 1.5 | 0.35 |
+| `low_vol_no_news` | anything else | 0.447 |
+
+Order matters — penny is checked BEFORE large-cap so a $3 stock on 3× rvol doesn't sneak through the 0.35 floor. Every rejection is logged with `family_tag` so the diagnostic shows which family the candidate landed in.
+
+**2. Live movers universe** (`services/alpha_live_movers.py`) — Alpha Vantage `TOP_GAINERS_LOSERS` polled at most every 120s (env-tunable, clamped 30..3600s to protect the 25/day free-tier quota), cached in Mongo `alpha_live_movers` singleton, fails closed to the previous cache on any AV error / rate-limit. Wired as source #2 in `_candidate_universe`, right after operator watchlist. Gainers → losers → actives ordering; deduped against every other source.
+
+**3. `SHORT_SIDE_EXHAUSTION` pattern** — a mean-reversion long entry for PLTR-shaped moves:
+- `pct_change` in [-12%, -3%] (sharp but not free-fall)
+- `relative_volume` in [0.5, 3.0] (not still panicking)
+- Current bar stabilizing: `price ≥ low * 1.003` OR `price ≥ open * 0.995`
+- Base score 0.58, mean-revert family so it gets the chop boost
+
+Public.com is cash-only, so the pattern buys the bounce — it never opens a short.
+
+### Tests
+
+- `tests/test_alpha_family_floor.py` (11): every family, boundary cases, precedence rules (penny before large-cap), spec guardrail
+- `tests/test_alpha_short_side_exhaustion.py` (7): PLTR shape fires, free-fall doesn't fire, panic-rvol doesn't fire, open-price fallback works, family classification regression
+- `tests/test_alpha_live_movers.py` (14): AV parse, rate-limit handling, TTL, cache-on-error fallback, dedupe across gainers/losers/actives, env clamping
+- `tests/test_alpha_candidate_universe.py` — added 3 tests for the movers source: order, failure survival, cross-source dedup
+
+Full alpha/policy sweep: **350 tests green**.
+
+### Files
+
+- `services/alpha_live_movers.py` (new)
+- `services/alpha_day_trader.py` (adds `_family_floor`, wires `_candidate_universe` source #2, adds `SHORT_SIDE_EXHAUSTION` detector + enum, extends `MEAN_REVERT_PATTERNS`)
+- `tests/test_alpha_family_floor.py`, `tests/test_alpha_short_side_exhaustion.py`, `tests/test_alpha_live_movers.py` (new)
+- `tests/test_alpha_candidate_universe.py` (extended)
+
+⚠️ Preview-only — click **Save to Github** to redeploy so the new floors, live movers and short-side pattern take effect in production.
+
+---
+
+
 ## Latest Update — 2026-02 (Why-Not-Trade diagnostic — Alpha now tells you exactly which gate killed each candidate)
 
 ### 🎯 The operator's #1 question, answered by one HTTP GET
