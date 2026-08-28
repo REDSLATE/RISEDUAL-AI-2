@@ -128,6 +128,30 @@ async def setup_timeline(request: Request, setup_id: str):
     }
 
 
+@router.get("/why-not-trade")
+async def why_not_trade(
+    request: Request,
+    since_seconds: int = Query(300, ge=60, le=86_400),
+    sample_per_gate: int = Query(3, ge=1, le=20),
+):
+    """Diagnostic: which gate is killing Alpha's candidates?
+
+    Reads the SQLite hot store (per-tick lifecycle) plus Mongo
+    ``alpha_outcomes`` (resolved rollup) inside the requested
+    window and groups rejections by gate. Includes symbols, top
+    sub-reasons, and a small sample of raw payloads so the
+    operator can pattern-match without opening the timeline for
+    every setup.
+    """
+    await _require_admin(request)
+    from services.alpha_why_not_trade import compile_why_not_trade
+    return await compile_why_not_trade(
+        db,
+        since_seconds=since_seconds,
+        sample_per_gate=sample_per_gate,
+    )
+
+
 @router.post("/breakeven/run")
 async def run_breakeven(request: Request):
     user = await _require_admin(request)

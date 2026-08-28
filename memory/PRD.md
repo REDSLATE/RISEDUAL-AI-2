@@ -1,5 +1,53 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (Why-Not-Trade diagnostic — Alpha now tells you exactly which gate killed each candidate)
+
+### 🎯 The operator's #1 question, answered by one HTTP GET
+
+`GET /api/admin/alpha-daytrader/why-not-trade?since_seconds=300` returns a per-gate rollup of every rejection in the window: gate name → count, distinct symbols, sub-reason distribution, sample payloads. Joins the SQLite hot store (per-tick lifecycle) with Mongo `alpha_outcomes` (resolved rollup) so a single endpoint tells the whole story.
+
+### First live query immediately surfaced the actual bottleneck
+
+Tick: 50 candidates → 10 ranked → 0 setups → 0 submissions. Endpoint said:
+
+- **8 of 10** killed at `opportunity_score_rejected` — opp scores 0.33–0.36 vs floor 0.4472 (~sqrt(0.2))
+- **2 of 10** killed at `no_pattern_match` — e.g. PLTR: `pct_change=-7.55%, rvol=0.76, slow_regime=choppy_meanrevert, fast_regime=trend_up`. Move too big to mean-revert, regime mismatch blocked momentum.
+
+### Registered gates (8 total)
+
+**Pre-pattern (new instrumentation)** — used to be silent:
+
+1. `opportunity_score_rejected` — opp score below floor, never reached pattern engine
+2. `wave_danger_pause` — Wave Intelligence per-symbol veto
+3. `no_pattern_match` — cleared opp+wave, but pattern engine found no shape (dumps snap features so operator can eyeball sensitivity)
+
+**Setup lifecycle** — already emitting observations:
+
+4. `invalidated` — shape broke before trigger
+5. `intent_deduplicated` — fingerprint hash matched an in-flight ticket
+6. `exec_lock_conflict` — cross-scanner lock already held
+7. `execution_quote_blocked` — broker-first freshness/drift gate (stale, drift > 50 bps, no broker price)
+8. `executor_rejected` — downstream executor said no
+
+Every response also carries pass-through totals: `setups_detected`, `triggers_fired`, `intents_created`, `execution_quote_confirmed`, `broker_submitted`.
+
+### Files
+
+- `services/alpha_why_not_trade.py` (new) — aggregator with per-gate rollup
+- `services/alpha_hot_store.py` — added `events_since(since_ns, events, limit)` read helper
+- `services/alpha_day_trader.py` — added 3 pre-pattern `_record_observation` calls
+- `routes/admin_alpha_daytrader.py` — added `GET /why-not-trade` route
+- `tests/test_alpha_why_not_trade.py` (new) — 10 tests including a guardrail that fails CI when a new `_record_observation` rejection event isn't registered in `REJECTION_GATES`
+
+### Also fixed in this session
+
+- **Test suite** 4796/0 (was 4785 / 2 failed):
+  - `test_no_unguarded_mongo_datetime_math` — regex missed `timedelta` aliases like `_td(...)`, fixed with a call-expression negative lookahead
+  - `test_broker_sort_and_watchlist_merge` (10 subtests) — legacy `asyncio.get_event_loop().run_until_complete` replaced with module-scoped private-loop `_run_async(coro)` helper so Motor's fixture-scoped client stays valid across all subtests
+
+---
+
+
 ## Latest Update — 2026-02 (Decision-type-based provider policy — broker-first execution truth, vendor witness + fallback)
 
 ### 🎯 The right routing model

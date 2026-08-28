@@ -267,6 +267,59 @@ def counts_since(since_ns: int) -> dict:
         return {}
 
 
+# The ``why-not-trade`` diagnostic pulls lifecycle rows in a window
+# and groups them by gate. This is the read helper it uses. Kept in
+# the hot store (not Mongo) because the raw stream is the only place
+# with per-tick granularity — Mongo only sees resolved outcomes.
+def events_since(
+    since_ns: int,
+    *,
+    events: Optional[list[str]] = None,
+    limit: int = 5000,
+) -> list[dict]:
+    """Return raw lifecycle rows newer than ``since_ns``.
+
+    ``events`` is an optional whitelist of event names — passing it
+    keeps the query cheap when the caller only cares about rejection
+    gates. Rows are returned newest-first and hard-capped at
+    ``limit`` so a runaway window can't OOM the request handler.
+    """
+    where = ["ts_ns >= ?"]
+    args: list[Any] = [int(since_ns)]
+    if events:
+        placeholders = ",".join("?" for _ in events)
+        where.append(f"event IN ({placeholders})")
+        args.extend(events)
+    sql = (
+        "SELECT event, stage, setup_id, symbol, payload, ts_ns "
+        "FROM lifecycle_events WHERE " + " AND ".join(where)
+        + " ORDER BY ts_ns DESC LIMIT ?"
+    )
+    args.append(int(limit))
+    try:
+        with _connect() as con:
+            rows = con.execute(sql, tuple(args)).fetchall()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[alpha_hot_store] events_since failed: %s", exc)
+        return []
+    out: list[dict] = []
+    for r in rows:
+        try:
+            payload = json.loads(r["payload"] or "{}")
+        except Exception:  # noqa: BLE001
+            payload = {}
+        out.append({
+            "event": r["event"],
+            "stage": r["stage"],
+            "setup_id": r["setup_id"],
+            "symbol": r["symbol"],
+            "payload": payload,
+            "ts_ns": int(r["ts_ns"]),
+            "ts": datetime.fromtimestamp(r["ts_ns"] / 1e9, tz=timezone.utc).isoformat(),
+        })
+    return out
+
+
 # ─── retention ───────────────────────────────────────────────────
 
 
@@ -295,6 +348,7 @@ __all__ = [
     "try_acquire_symbol_lock",
     "release_symbol_lock",
     "events_for_setup",
+    "events_since",
     "latency_samples",
     "counts_since",
     "prune",
