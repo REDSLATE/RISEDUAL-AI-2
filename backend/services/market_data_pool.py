@@ -653,22 +653,46 @@ async def fetch_broker_quote(symbol: str) -> Optional[dict]:
     Bypasses the MongoDB price cache — every call goes to the
     broker on the wire so the freshness gate in
     :mod:`services.provider_policy` sees a real wire-time stamp.
+
+    Guarded by :mod:`services.broker_circuit_breaker` — when the
+    breaker is OPEN we return ``None`` immediately (no HTTP) so a
+    rate-limited or flapping broker can't burn the tick loop with
+    repeated timeouts. Callers on the execution path treat that
+    ``None`` the same way they treat "broker doesn't cover this
+    symbol" — the vendor fallback serves and auto-execute is
+    blocked pending broker recovery.
     """
     if not market_pool.available:
+        return None
+    # Late import to avoid a circular dep at module load — the
+    # breaker module itself does not depend on the pool.
+    from services import broker_circuit_breaker as _cb  # noqa: PLC0415
+    if not _cb.allow_call():
         return None
     broker_providers = [
         p for p in market_pool.providers if p.provider in _BROKER_PROVIDERS
     ]
     if not broker_providers:
         return None
+    last_exc: Optional[Exception] = None
     for provider in broker_providers:
         try:
-            return await _dispatch_quote(provider, symbol)
+            result = await _dispatch_quote(provider, symbol)
         except Exception as exc:  # noqa: BLE001
+            last_exc = exc
             logger.info(
                 "[market_data_pool] broker quote via %s failed for %s: %s",
                 provider.name, symbol, exc,
             )
+            continue
+        if result:
+            _cb.record_success()
+            return result
+        # A provider returning ``None`` without raising counts as a
+        # miss; we don't record it as a breaker failure because the
+        # symbol may simply not be in the broker's coverage.
+    if last_exc is not None:
+        _cb.record_failure(reason=str(last_exc)[:80])
     return None
 
 

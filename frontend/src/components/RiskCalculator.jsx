@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { X, Calculator, Shield, Target, TrendingUp, DollarSign, AlertTriangle, BarChart3, ArrowRight, Layers } from 'lucide-react';
+import { X, Calculator, Shield, Target, TrendingUp, DollarSign, AlertTriangle, BarChart3, ArrowRight, Layers, Activity } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';

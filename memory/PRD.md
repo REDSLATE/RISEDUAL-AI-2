@@ -1,5 +1,61 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (Broker execution circuit breaker — Alpha stops pounding a wedged Public.com)
+
+### 🎯 What this fixes
+
+The Why-Not-Trade diagnostic (see earlier entry) revealed that `execution_quote_blocked` was the new ceiling — Alpha creates intents fine, but Public.com either times out or doesn't quote AV small-cap movers. Without a breaker, every tick still fires the same 10s HTTP timeout for each blocked symbol, starving the loop of time it should spend on healthy candidates.
+
+### State machine
+
+`services/broker_circuit_breaker.py` (module-level singleton, thread-safe):
+
+| State | Behaviour |
+|---|---|
+| `CLOSED`   | Healthy. Every `fetch_broker_quote` call goes through. Failures counted in rolling window. |
+| `OPEN`     | Degraded. `fetch_broker_quote` returns `None` immediately (no HTTP). `fetch_execution_quote` marks results `broker_degraded` and still blocks auto-execute (we NEVER submit without broker confirmation). |
+| `HALF_OPEN` | After cooldown, next call is allowed as a probe. Success → CLOSED. Failure → OPEN for another full cooldown. |
+
+Env-tunable defaults: `BROKER_CB_ERROR_THRESHOLD=5`, `BROKER_CB_WINDOW_SECONDS=300`, `BROKER_CB_COOLDOWN_SECONDS=120`. All values gracefully fall back to defaults on malformed env.
+
+### Why-Not-Trade distinguishes coverage from outage
+
+`fetch_execution_quote` now reports two different `reason` values when the broker is silent:
+
+* **`no_broker_price`** — CLOSED breaker + broker returned None = symbol not in coverage. Expected for AV small-cap movers like KLXER.
+* **`broker_degraded`** — OPEN breaker = Public.com is throttled / down. Operator sees this distinctly in the diagnostic.
+
+### Admin endpoints
+
+* `GET /api/admin/alpha-daytrader/broker-circuit` — state, failures-in-window, cooldown remaining, last transition reason (read-only, admin).
+* `POST /api/admin/alpha-daytrader/broker-circuit/reset` — force CLOSED (owner-only) for known-transient outages.
+
+### Tests
+
+`tests/test_broker_circuit_breaker.py` — 14 tests:
+* State machine: starts CLOSED, trips at threshold, stays CLOSED below threshold, success from CLOSED tracks counter
+* Cooldown/recovery: OPEN → cooldown elapses → HALF_OPEN, probe success → CLOSED, probe failure → OPEN for full cooldown
+* Rolling-window pruning (old failures don't count)
+* Manual reset
+* `fetch_broker_quote` short-circuits with zero HTTP calls when OPEN
+* `fetch_broker_quote` records failures on provider exceptions and trips at threshold
+* `fetch_execution_quote` reports `broker_degraded` vs `no_broker_price` correctly
+
+Full sweep: **402 tests green** (alpha + policy + broker + universe + regime).
+
+### Files
+
+- `services/broker_circuit_breaker.py` (new)
+- `services/market_data_pool.py` — `fetch_broker_quote` wrapped with breaker guard + success/failure recording
+- `services/provider_policy.py` — `fetch_execution_quote` distinguishes `broker_degraded` from `no_broker_price`
+- `routes/admin_alpha_daytrader.py` — new `/broker-circuit` GET + `/broker-circuit/reset` POST
+- `tests/test_broker_circuit_breaker.py` (new)
+
+⚠️ Preview-only — click **Save to Github** to redeploy so the circuit breaker takes effect in production.
+
+---
+
+
 ## Latest Update — 2026-02 (Selective floor + live movers + short-breakdown pattern — Alpha starts firing setups)
 
 ### 🎯 Went from 0 → 2 setups per tick

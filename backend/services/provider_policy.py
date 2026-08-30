@@ -275,15 +275,27 @@ async def fetch_execution_quote(symbol: str) -> ExecutionQuote:
             result.execution_allowed = True
             result.reason = "broker_confirmed"
     elif vendor_price is not None:
-        # Broker is silent — treat as "symbol not in broker coverage
-        # or broker down". We surface the vendor price so callers
-        # can see it, but auto-execute is BLOCKED. The trade path
-        # must re-quote the broker before submitting.
+        # Broker is silent — either the symbol isn't in the broker's
+        # coverage or the breaker is OPEN (broker degraded). We
+        # surface the vendor price so callers can see it, but
+        # auto-execute is BLOCKED. The trade path must re-quote the
+        # broker before submitting.
         result.price = vendor_price
         result.source = f"vendor:{vendor_src or 'unknown'}"
         result.age_seconds = vendor_age
         result.execution_allowed = False
-        result.reason = "no_broker_price"
+        # Distinguish "broker circuit open" from "symbol not in
+        # broker coverage" so the operator can tell the two apart
+        # in the Why-Not-Trade rollup.
+        try:
+            from services import broker_circuit_breaker as _cb  # noqa: PLC0415
+            cb_state = _cb.snapshot().get("state")
+        except Exception:  # noqa: BLE001
+            cb_state = None
+        if cb_state == "open":
+            result.reason = "broker_degraded"
+        else:
+            result.reason = "no_broker_price"
     else:
         result.execution_allowed = False
         result.reason = "no_price"

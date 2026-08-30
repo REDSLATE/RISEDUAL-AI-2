@@ -19,7 +19,6 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel
 
 from services.auth_helpers import get_current_user
 
@@ -150,6 +149,33 @@ async def why_not_trade(
         since_seconds=since_seconds,
         sample_per_gate=sample_per_gate,
     )
+
+
+@router.get("/broker-circuit")
+async def broker_circuit_state(request: Request):
+    """Broker execution circuit-breaker state.
+
+    Returns the state machine (CLOSED / OPEN / HALF_OPEN), how
+    many failures are in the rolling window, cooldown remaining,
+    and the last transition reason. Read-only.
+    """
+    await _require_admin(request)
+    from services import broker_circuit_breaker
+    return broker_circuit_breaker.snapshot()
+
+
+@router.post("/broker-circuit/reset")
+async def broker_circuit_reset(request: Request):
+    """Force the broker circuit breaker back to CLOSED.
+
+    Owner-only — used after a known-transient broker outage to
+    resume execution without waiting for the automatic cooldown.
+    """
+    user = await _require_admin(request)
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
+    from services import broker_circuit_breaker
+    return broker_circuit_breaker.reset()
 
 
 @router.post("/breakeven/run")
