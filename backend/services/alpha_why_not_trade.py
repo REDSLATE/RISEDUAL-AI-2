@@ -121,7 +121,7 @@ async def compile_why_not_trade(
         rollup), ``confirmed_submissions``, ``summary`` (human
         one-liner), ``totals`` (bird's-eye counters).
     """
-    since_seconds = max(60, min(86_400, int(since_seconds)))
+    since_seconds = max(60, min(604_800, int(since_seconds)))
     now = datetime.now(timezone.utc)
     window_start = now - timedelta(seconds=since_seconds)
     window_start_ns = int(window_start.timestamp() * 1_000_000_000)

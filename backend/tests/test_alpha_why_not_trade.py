@@ -168,13 +168,16 @@ def test_events_outside_window_are_ignored(_isolated_hot_store):
 
 def test_since_seconds_is_clamped_to_range(_isolated_hot_store):
     """A caller asking for 10 seconds is bumped to 60; a caller
-    asking for a year is clamped to 86400. Belt-and-suspenders for
-    the endpoint's ``Query(ge=60, le=86_400)`` gate."""
+    asking for a year is clamped to 604800 (7 days — the hot store
+    retains 14 days, we want operators to see two full sessions
+    without accidentally hammering SQLite with a year-long scan).
+    Belt-and-suspenders for the endpoint's ``Query`` gate.
+    """
     result = _run(alpha_why_not_trade.compile_why_not_trade(None, since_seconds=10))
     assert result["since_seconds"] == 60
 
     result = _run(alpha_why_not_trade.compile_why_not_trade(None, since_seconds=10_000_000))
-    assert result["since_seconds"] == 86_400
+    assert result["since_seconds"] == 604_800
 
 
 # ─────────────────────────────────────────────

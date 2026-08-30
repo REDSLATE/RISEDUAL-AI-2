@@ -130,7 +130,7 @@ async def setup_timeline(request: Request, setup_id: str):
 @router.get("/why-not-trade")
 async def why_not_trade(
     request: Request,
-    since_seconds: int = Query(300, ge=60, le=86_400),
+    since_seconds: int = Query(300, ge=60, le=604_800),
     sample_per_gate: int = Query(3, ge=1, le=20),
 ):
     """Diagnostic: which gate is killing Alpha's candidates?
