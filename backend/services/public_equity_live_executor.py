@@ -628,6 +628,19 @@ async def maybe_route_live(
         # (returns None) does NOT block the trade — we can't punish
         # a legit signal for a provider hiccup — but the miss is
         # logged so the operator can catch systemic outages.
+        #
+        # 2026-02 update — pattern-aware. The original filter used
+        # ``abs(move_pct)`` which also blocked buying the *dip* on
+        # mean-reversion setups. That killed the entire
+        # ``SHORT_SIDE_EXHAUSTION`` family (fires on -3% to -12%
+        # moves, so ANY qualifying candidate was ≥ 4% down and thus
+        # over the cap). Now:
+        #   * Momentum setups     → block on positive ≥ cap moves
+        #                            (the original "chasing top" case)
+        #   * Mean-revert setups  → allow negative moves; only block
+        #                            the extreme catch-a-knife case
+        #                            (< -2× cap, e.g. -8% at cap 4%)
+        #   * Unknown setup type  → default to abs() safety
         max_move = _max_intraday_move_pct()
         if max_move > 0:
             move_pct = await _intraday_move_pct(symbol)
@@ -637,17 +650,46 @@ async def maybe_route_live(
                     "allowing fire (fail-open)",
                     symbol,
                 )
-            elif abs(move_pct) >= max_move:
-                logger.info(
-                    "[public-live] symbol=%s SKIPPED — chasing filter "
-                    "(intraday move %.2f%%, cap %.2f%%)",
-                    symbol, move_pct, max_move,
+            else:
+                setup_type = (intent.get("setup_type") or "").strip().lower()
+                # Local imports to avoid a circular dep at module load.
+                from services.alpha_day_trader import (  # noqa: PLC0415
+                    MEAN_REVERT_PATTERNS,
+                    MOMENTUM_PATTERNS,
                 )
-                await _log_skip(db, symbol=symbol, reason="chasing_filter",
-                                intent=intent,
-                                detail={"move_pct": round(move_pct, 2),
-                                        "cap_pct": max_move})
-                return None
+                is_mean_revert = setup_type in MEAN_REVERT_PATTERNS
+                is_momentum = setup_type in MOMENTUM_PATTERNS
+                blocked = False
+                if is_momentum:
+                    # Only block a legit "buying the top" case:
+                    # positive move already past the cap.
+                    blocked = move_pct >= max_move
+                elif is_mean_revert:
+                    # Dip-buy patterns need the negative side open,
+                    # but still guard against catching a knife
+                    # (deep collapses well beyond the cap).
+                    blocked = (
+                        move_pct >= max_move
+                        or move_pct <= -2.0 * max_move
+                    )
+                else:
+                    # Unknown / classical — keep the historical
+                    # abs() behaviour so we don't accidentally
+                    # widen the gate for something we haven't
+                    # explicitly reasoned about.
+                    blocked = abs(move_pct) >= max_move
+                if blocked:
+                    logger.info(
+                        "[public-live] symbol=%s SKIPPED — chasing filter "
+                        "(intraday move %.2f%%, cap %.2f%%, setup=%s)",
+                        symbol, move_pct, max_move, setup_type or "unknown",
+                    )
+                    await _log_skip(db, symbol=symbol, reason="chasing_filter",
+                                    intent=intent,
+                                    detail={"move_pct": round(move_pct, 2),
+                                            "cap_pct": max_move,
+                                            "setup_type": setup_type or None})
+                    return None
 
     # Connect-state gate
     creds = await _aresolve_connect_creds(db)

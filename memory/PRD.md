@@ -1,5 +1,49 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (Chasing filter no longer blocks dip-buy setups)
+
+### 🎯 What the diagnostic revealed
+
+Live Sunday-afternoon query against the 24h Why-Not-Trade window:
+```
+9 setups → 5 triggered → 5 intents → 1 broker-confirmed → 0 submitted
+```
+That single broker-confirmed intent (ADBE, $289.64, fresh broker quote) was killed by `executor_rejected: chasing_filter`. Root cause: the filter used `abs(move_pct) >= cap` which blocked BUYs on any ≥4% move — up OR down. That's correct for momentum "chasing the top" but wrong for every mean-reversion pattern that fires ON a dip (SHORT_SIDE_EXHAUSTION explicitly targets -3% to -12% moves, so 100% of its qualifying candidates were guaranteed to be blocked).
+
+### The fix
+
+`services/public_equity_live_executor.py::maybe_route_live` chasing gate is now pattern-aware:
+
+| Pattern family | Block rule |
+|---|---|
+| **Momentum** (BREAKOUT, HOD_BREAK, VWAP_RECLAIM, MOMENTUM_REACCELERATION) | `move_pct >= cap` — only the original "chasing top" case |
+| **Mean-revert** (SHORT_SIDE_EXHAUSTION, RANGE_LOW_BOUNCE, VWAP_FADE_LONG, OPENING_DRIVE_FADE, PULLBACK) | `move_pct >= cap` OR `move_pct <= -2× cap` — buy-the-dip allowed, but still block catch-a-knife (< -8% at cap 4%) |
+| **Unknown / classical** (DOUBLE_BOTTOM, IHS, FALLING_WEDGE, blank) | `abs(move_pct) >= cap` — keep the historical safe default |
+
+Data-outage fail-open behaviour is preserved: `_intraday_move_pct` returning None → allow the trade (a provider hiccup must never punish a legit signal).
+
+### Also expanded
+
+`why-not-trade` diagnostic window: max lifted from 24h → 7 days so an operator on Sunday can query Friday's session (hot store retains 14 days).
+
+### Tests
+
+`tests/test_chasing_filter_pattern_aware.py` — 18 tests: every mean-revert family allowed on -6% moves, extreme knife-catch still blocked, boundary at -2× cap, momentum families still block +5% chase, momentum allowed on -3.5% pullback, classical/unknown patterns keep abs() safety, data-outage fail-open.
+
+Full sweep: **423 alpha/policy/broker/chasing/universe tests green**. Backend healthy (689 routes).
+
+### Files
+
+- `services/public_equity_live_executor.py` — pattern-aware chasing filter
+- `services/alpha_why_not_trade.py`, `routes/admin_alpha_daytrader.py` — 7-day window support
+- `tests/test_chasing_filter_pattern_aware.py` (new)
+- `tests/test_alpha_why_not_trade.py` (updated clamp test)
+
+⚠️ Preview-only — click **Save to Github** to redeploy so the fix takes effect Monday's open.
+
+---
+
+
 ## Latest Update — 2026-02 (Broker execution circuit breaker — Alpha stops pounding a wedged Public.com)
 
 ### 🎯 What this fixes
