@@ -250,3 +250,134 @@ def test_broker_price_without_fetched_at_is_treated_as_stale(monkeypatch):
     xq = _run_gate("AAPL")
     assert xq.execution_allowed is False
     assert xq.reason is not None and "stale" in xq.reason
+
+
+# ─────────────────────────────────────────────
+#  Stale-vendor witness — the AV free-tier 15-min-delay case
+# ─────────────────────────────────────────────
+def test_stale_vendor_cannot_veto_fresh_broker(monkeypatch):
+    """The exact ADBE-live case from Monday's open: broker $285.80
+    live, vendor $292.79 from Alpha Vantage (silently 15-min delayed).
+    244 bps drift is well over the 50 bps ceiling BUT the vendor
+    is in the ``DELAYED_QUOTE_PROVIDERS`` set so it cannot veto.
+
+    Must:
+      * still record the drift number for the audit trail
+      * NOT set ``data_conflict`` (the drift isn't real, the
+        witness silently returns delayed prices)
+      * allow execution against the fresh broker price
+    """
+    now = time.time()
+    _install_stub_quotes(
+        monkeypatch,
+        broker={"price": 285.80, "fetched_at": now, "source": "public"},
+        # AV stamps the RECEIVE time so ``fetched_at`` is fresh even
+        # though the underlying price is 15 min old — this is the
+        # exact production shape we saw Monday's open.
+        vendor={"price": 292.79,
+                "fetched_at": now,
+                "source": "alphavantage",
+                "provider_name": "alphavantage-backup"},
+    )
+    xq = _run_gate("ADBE")
+    # drift is still computed and surfaced for observability
+    assert xq.disagreement_bps is not None
+    assert xq.disagreement_bps > provider_policy.EXECUTION_MAX_DRIFT_BPS
+    # but data_conflict is NOT set — AV is known-delayed
+    assert xq.data_conflict is False
+    # and the trade is ALLOWED against the fresh broker price
+    assert xq.execution_allowed is True
+    assert xq.source == "broker"
+    assert xq.price == 285.80
+
+
+def test_alphavantage_name_variants_all_bypass_drift(monkeypatch):
+    """Whatever we name the AV entry in the pool
+    (``alphavantage``, ``alphavantage-backup``, ``ALPHAVANTAGE``),
+    the drift-witness bypass must catch it. Prefix + lowercase
+    matching guards against a rename accidentally re-arming veto.
+    """
+    now = time.time()
+    for source_name in ("alphavantage", "alphavantage-backup",
+                        "ALPHAVANTAGE-primary"):
+        _install_stub_quotes(
+            monkeypatch,
+            broker={"price": 100.0, "fetched_at": now, "source": "public"},
+            vendor={"price": 110.0,           # 1000 bps drift
+                    "fetched_at": now,
+                    "provider_name": source_name},
+        )
+        xq = _run_gate("AAPL")
+        assert xq.data_conflict is False, (
+            f"AV variant {source_name!r} should not veto — it's delayed"
+        )
+
+
+def test_fresh_vendor_still_vetoes_when_drift_exceeds():
+    """The original protection is intact: when the vendor IS
+    fresh and drifts > 50 bps from the broker, ``data_conflict``
+    still trips and blocks execution. That's the real-disagreement
+    case we still want to catch."""
+    now = time.time()
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        _install_stub_quotes(
+            monkeypatch,
+            broker={"price": 150.00, "fetched_at": now, "source": "public"},
+            vendor={"price": 151.50,
+                    "fetched_at": now,   # fresh witness
+                    "source": "finnhub",
+                    "provider_name": "finnhub-backup"},
+        )
+        xq = _run_gate("AAPL")
+    assert xq.data_conflict is True
+    assert xq.execution_allowed is False
+
+
+def test_vendor_age_boundary_at_configured_ceiling():
+    """A vendor exactly at ``EXECUTION_VENDOR_MAX_AGE_SECS`` old
+    is still considered fresh (``<=`` in the check). One second
+    older and it's no longer a credible witness."""
+    now = time.time()
+    max_age = provider_policy.EXECUTION_VENDOR_MAX_AGE_SECS
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        _install_stub_quotes(
+            monkeypatch,
+            broker={"price": 100.0, "fetched_at": now, "source": "public"},
+            vendor={"price": 110.0,   # 1000 bps drift
+                    # A hair inside the ceiling so the tiny time
+                    # elapsed inside the gate doesn't push us over.
+                    "fetched_at": now - max_age + 1,
+                    "source": "finnhub"},
+        )
+        xq_at = _run_gate("A")
+    assert xq_at.data_conflict is True, (
+        "vendor inside the age ceiling must still be trusted"
+    )
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        _install_stub_quotes(
+            monkeypatch,
+            broker={"price": 100.0, "fetched_at": now, "source": "public"},
+            vendor={"price": 110.0,
+                    "fetched_at": now - max_age - 1,   # 1s over
+                    "source": "finnhub"},
+        )
+        xq_over = _run_gate("B")
+    assert xq_over.data_conflict is False
+
+
+def test_vendor_missing_fetched_at_does_not_veto_fresh_broker():
+    """A vendor payload without ``fetched_at`` has unknown age —
+    we must treat it conservatively (unknown = not credible as a
+    drift witness) so it can't accidentally veto a live broker
+    quote. Same principle as the AV-15min case."""
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        _install_stub_quotes(
+            monkeypatch,
+            broker={"price": 100.0, "fetched_at": time.time(), "source": "public"},
+            vendor={"price": 110.0, "source": "unknown"},   # no fetched_at
+        )
+        xq = _run_gate("A")
+    assert xq.data_conflict is False
+    assert xq.execution_allowed is True

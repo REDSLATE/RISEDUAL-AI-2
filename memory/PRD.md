@@ -1,5 +1,49 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (Alpha Vantage excluded from drift-witness role — was killing every intent live)
+
+### 🎯 What was actually killing execution
+
+Live query against preview at Monday 10:12 ET (market open ~42 min): 4 intents per hour, ALL killed at the same gate:
+
+```
+ADBE: broker=$285.80 (age 0.00001s) vs vendor=$292.79 → drift=244.6bps → data_conflict → BLOCKED
+```
+
+Root cause: Alpha Vantage's free-tier `GLOBAL_QUOTE` endpoint silently returns a **15-minute-delayed** price and stamps it with the receive-time timestamp we assigned. So `fetched_at` looks fresh (0.00s) but the actual price is 15 min old. Our drift check saw a "244 bps disagreement" every single tick — it wasn't a real disagreement, it was AV's delay policy pretending to be current data.
+
+### The fix
+
+`services/provider_policy.py` now maintains an explicit `DELAYED_QUOTE_PROVIDERS = {"alphavantage"}` set. A vendor whose `provider_name` starts with any of those is:
+
+* Still surfaced in `ExecutionQuote` for observability (`vendor_price`, `disagreement_bps` populated)
+* Never allowed to set `data_conflict=True`
+* Still usable as a fallback price for `no_broker_price` context
+
+Matching is prefix + lowercase, so `alphavantage`, `alphavantage-backup`, and `ALPHAVANTAGE-primary` all bypass veto — a rename can't accidentally re-arm it.
+
+Also added `EXECUTION_VENDOR_MAX_AGE_SECS=30` — a second gate that catches any FUTURE vendor whose `fetched_at` stamp actually reflects the source-time age (e.g. if we add a provider that stamps the exchange's tick time). Defense-in-depth.
+
+### Tests
+
+`tests/test_provider_policy.py` — 3 new:
+* `test_stale_vendor_cannot_veto_fresh_broker` — exact ADBE $285.80 vs $292.79 case; must not conflict, must allow execution
+* `test_alphavantage_name_variants_all_bypass_drift` — prefix matching (`alphavantage-backup`, `ALPHAVANTAGE-primary`) all correctly bypass
+* `test_vendor_age_boundary_at_configured_ceiling` — 30s ceiling behaviour for future non-delayed providers
+* `test_vendor_missing_fetched_at_does_not_veto_fresh_broker` — unknown age is conservative
+
+**411 tests green** (alpha + policy + broker + chasing + universe + regime). Live smoke test confirmed: 0 `data_conflict` blocks in the 90s post-restart window (vs 3 in the 300s pre/post window).
+
+### Files
+
+- `services/provider_policy.py` — added `DELAYED_QUOTE_PROVIDERS`, `EXECUTION_VENDOR_MAX_AGE_SECS`, drift check gated on both freshness + non-delayed provider
+- `tests/test_provider_policy.py` — 3 new regression tests
+
+⚠️ **Preview-only.** Production still has the pre-fix drift check that will keep killing every intent Monday. Redeploy required.
+
+---
+
+
 ## Latest Update — 2026-02 (Chasing filter no longer blocks dip-buy setups)
 
 ### 🎯 What the diagnostic revealed

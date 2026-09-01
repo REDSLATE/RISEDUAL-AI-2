@@ -264,6 +264,18 @@ const WatchlistTab = ({ watchlist, isPro, addTicker, setAddTicker, addLoading, a
   </div>
 );
 
+const _verdictIcon = (v) => {
+  if (v === 'BUY') return <TrendingUp className="w-4 h-4 text-lime-400" />;
+  if (v === 'SELL') return <TrendingDown className="w-4 h-4 text-orange-400" />;
+  return <Minus className="w-4 h-4 text-amber-300" />;
+};
+
+const _verdictStyle = (v) => {
+  if (v === 'BUY') return 'text-lime-400 bg-lime-700 border-emerald-700/50';
+  if (v === 'SELL') return 'text-orange-400 bg-orange-800 border-red-700/50';
+  return 'text-amber-300 bg-amber-900/30 border-amber-700/50';
+};
+
 const HistoryTab = ({ history }) => (
   <div className="space-y-3">
     {history.length === 0 ? (
@@ -276,7 +288,7 @@ const HistoryTab = ({ history }) => (
       history.map((h, i) => (
         <div key={`${h.symbol}-${h.searched_at || i}`} className="flex items-center justify-between bg-slate-800/60 border border-slate-400/30/40 rounded-xl px-4 py-3" data-testid={`history-item-${i}`}>
           <div className="flex items-center gap-3">
-            {verdictIcon(h.verdict)}
+            {_verdictIcon(h.verdict)}
             <div>
               <span className="text-white font-semibold text-sm">{h.symbol}</span>
               <p className="text-slate-300 text-xs">
@@ -285,7 +297,7 @@ const HistoryTab = ({ history }) => (
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {h.verdict && <Badge className={`text-[10px] border ${verdictStyle(h.verdict)}`}>{h.verdict}</Badge>}
+            {h.verdict && <Badge className={`text-[10px] border ${_verdictStyle(h.verdict)}`}>{h.verdict}</Badge>}
             {h.confidence > 0 && <span className="text-slate-300 text-xs font-mono">{h.confidence}%</span>}
           </div>
         </div>

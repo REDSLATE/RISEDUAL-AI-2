@@ -101,6 +101,23 @@ EXECUTION_FRESHNESS_SECS: int = _env_int("EXECUTION_QUOTE_FRESHNESS_SECS", 5)
 # Disagreement ceiling between broker and vendor in basis points.
 # Above this we call the two feeds "conflicting" and block auto-execution.
 EXECUTION_MAX_DRIFT_BPS: int = _env_int("EXECUTION_QUOTE_MAX_DRIFT_BPS", 50)
+# Maximum age of a vendor quote we'll accept as a credible drift
+# witness. A stale witness cannot credibly disagree with a fresh
+# broker quote.
+EXECUTION_VENDOR_MAX_AGE_SECS: int = _env_int(
+    "EXECUTION_VENDOR_MAX_AGE_SECS", 30,
+)
+
+# Providers that return quotes on a SILENT delay (Alpha Vantage
+# free tier ships a 15-min-delayed price stamped with a fresh
+# receive time). ``fetched_at`` alone can't catch these because
+# the delay is upstream of our wire. We hard-code them so their
+# quotes never veto a live broker price. They can still serve as
+# a FALLBACK when the broker is silent, but not as a drift witness.
+# Match on the provider category (``provider`` in the pool config),
+# not the ``name`` field, so a rename doesn't accidentally re-arm
+# their veto power.
+DELAYED_QUOTE_PROVIDERS: frozenset[str] = frozenset({"alphavantage"})
 
 
 def get_provider_chain(decision_type: str) -> list[str]:
@@ -245,11 +262,29 @@ async def fetch_execution_quote(symbol: str) -> ExecutionQuote:
     result.vendor_age_seconds = vendor_age
     result.vendor_source = vendor_src
 
-    # ── Drift check (only when we have two independent readings)
+    # ── Drift check (only when we have a fresh AND non-delayed
+    # vendor witness). Alpha Vantage free tier silently ships a
+    # 15-min-old price with a fresh receive stamp, so ``fetched_at``
+    # alone doesn't catch it. We check both:
+    #   * ``vendor_fresh``     — measurable receive-time age
+    #   * ``vendor_realtime``  — provider isn't in the known-delayed set
+    # A vendor that fails either check still surfaces its price in
+    # the response (diagnostic) but cannot veto the live broker.
     if broker_price and vendor_price:
         drift = compute_disagreement_bps(broker_price, vendor_price)
         result.disagreement_bps = drift
-        if drift > EXECUTION_MAX_DRIFT_BPS:
+        vendor_fresh = (
+            vendor_age is not None
+            and vendor_age <= EXECUTION_VENDOR_MAX_AGE_SECS
+        )
+        # ``vendor_src`` may be either a provider category ("alphavantage")
+        # or a pool name ("alphavantage-backup"). Normalize by prefix
+        # so a rename doesn't accidentally re-arm veto power.
+        vendor_src_lc = (vendor_src or "").lower()
+        vendor_realtime = not any(
+            vendor_src_lc.startswith(p) for p in DELAYED_QUOTE_PROVIDERS
+        )
+        if drift > EXECUTION_MAX_DRIFT_BPS and vendor_fresh and vendor_realtime:
             result.data_conflict = True
 
     # ── Pick a price + decide if execution is allowed
@@ -307,6 +342,7 @@ __all__ = [
     "PROVIDER_POLICY",
     "EXECUTION_FRESHNESS_SECS",
     "EXECUTION_MAX_DRIFT_BPS",
+    "EXECUTION_VENDOR_MAX_AGE_SECS",
     "ExecutionQuote",
     "compute_disagreement_bps",
     "fetch_execution_quote",
