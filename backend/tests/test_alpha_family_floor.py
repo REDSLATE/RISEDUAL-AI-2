@@ -59,6 +59,18 @@ def test_large_cap_momentum_gets_lowest_floor():
     assert floor == _FLOOR_LARGE_CAP_MOMO
 
 
+def test_adbe_shape_now_lands_in_large_cap_momo():
+    """The exact ADBE case from 9/2 production diagnostic: price
+    ~$286, pct_change small positive, rvol ~1.3. Old thresholds
+    (0.5%/1.5×) missed by a hair → fell to the 0.447 default and
+    scored below floor. New thresholds (0.3%/1.2×) catch it so
+    the 0.35 floor applies."""
+    snap = _snap(price=286.0, pct_change=0.4, relative_volume=1.3)
+    floor, tag = _family_floor(snap, default_floor=0.447)
+    assert tag == "large_cap_momo"
+    assert floor == _FLOOR_LARGE_CAP_MOMO
+
+
 def test_penny_breakout_gets_penny_floor_not_large_cap():
     """A $3 stock up +5% on 3x rvol — must classify as
     penny_breakout (0.38), NEVER slip into large_cap_momo (0.35)."""

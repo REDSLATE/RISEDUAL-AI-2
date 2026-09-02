@@ -178,11 +178,17 @@ def _family_floor(snap: "MarketSnapshot", *, default_floor: float) -> tuple[floa
     if pct <= -2.0 and rvol >= 0.5:
         return _FLOOR_SHORT_BREAKDOWN, "short_breakdown"
 
-    # Large-cap momentum: real name, up on real volume. Price floor
-    # is deliberately low ($20) so an NVDA-shaped $40 stock still
-    # qualifies, but a $3 microcap does not (it would have hit the
-    # penny-breakout branch first if it was really moving).
-    if price >= 20.0 and pct >= 0.5 and rvol >= 1.5:
+    # Large-cap momentum: real name, real move, real participation.
+    # 2026-02 update — loosened after live production data (see
+    # PRD) showed ADBE ($286, opp=0.4267), AXP (opp=0.4114), and
+    # BLK all being misclassified as ``low_vol_no_news`` because
+    # they missed one of the three criteria by a hair. The old
+    # thresholds (0.5% / 1.5×) required the whole triangle to
+    # light up simultaneously; the new ones (0.3% / 1.2×) match
+    # what a real mid-morning large-cap grind actually looks
+    # like. Price floor stays at $20 so a $3 microcap still lands
+    # in penny_breakout first.
+    if price >= 20.0 and pct >= 0.3 and rvol >= 1.2:
         return _FLOOR_LARGE_CAP_MOMO, "large_cap_momo"
 
     # Default — the historical global floor. Applies to low-volume /
