@@ -104,21 +104,39 @@ def test_mean_revert_pattern_allows_negative_dip_buy(setup):
     )
 
 
-def test_mean_revert_still_blocks_extreme_knife_catch():
-    """A -10% move at cap 4% is still catch-a-knife territory
-    (< -2× cap). Block it even for mean-revert patterns."""
+def test_short_side_exhaustion_allows_designed_deep_range():
+    """2026-09-03 fix — SHORT_SIDE_EXHAUSTION explicitly fires on
+    -3% to -12% moves. The old generic -2× knife guard (-8% at cap
+    4%) cut it off before its designed sweet spot; the widened
+    -3× guard (-12% at cap 4%) covers the pattern's full range.
+    """
+    # -10% is well inside the pattern's designed firing range → allow
     reason = _call_chasing_filter(
         setup_type="short_side_exhaustion", move_pct=-10.0, cap=4.0,
+    )
+    assert reason != "chasing_filter", (
+        "short_side_exhaustion at -10% must be allowed — this was "
+        "the GPRO regression the Why-Not-Trade diagnostic caught"
+    )
+
+
+def test_short_side_exhaustion_still_blocks_free_fall():
+    """Beyond -3× cap (= -12% at cap 4%) is still knife territory
+    even for the exhaustion pattern — the pattern's design range
+    tops out around -12%."""
+    reason = _call_chasing_filter(
+        setup_type="short_side_exhaustion", move_pct=-13.0, cap=4.0,
     )
     assert reason == "chasing_filter"
 
 
-def test_mean_revert_boundary_at_minus_two_times_cap():
-    """-2× cap exactly (= -8% at cap 4%) is the threshold.
-    Deeper than that = blocked. Right at it = still blocked
-    (``<=`` in the check, symmetric with the momentum ``>=``).
+def test_non_exhaustion_mean_revert_still_blocks_at_minus_two_times_cap():
+    """Other mean-revert patterns (range_low_bounce, vwap_fade_long,
+    etc.) keep the original -2× cap knife guard. Only
+    SHORT_SIDE_EXHAUSTION gets the wider -3× band because its
+    design range explicitly extends deeper.
     """
-    # -8.01% just past → blocked
+    # -8.01% past -2× cap → blocked for range_low_bounce
     r_deep = _call_chasing_filter(
         setup_type="range_low_bounce", move_pct=-8.01, cap=4.0,
     )
@@ -158,17 +176,56 @@ def test_momentum_pattern_allows_negative_move():
 
 
 # ─────────────────────────────────────────────
-#  Unknown / classical setups keep the safe default
+#  Classical bullish reversal patterns — dip-buy is now allowed
+#  (2026-09-03 fix — ANET inverse_head_and_shoulders regression)
 # ─────────────────────────────────────────────
 @pytest.mark.parametrize("setup", [
     "double_bottom",
     "inverse_head_and_shoulders",
     "falling_wedge",
+])
+def test_classical_reversal_pattern_allows_negative_dip_buy(setup):
+    """Classical bullish reversal patterns (double_bottom,
+    inverse_head_and_shoulders, falling_wedge) are dip-buys by
+    construction. The 2026-09-03 fix moved them out of the
+    unknown-abs() branch and into the dip-buy family so a -6% dip
+    (the exact setup they're designed to catch) is no longer
+    blocked by the chasing filter."""
+    reason = _call_chasing_filter(setup_type=setup, move_pct=-6.0, cap=4.0)
+    assert reason != "chasing_filter", (
+        f"{setup} was blocked at -6% — classical reversal patterns "
+        f"must be allowed to buy the dip"
+    )
+
+
+def test_classical_reversal_still_blocks_extreme_knife_catch():
+    """Classical reversals get the -2× cap knife guard so a -10%
+    free-fall (well past the pattern's design range) is still
+    blocked."""
+    reason = _call_chasing_filter(
+        setup_type="inverse_head_and_shoulders", move_pct=-10.0, cap=4.0,
+    )
+    assert reason == "chasing_filter"
+
+
+def test_classical_reversal_blocks_chasing_top():
+    """Classical reversals are bullish reversals — buying at
+    +5% is still buying a top, so block."""
+    reason = _call_chasing_filter(
+        setup_type="double_bottom", move_pct=5.0, cap=4.0,
+    )
+    assert reason == "chasing_filter"
+
+
+# ─────────────────────────────────────────────
+#  Unknown / unrecognized setups keep the safe default
+# ─────────────────────────────────────────────
+@pytest.mark.parametrize("setup", [
     "",           # missing
     "brand_new",  # unrecognized
 ])
 def test_unknown_pattern_falls_back_to_abs_check(setup):
-    """Symmetric block: unknown or classical setups keep the
+    """Symmetric block: unknown/unrecognized setups keep the
     historical ``abs(move_pct) >= cap`` behaviour so we don't
     accidentally widen a gate we haven't reasoned about."""
     # Positive over cap → blocked

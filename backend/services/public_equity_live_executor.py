@@ -654,29 +654,49 @@ async def maybe_route_live(
                 setup_type = (intent.get("setup_type") or "").strip().lower()
                 # Local imports to avoid a circular dep at module load.
                 from services.alpha_day_trader import (  # noqa: PLC0415
+                    CLASSICAL_PATTERNS,
                     MEAN_REVERT_PATTERNS,
                     MOMENTUM_PATTERNS,
+                    SetupType,
                 )
-                is_mean_revert = setup_type in MEAN_REVERT_PATTERNS
+                # 2026-09-03 fix — Classical bullish reversal patterns
+                # (double_bottom, inverse_head_and_shoulders,
+                # falling_wedge) are dip-buys by construction. Before
+                # this fix they fell into the ``else`` branch below
+                # and were blocked by ``abs(move_pct) >= max_move``,
+                # i.e. any -4% dip killed the exact setup the pattern
+                # is designed to catch. Treat them the same as
+                # mean-revert for the chasing filter.
+                is_dip_buy = (
+                    setup_type in MEAN_REVERT_PATTERNS
+                    or setup_type in CLASSICAL_PATTERNS
+                )
                 is_momentum = setup_type in MOMENTUM_PATTERNS
+                # SHORT_SIDE_EXHAUSTION explicitly fires on -3% to
+                # -12% moves. The generic -2× knife guard (-8% at
+                # cap 4%) cuts it off before its designed sweet
+                # spot, so widen the guard to -3× for that pattern.
+                if setup_type == SetupType.SHORT_SIDE_EXHAUSTION.value:
+                    knife_mult = 3.0
+                else:
+                    knife_mult = 2.0
                 blocked = False
                 if is_momentum:
                     # Only block a legit "buying the top" case:
                     # positive move already past the cap.
                     blocked = move_pct >= max_move
-                elif is_mean_revert:
+                elif is_dip_buy:
                     # Dip-buy patterns need the negative side open,
                     # but still guard against catching a knife
                     # (deep collapses well beyond the cap).
                     blocked = (
                         move_pct >= max_move
-                        or move_pct <= -2.0 * max_move
+                        or move_pct <= -knife_mult * max_move
                     )
                 else:
-                    # Unknown / classical — keep the historical
-                    # abs() behaviour so we don't accidentally
-                    # widen the gate for something we haven't
-                    # explicitly reasoned about.
+                    # Unknown — keep the historical abs() behaviour
+                    # so we don't accidentally widen the gate for
+                    # something we haven't explicitly reasoned about.
                     blocked = abs(move_pct) >= max_move
                 if blocked:
                     logger.info(

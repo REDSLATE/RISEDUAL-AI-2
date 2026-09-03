@@ -1,5 +1,53 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-09-03 (Chasing filter blocking dip-buy patterns — Alpha "not trading" today)
+
+### 🎯 What was actually killing execution
+
+Live `why-not-trade` at 13:56 UTC showed the pipeline working end-to-end:
+`4 setups → 2 triggered → 2 intents → 2 broker-confirmed → 0 submitted`.
+
+Both surviving intents died at the executor's `chasing_filter`:
+
+- **ANET** — `inverse_head_and_shoulders` (classical bullish reversal / dip-buy)
+- **GPRO** — `short_side_exhaustion` (mean-revert deep-dip bounce)
+
+Two independent bugs in `public_equity_live_executor._maybe_route_live` chasing filter:
+
+1. **Classical reversal patterns misclassified.** `double_bottom`, `inverse_head_and_shoulders`, `falling_wedge` were only in `CLASSICAL_PATTERNS`, not `MEAN_REVERT_PATTERNS`, so they fell through to the unknown-`abs()` branch. Any −4% dip (the exact setup they detect) blocked them.
+2. **`SHORT_SIDE_EXHAUSTION` knife guard too tight.** Mean-revert branch capped negative moves at `−2× cap = −8%`, but this pattern's designed firing range extends to `−12%`. Deep-dip bounces were cut off before their sweet spot.
+
+### The fix
+
+`services/public_equity_live_executor.py`:
+
+- Introduced `is_dip_buy = setup_type in MEAN_REVERT_PATTERNS or setup_type in CLASSICAL_PATTERNS` — all classical bullish reversals now share the dip-buy branch (allow negative moves, guard against knife-catch).
+- Widened knife guard to `−3× cap = −12%` for `SHORT_SIDE_EXHAUSTION` specifically, keeping `−2× cap = −8%` for other mean-revert / classical patterns.
+
+### Tests
+
+`tests/test_chasing_filter_pattern_aware.py` — 6 rewritten/new:
+
+- `test_short_side_exhaustion_allows_designed_deep_range` — GPRO regression: -10% at cap 4% must NOT be blocked
+- `test_short_side_exhaustion_still_blocks_free_fall` — -13% still blocked
+- `test_non_exhaustion_mean_revert_still_blocks_at_minus_two_times_cap` — range_low_bounce keeps its -8% ceiling
+- `test_classical_reversal_pattern_allows_negative_dip_buy` — ANET regression: -6% dip on inverse_h&s / double_bottom / falling_wedge must NOT block
+- `test_classical_reversal_still_blocks_extreme_knife_catch` — -10% still blocks
+- `test_classical_reversal_blocks_chasing_top` — +5% still blocks (buying a top is buying a top)
+
+**21 chasing-filter tests green + 45 adjacent tests (classical patterns, short-side exhaustion, options-status, integration) green.**
+
+### Files
+
+- `services/public_equity_live_executor.py` — dip-buy family unified; SHORT_SIDE_EXHAUSTION gets widened knife guard
+- `tests/test_chasing_filter_pattern_aware.py` — new/rewritten regression tests
+
+### Note on yesterday's NFLX
+
+Every Alpha tick logged yesterday (2026-09-02) shows `broker_submitted: 0`. Yesterday's NFLX buy likely came through the parallel `day_trade_scanner` or `smart_order_service` path, not Alpha. Alpha's execution path has been broken both days; today's `why-not-trade` made it visible.
+
+
+
 ## Latest Update — 2026-02 (Alpha Vantage excluded from drift-witness role — was killing every intent live)
 
 ### 🎯 What was actually killing execution
