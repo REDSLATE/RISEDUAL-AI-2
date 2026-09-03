@@ -1333,13 +1333,30 @@ def _fetch_l2_snapshot(symbol: str) -> Optional[Level2Snapshot]:
     return None
 
 
-async def run_alpha_day_trader_tick(db: Any) -> dict:
+async def run_alpha_day_trader_tick(
+    db: Any,
+    *,
+    symbols_only: Optional[set[str]] = None,
+    tick_tag: Optional[str] = None,
+) -> dict:
     """One scheduler tick. Returns a summary dict for logging.
 
     Full lifecycle capture: every stage transition (candidate → setup →
     armed → triggered → intent → seat → risk → roadguard → entry_timing
     → broker → fill) is written to the SQLite hot store with latency
     samples. Only compact resolved-outcome docs go to Mongo.
+
+    2026-09-03 — added ``symbols_only`` parameter. When non-empty, the
+    universe scan + ranking phase is skipped entirely; the tick runs
+    ONLY the active-setup trigger loop, restricted to those symbols.
+    This is how the 60s ``alpha_top10_stream`` job re-uses the exact
+    same execution path (fingerprint dedup, execution-quote gate,
+    seat / risk / roadguard, chasing filter) as the 5-min tick, but
+    on a faster cadence for the operator's hottest names.
+
+    ``tick_tag`` is a free-form string echoed into log lines and the
+    top-10 mirror doc so the operator can tell 5-min and 60s ticks
+    apart.
     """
     scan_on, exec_on = await _effective_flags(db)
     if not scan_on:
@@ -1358,39 +1375,87 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
     watcher = AlphaTriggerWatcher()
     l2_engine = Level2Confirmation()
 
-    universe_symbols = await _candidate_universe(db, cap=_max_symbols_per_tick())
-    snapshots: list[MarketSnapshot] = []
-    max_per_tick = _max_symbols_per_tick()
-    for sym in universe_symbols[:max_per_tick]:  # env-tunable cap
-        snap = await _snapshot_symbol(sym)
-        if snap is not None:
-            snapshots.append(snap)
-    await _bump_counter(db, "candidates_seen", len(snapshots))
-    ranked = scanner.rank(snapshots, top_n=_max_active_setups())
-    min_score = _min_opportunity_score()
+    # Streaming-mode: skip discovery + ranking + wave veto entirely.
+    # The 5-min tick that seeded the top-10 already did all that. This
+    # branch exists so the 60s stream can re-evaluate active setups
+    # against fresh broker quotes without duplicating discovery work.
+    is_streaming = bool(symbols_only)
+    if is_streaming:
+        snapshots: list[MarketSnapshot] = []
+        ranked: list[tuple[MarketSnapshot, float]] = []
+        min_score = _min_opportunity_score()
+        # Cache regime lookups so the trigger loop still has a
+        # consistent regime label for edge lookup / observation.
+        tick_slow_regime: Optional[str] = None
+        tick_fast_regime: Optional[str] = None
+        try:
+            from services.market_regime import get_current as _get_regime
+            regime_doc = await _get_regime(db)
+            tick_slow_regime = str(regime_doc.get("label") or "UNKNOWN")
+        except Exception:  # noqa: BLE001
+            tick_slow_regime = "UNKNOWN"
+        try:
+            from services.fast_intraday_regime import get_current as _get_fast
+            fast_doc = await _get_fast(db)
+            tick_fast_regime = str(fast_doc.get("label") or "UNKNOWN")
+        except Exception:  # noqa: BLE001
+            tick_fast_regime = "UNKNOWN"
+        new_setups = 0
+    else:
+        universe_symbols = await _candidate_universe(db, cap=_max_symbols_per_tick())
+        snapshots = []
+        max_per_tick = _max_symbols_per_tick()
+        for sym in universe_symbols[:max_per_tick]:  # env-tunable cap
+            snap = await _snapshot_symbol(sym)
+            if snap is not None:
+                snapshots.append(snap)
+        await _bump_counter(db, "candidates_seen", len(snapshots))
+        ranked = scanner.rank(snapshots, top_n=_max_active_setups())
+        min_score = _min_opportunity_score()
 
-    # ── Regime context (fetched ONCE per tick, best-effort) ──
-    # Fetched BEFORE pattern detection so mean-reversion setups can
-    # arm during chop and momentum setups can be softly de-emphasized
-    # in the same regime. Regime labels are non-blocking — missing
-    # data becomes UNKNOWN and every pattern is evaluated as usual.
-    tick_slow_regime: Optional[str] = None
-    tick_fast_regime: Optional[str] = None
-    try:
-        from services.market_regime import get_current as _get_regime
-        regime_doc = await _get_regime(db)
-        tick_slow_regime = str(regime_doc.get("label") or "UNKNOWN")
-    except Exception:  # noqa: BLE001
-        tick_slow_regime = "UNKNOWN"
-    try:
-        from services.fast_intraday_regime import get_current as _get_fast
-        fast_doc = await _get_fast(db)
-        tick_fast_regime = str(fast_doc.get("label") or "UNKNOWN")
-    except Exception:  # noqa: BLE001
-        tick_fast_regime = "UNKNOWN"
+        # 2026-09-03 — write top-10 (by opportunity score, before
+        # family_floor culling) so the 60s stream has a fresh
+        # watchlist for its next tick. We record ALL ranked
+        # candidates, up to MAX_TOP_N. See ``alpha_top10_state``.
+        try:
+            from services import alpha_top10_state
+            top_entries = [
+                {
+                    "symbol": s.symbol,
+                    "score": float(score),
+                    "price": float(s.price),
+                    "pct_change": float(s.pct_change),
+                    "relative_volume": float(s.relative_volume),
+                }
+                for (s, score) in ranked[: alpha_top10_state.MAX_TOP_N]
+            ]
+            alpha_top10_state.set_top10(top_entries, source_tick=tick_tag or "5min")
+            await alpha_top10_state.mirror_to_mongo(db)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[alpha_daytrader] top-10 seed failed (non-fatal): %s", exc)
 
-    # ── discovery + pattern detection ──
-    new_setups = 0
+        # ── Regime context (fetched ONCE per tick, best-effort) ──
+        # Fetched BEFORE pattern detection so mean-reversion setups can
+        # arm during chop and momentum setups can be softly de-emphasized
+        # in the same regime. Regime labels are non-blocking — missing
+        # data becomes UNKNOWN and every pattern is evaluated as usual.
+        tick_slow_regime = None
+        tick_fast_regime = None
+        try:
+            from services.market_regime import get_current as _get_regime
+            regime_doc = await _get_regime(db)
+            tick_slow_regime = str(regime_doc.get("label") or "UNKNOWN")
+        except Exception:  # noqa: BLE001
+            tick_slow_regime = "UNKNOWN"
+        try:
+            from services.fast_intraday_regime import get_current as _get_fast
+            fast_doc = await _get_fast(db)
+            tick_fast_regime = str(fast_doc.get("label") or "UNKNOWN")
+        except Exception:  # noqa: BLE001
+            tick_fast_regime = "UNKNOWN"
+
+        # ── discovery + pattern detection ──
+        new_setups = 0
     for snap, opp_score in ranked:
         # Selective floor by candidate family. See ``_family_floor``
         # for the rules — the Why-Not-Trade diagnostic proved a
@@ -1527,9 +1592,15 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
     # ── trigger loop on all ACTIVE setups ──
     triggered_intents = 0
     submitted = 0
-    active_cursor = db.alpha_active_setups.find({
+    active_query: dict[str, Any] = {
         "state": {"$in": [SetupState.WATCHING.value, SetupState.ARMED.value]},
-    })
+    }
+    if is_streaming:
+        # Streaming-mode: restrict to the top-10 watchlist symbols so
+        # the 60s cadence doesn't accidentally re-evaluate the entire
+        # active-setup population on every 60s tick.
+        active_query["symbol"] = {"$in": sorted(symbols_only)}
+    active_cursor = db.alpha_active_setups.find(active_query)
     async for doc in active_cursor:
         setup = _setup_from_doc(doc)
         snap = await _snapshot_symbol(setup.symbol)
@@ -1841,6 +1912,8 @@ async def run_alpha_day_trader_tick(db: Any) -> dict:
         "broker_submitted": submitted,
         "scan_enabled": True,
         "execute_enabled": exec_on,
+        "streaming": is_streaming,
+        "tick_tag": tick_tag or ("stream" if is_streaming else "5min"),
     }
     logger.info("[alpha_daytrader] tick %s", summary)
     return summary

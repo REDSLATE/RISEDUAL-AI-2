@@ -124,6 +124,7 @@ def register_all(scheduler, db, server_mod):
     scheduler.add_job(s._run_day_trade_scanner_crypto, 'interval', minutes=5, id='day_trade_scanner_crypto', replace_existing=True)
     scheduler.add_job(s._run_day_trade_exit_monitor, 'interval', minutes=5, id='day_trade_exit_monitor', replace_existing=True)
     scheduler.add_job(s._run_alpha_day_trader, 'interval', minutes=5, id='alpha_day_trader', replace_existing=True)
+    scheduler.add_job(s._run_alpha_top10_stream, 'interval', seconds=60, id='alpha_top10_stream', replace_existing=True)
     scheduler.add_job(s._run_alpha_breakeven, 'interval', minutes=1, id='alpha_breakeven', replace_existing=True)
     scheduler.add_job(s._run_alpha_pattern_rollup, 'interval', minutes=15, id='alpha_pattern_rollup', replace_existing=True)
     scheduler.add_job(s._run_alpha_hot_store_prune, 'interval', hours=6, id='alpha_hot_store_prune', replace_existing=True)

@@ -50,9 +50,27 @@ def create_refresh_token(user_id: str) -> str:
 
 def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
     is_secure = os.environ.get("FRONTEND_URL", "").startswith("https")
-    # SameSite=none allows cookies on cross-origin requests (deployed domain ≠ preview domain).
-    # Requires Secure=True (HTTPS). HttpOnly prevents JS access; CSRF mitigated by POST-only mutations.
-    samesite_val = "none" if is_secure else "lax"
+    # 2026-09-03 (SEC-002): default to SameSite=Lax so a cross-site
+    # attacker can't force the browser to attach the cookie to a
+    # state-mutating POST. Same-origin XHR (frontend ↔ its own API)
+    # is unaffected. Operators who need cross-site cookies (e.g. a
+    # separately-hosted admin panel) can override with
+    # ``AUTH_COOKIE_SAMESITE=none``. Only applies to NEW logins /
+    # refreshes — existing session cookies keep their prior policy
+    # until they expire, so no one is force-logged-out by this
+    # change. Layer 2 of the CSRF defense (custom-header
+    # enforcement) lives in ``services.csrf_middleware``.
+    override = (os.environ.get("AUTH_COOKIE_SAMESITE") or "").strip().lower()
+    if override in ("none", "lax", "strict"):
+        samesite_val = override
+    else:
+        samesite_val = "lax" if is_secure else "lax"
+    # ``SameSite=None`` requires ``Secure``; if an operator sets
+    # ``AUTH_COOKIE_SAMESITE=none`` on an http (dev) deployment, the
+    # browser will silently reject the cookie. Force-flip to lax to
+    # save them the debugging cycle.
+    if samesite_val == "none" and not is_secure:
+        samesite_val = "lax"
     response.set_cookie(key="access_token", value=access_token, httponly=True, secure=is_secure, samesite=samesite_val, max_age=900, path="/")
     response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=is_secure, samesite=samesite_val, max_age=604800, path="/")
 
@@ -542,8 +560,14 @@ async def refresh_token(request: Request, response: Response):
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
         access = create_access_token(str(user["_id"]), user["email"])
+        # 2026-09-03 (SEC-002): use shared cookie helper so
+        # SameSite/Secure policy stays in one place (the helper
+        # respects ``AUTH_COOKIE_SAMESITE`` and defaults to Lax).
         is_secure = os.environ.get("FRONTEND_URL", "").startswith("https")
-        samesite_val = "none" if is_secure else "lax"
+        override = (os.environ.get("AUTH_COOKIE_SAMESITE") or "").strip().lower()
+        samesite_val = override if override in ("none", "lax", "strict") else "lax"
+        if samesite_val == "none" and not is_secure:
+            samesite_val = "lax"
         response.set_cookie(key="access_token", value=access, httponly=True, secure=is_secure, samesite=samesite_val, max_age=900, path="/")
         return {"access_token": access}
     except HTTPException:

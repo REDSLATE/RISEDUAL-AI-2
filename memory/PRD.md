@@ -1,5 +1,75 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-09-03 (Streaming Top-10 + SEC-002 CSRF hardening)
+
+### 🎯 What shipped
+
+Three requested workstreams in one pass. Alpha still trades on the 5-min cadence for the wider universe, but the highest-opportunity 10 symbols now get re-evaluated every 60s against broker-fresh quotes. CSRF is layered defense: SameSite=Lax at the app layer + a mandatory custom header on cookie-authenticated state-mutating routes.
+
+### Streaming Top-10 — architecture
+
+New files:
+
+- `services/alpha_top10_state.py` — in-process watchlist (10 symbols max) with a Mongo mirror for the diagnostic panel. Deduplicates, truncates, drops blanks; `get_top10()` returns a defensive copy.
+- `services/alpha_top10_stream.py` — 60s tick that delegates to `run_alpha_day_trader_tick(db, symbols_only=<top10>)`. Empty watchlist → `skipped: no_watchlist`, never blows up.
+
+Refactored:
+
+- `services/alpha_day_trader.run_alpha_day_trader_tick` now accepts `symbols_only: Optional[set[str]]` and `tick_tag: Optional[str]`. When `symbols_only` is set, the tick SKIPS universe scan + ranking + wave veto entirely and runs only the active-setup trigger loop, filtered to those symbols. The 5-min tick continues to run as before and seeds the top-10 after ranking.
+- `services/market_data_pool.fetch_broker_quote` now tries MooMoo OpenD first (`snapshot_quote`) then falls back to Public.com REST. Controlled by `ALPHA_BROKER_QUOTE_PREFER_MOOMOO` (default on).
+- `services/scheduling/jobs.py` — added `scheduler.add_job(s._run_alpha_top10_stream, 'interval', seconds=60, id='alpha_top10_stream')`.
+- `server.py` — `_run_alpha_top10_stream` server callback.
+
+Live verification:
+
+```
+14:24:49 [alpha_top10] refreshed n=10 symbols=MSAIW,CRD,EO,AVGO,SLDPW,VIOT,LCFYW,ABT,HUBCZ,AMZN source=5min
+14:25:22 [alpha_daytrader] tick streaming=True tick_tag=stream:2026-09-03T14:25:22Z
+```
+
+### SEC-002 CSRF hardening — two-layer defense
+
+Layer 1 — `routes/auth.set_auth_cookies`: default SameSite changed from `none` → `lax`. Operators who genuinely need cross-site cookies can override via `AUTH_COOKIE_SAMESITE=none|lax|strict`. (Observation: the preview Kubernetes/Cloudflare ingress rewrites `SameSite=Lax` back to `SameSite=None; Partitioned` on the wire because the preview URL is iframe-embedded by the Emergent builder. Layer 2 covers this case.)
+
+Layer 2 — `services/csrf_middleware.CSRFHeaderMiddleware`: rejects any cookie-authenticated `POST/PUT/PATCH/DELETE` under `/api` that doesn't carry `X-Requested-With: XMLHttpRequest`. Bearer-token clients are exempt (CSRF-immune by construction). Skips pre-auth endpoints (`/api/auth/login`, `register`, `refresh`, `forgot-password`, `reset-password`) and webhook/oauth callbacks. `CSRF_ENFORCE=0` puts the middleware in shadow-log mode for staged rollout.
+
+Frontend — `utils/csrfDefaults.js`: sets `axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest'` and monkey-patches `window.fetch` so raw-fetch pockets in the codebase inherit the header. Loaded once from `index.js` before any component mounts.
+
+Live verification against preview:
+
+```
+--- POST WITHOUT X-Requested-With → HTTP 403 {"code":"csrf_header_missing"} ---
+--- POST WITH X-Requested-With    → HTTP 200 {"candidates_seen":49,...} ---
+```
+
+### Tests
+
+- `tests/test_alpha_top10_state.py` — 7 tests (dedup, truncation, blank drop, defensive copy, replace, clear)
+- `tests/test_alpha_top10_stream.py` — 4 tests (skip on empty watchlist, skip on no db, delegate with symbols_only, verbatim symbols)
+- `tests/test_csrf_middleware.py` — 14 tests (mutating vs read-only, cookie vs bearer, skip list, options, shadow mode, case-insensitive header)
+
+**25 new tests green, 45+ existing adjacent tests still green.**
+
+### Skipped
+
+Pattern Coverage Dashboard — operator declined ("Don't need another tab or filter or panel").
+
+### Files
+
+- `services/alpha_top10_state.py` (new)
+- `services/alpha_top10_stream.py` (new)
+- `services/csrf_middleware.py` (new)
+- `services/alpha_day_trader.py` — `symbols_only` + `tick_tag` parameters, top-10 seed after ranking
+- `services/market_data_pool.py` — MooMoo-first broker quote path
+- `services/scheduling/jobs.py` — 60s stream job registration
+- `server.py` — `_run_alpha_top10_stream` callback + CSRFHeaderMiddleware registration
+- `routes/auth.py` — SameSite=Lax default with `AUTH_COOKIE_SAMESITE` override
+- `frontend/src/utils/csrfDefaults.js` (new)
+- `frontend/src/index.js` — install CSRF defaults on boot
+- Three new test files
+
+
+
 ## Latest Update — 2026-09-03 (Chasing filter blocking dip-buy patterns — Alpha "not trading" today)
 
 ### 🎯 What was actually killing execution

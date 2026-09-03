@@ -231,6 +231,15 @@ class DynamicCORSMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(DynamicCORSMiddleware)
 
+# 2026-09-03 (SEC-002): CSRF defense — reject cookie-authenticated
+# state-mutating requests that don't carry the
+# ``X-Requested-With: XMLHttpRequest`` header. Bearer-token clients
+# are exempt. See ``services.csrf_middleware`` for the full policy.
+# Registered AFTER CORS so preflight requests still return the
+# right Access-Control-* headers.
+from services.csrf_middleware import CSRFHeaderMiddleware
+app.add_middleware(CSRFHeaderMiddleware)
+
 # Public-access lockout middleware — returns 503 to non-admin /api
 # traffic when ``PUBLIC_ACCESS_ENABLED`` (or the runtime override)
 # is false. Auth + health + system-access endpoints stay reachable.
@@ -1569,6 +1578,18 @@ async def _run_alpha_day_trader():
         await run_alpha_day_trader_tick(db)
     except Exception as e:  # noqa: BLE001
         logger.debug(f"Alpha Day Trader tick error: {e}")
+
+
+async def _run_alpha_top10_stream():
+    """Background (60s): re-evaluate active setups on the top-10
+    watchlist using broker-fresh quotes. Seeded by the 5-min
+    ``_run_alpha_day_trader`` tick. See
+    ``services.alpha_top10_stream`` for design notes."""
+    try:
+        from services.alpha_top10_stream import run_alpha_top10_stream_tick
+        await run_alpha_top10_stream_tick(db)
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"Alpha top-10 stream tick error: {e}")
 
 
 async def _run_alpha_breakeven():

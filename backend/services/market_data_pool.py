@@ -654,6 +654,13 @@ async def fetch_broker_quote(symbol: str) -> Optional[dict]:
     broker on the wire so the freshness gate in
     :mod:`services.provider_policy` sees a real wire-time stamp.
 
+    2026-09-03 — MooMoo OpenD is tried FIRST when reachable. It has
+    L1 push subscriptions so latency is bounded by the OpenD tick
+    interval, not by an HTTP round-trip. Public.com REST is the
+    fallback for symbols MooMoo doesn't cover or when OpenD is
+    unreachable. Set ``ALPHA_BROKER_QUOTE_PREFER_MOOMOO=0`` to
+    disable the MooMoo-first attempt.
+
     Guarded by :mod:`services.broker_circuit_breaker` — when the
     breaker is OPEN we return ``None`` immediately (no HTTP) so a
     rate-limited or flapping broker can't burn the tick loop with
@@ -669,6 +676,32 @@ async def fetch_broker_quote(symbol: str) -> Optional[dict]:
     from services import broker_circuit_breaker as _cb  # noqa: PLC0415
     if not _cb.allow_call():
         return None
+
+    # ── MooMoo primary (2026-09-03) ──
+    # OpenD-hosted; when unreachable, ``snapshot_quote`` returns
+    # None and we fall through to Public.com REST. MooMoo hits do
+    # NOT touch the Public.com circuit breaker.
+    if os.environ.get("ALPHA_BROKER_QUOTE_PREFER_MOOMOO", "1").strip() not in (
+        "0", "false", "off", "no",
+    ):
+        try:
+            from services import moomoo_market_data_adapter as _mm  # noqa: PLC0415
+            mm_snap = _mm.snapshot_quote(symbol)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[market_data_pool] moomoo primary failed for %s: %s",
+                         symbol, exc)
+            mm_snap = None
+        if mm_snap is not None and mm_snap.last:
+            from datetime import datetime as _dt, timezone as _tz  # noqa: PLC0415
+            return {
+                "price": float(mm_snap.last),
+                "bid": float(mm_snap.bid) if mm_snap.bid else None,
+                "ask": float(mm_snap.ask) if mm_snap.ask else None,
+                "volume": float(mm_snap.volume) if mm_snap.volume else None,
+                "provider_name": "moomoo-opend",
+                "fetched_at": _dt.now(_tz.utc).isoformat(),
+            }
+
     broker_providers = [
         p for p in market_pool.providers if p.provider in _BROKER_PROVIDERS
     ]
