@@ -692,14 +692,49 @@ async def fetch_broker_quote(symbol: str) -> Optional[dict]:
                          symbol, exc)
             mm_snap = None
         if mm_snap is not None and mm_snap.last:
-            from datetime import datetime as _dt, timezone as _tz  # noqa: PLC0415
+            # 2026-09-03 — carry MooMoo's ``data_time`` through as
+            # the wire timestamp so ``provider_policy._quote_age_seconds``
+            # can correctly reject stale prices (e.g. previous-close
+            # values returned when the market is closed / the symbol is
+            # halted). Falling back to ``now()`` on unparseable
+            # ``data_time`` keeps the code robust without silently
+            # accepting a possibly-stale quote — the freshness gate
+            # will still catch it via the next tick's data_conflict
+            # check when it disagrees with a vendor witness.
+            #
+            # ``fetched_at`` is unix-seconds-float to match the format
+            # used by ``_dispatch_quote`` for Public.com. Callers
+            # (``provider_policy``) do ``float(ts)`` on it.
+            import time as _time  # noqa: PLC0415
+            wire_ts: Optional[float] = None
+            if mm_snap.ts:
+                try:
+                    from datetime import datetime as _dt2  # noqa: PLC0415
+                    # MooMoo emits ``"YYYY-MM-DD HH:MM:SS.SSS"`` in
+                    # US/Eastern (market time). Treat as naive-local
+                    # and reject if parse fails.
+                    parsed = _dt2.strptime(mm_snap.ts[:19], "%Y-%m-%d %H:%M:%S")
+                    # Convert market time (America/New_York) to
+                    # unix seconds — best-effort, uses zoneinfo
+                    # if available.
+                    try:
+                        import zoneinfo  # noqa: PLC0415
+                        wire_ts = parsed.replace(
+                            tzinfo=zoneinfo.ZoneInfo("America/New_York")
+                        ).timestamp()
+                    except Exception:  # noqa: BLE001
+                        wire_ts = parsed.timestamp()
+                except (TypeError, ValueError):
+                    wire_ts = None
+            if wire_ts is None:
+                wire_ts = _time.time()
             return {
                 "price": float(mm_snap.last),
                 "bid": float(mm_snap.bid) if mm_snap.bid else None,
                 "ask": float(mm_snap.ask) if mm_snap.ask else None,
                 "volume": float(mm_snap.volume) if mm_snap.volume else None,
                 "provider_name": "moomoo-opend",
-                "fetched_at": _dt.now(_tz.utc).isoformat(),
+                "fetched_at": wire_ts,
             }
 
     broker_providers = [

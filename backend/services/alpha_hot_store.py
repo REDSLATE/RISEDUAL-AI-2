@@ -155,17 +155,24 @@ def record_latency(setup_id: str, phase: str, duration_ms: int) -> None:
 
 
 def try_acquire_symbol_lock(
-    symbol: str, *, setup_id: str, source: str, ttl_seconds: int = 90,
+    symbol: str, *, setup_id: str, source: str, ttl_seconds: int = 120,
 ) -> bool:
     """Best-effort mutex at the execution boundary.
 
     Returns True when the caller wins the lock (and can proceed to
-    submit the trade). Returns False when another source (or the same
-    source with a different setup_id) already holds a non-expired
-    lock on ``symbol``.
+    submit the trade). Returns False when ANY caller (same or
+    different source, same or different setup_id) already holds a
+    non-expired lock on ``symbol``.
 
-    This prevents the old ``day_trade_scanner`` and the new Alpha Day
-    Trader from double-buying the same underlying move.
+    2026-09-03 — the earlier "same setup_id + same source ⇒
+    idempotent re-acquire" branch was removed. It let two concurrent
+    ticks reading the same active setup (e.g. the 5-min tick and the
+    60s stream tick, both keyed to the same ``setup_id`` /
+    ``alpha_daytrader`` source) both pass the lock and both submit
+    a broker order for the same symbol — the exact double-buy
+    scenario the lock was built to prevent. No caller re-acquires
+    its own lock within a single tick; the callers acquire once and
+    release on rejection.
     """
     now = _now_ns()
     expires = now + int(ttl_seconds * 1e9)
@@ -177,13 +184,10 @@ def try_acquire_symbol_lock(
                 (sym,),
             ).fetchone()
             if row and int(row["expires_at"]) > now:
-                # Already held. Only re-acquire if same setup_id (idempotent).
-                if row["setup_id"] == setup_id and row["source"] == source:
-                    con.execute(
-                        "UPDATE exec_dedup SET expires_at=? WHERE symbol=?",
-                        (expires, sym),
-                    )
-                    return True
+                # Lock already held (and unexpired). Refuse — the
+                # holder must release explicitly (or its TTL must
+                # expire) before another caller can take it, even
+                # if the caller reads the "same" setup_id from Mongo.
                 return False
             con.execute(
                 "INSERT OR REPLACE INTO exec_dedup(symbol, setup_id, source, acquired_at, expires_at) "

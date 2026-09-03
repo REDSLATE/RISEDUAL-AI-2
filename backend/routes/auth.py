@@ -64,7 +64,7 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
     if override in ("none", "lax", "strict"):
         samesite_val = override
     else:
-        samesite_val = "lax" if is_secure else "lax"
+        samesite_val = "lax"
     # ``SameSite=None`` requires ``Secure``; if an operator sets
     # ``AUTH_COOKIE_SAMESITE=none`` on an http (dev) deployment, the
     # browser will silently reject the cookie. Force-flip to lax to

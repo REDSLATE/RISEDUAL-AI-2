@@ -1,5 +1,58 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-09-03 (Code review response — HIGH + MEDIUM defect fixes)
+
+### 🎯 Findings from Code Review Agent
+
+Two material defects surfaced after Streaming Top-10 shipped:
+
+**HIGH — Concurrent double-buy race on the shared symbol lock.**
+`alpha_hot_store.try_acquire_symbol_lock` had a "same setup_id + same source ⇒ idempotent re-acquire ⇒ return True" branch. Meant for a single tick retrying its own acquire, but the 5-min `alpha_day_trader` and 60s `alpha_top10_stream` jobs read the SAME active-setup doc → identical `setup_id` + identical `source="alpha_daytrader"` → BOTH concurrent ticks passed the lock → BOTH could submit a broker order for the same symbol.
+
+**Fix:** Removed the idempotent re-acquire branch entirely. Any second acquire on a non-expired lock — same or different setup_id/source — now returns False. The loser's tick records `exec_lock_conflict` and continues. Callers acquire once per setup per tick; no legitimate re-acquire exists. `try_acquire_symbol_lock` default TTL bumped from 90s → 120s to match both call-sites which already passed 120s explicitly.
+
+**MEDIUM — MooMoo-first broker quote defeated the freshness gate.**
+The initial MooMoo-primary path stamped `fetched_at` as an ISO string (`datetime.now(...).isoformat()`), but `provider_policy._quote_age_seconds` does `float(ts)` — which raises `ValueError` on ISO strings and returns `None`. Effect: every MooMoo quote was seen as "unknown age" and conservatively rejected, silently neutralising the primary-broker path.
+
+**Fix:** `fetched_at` is now unix-seconds-float (matching Public.com's format from `_dispatch_quote`). Additionally, MooMoo's `data_time` (wire timestamp in ET) is now parsed via `zoneinfo.ZoneInfo("America/New_York")` when present, so a stale previous-close price registers a real age and the freshness gate can reject it. Missing/unparseable `data_time` falls back to `now()` and lets the drift-witness path catch it.
+
+**LOW — Dead ternary in `set_auth_cookies`.**
+`samesite_val = "lax" if is_secure else "lax"` — both branches identical. Simplified to `samesite_val = "lax"`. No functional change.
+
+### Tests
+
+`tests/test_symbol_lock_concurrency.py` — 5 new:
+- `test_second_acquire_with_same_setup_id_now_blocks` (the double-buy regression)
+- `test_second_acquire_with_different_source_still_blocks` (cross-scanner dedup preserved)
+- `test_release_frees_lock_for_next_caller`
+- `test_expired_lock_is_takeable`
+- `test_different_symbols_do_not_conflict`
+
+`tests/test_moomoo_broker_quote_freshness.py` — 6 new:
+- `test_moomoo_quote_fetched_at_is_unix_seconds_float` (the critical format-bug regression)
+- `test_moomoo_stale_data_time_produces_large_age` (2020 timestamp → 6+ years age)
+- `test_moomoo_missing_data_time_falls_back_to_now`
+- `test_moomoo_zero_last_price_falls_through_to_public`
+- `test_moomoo_disabled_via_env_skips_primary`
+- `test_moomoo_exception_falls_through_gracefully`
+
+**11 new tests + 46 adjacent (CSRF, Top-10 state/stream, chasing filter) — all 57 green.** Live smoke-test post-restart: tick with X-Requested-With returns HTTP 200 with valid summary.
+
+### Deferred (LOW severity, no current impact)
+
+- CSRF skip list uses substring match on `/webhook`, `/oauth`. Current authenticated routes are safe; a future route containing those substrings would silently bypass. Prefer prefix/exact matching in the next hardening pass.
+- `/api/auth/refresh` is CSRF-exempt. Forged refresh only rotates cookies the attacker cannot read (httpOnly), so impact is negligible; noted for the record.
+
+### Files
+
+- `services/alpha_hot_store.py` — removed idempotent re-acquire branch
+- `services/market_data_pool.py` — MooMoo `fetched_at` as unix-seconds-float with wire-time parsing
+- `routes/auth.py` — dead ternary simplification
+- `tests/test_symbol_lock_concurrency.py` (new)
+- `tests/test_moomoo_broker_quote_freshness.py` (new)
+
+
+
 ## Latest Update — 2026-09-03 (Streaming Top-10 + SEC-002 CSRF hardening)
 
 ### 🎯 What shipped
