@@ -429,3 +429,53 @@ async def wave_observations(
         "since_hours": since_hours,
     }
 
+
+
+# ─────────────────────────────────────────────
+#  Trade Discernment Layer — same-session postmortem
+# ─────────────────────────────────────────────
+
+from pydantic import BaseModel
+
+
+class DiscernmentPostmortemRequest(BaseModel):
+    session_date: str            # ISO YYYY-MM-DD, US/Eastern
+    better_group: list[str]
+    poorer_group: list[str]
+    invoke_llm: bool = True
+
+
+@router.post("/discernment-postmortem")
+async def run_discernment_postmortem(
+    request: Request, body: DiscernmentPostmortemRequest,
+):
+    """Run a same-session postmortem for an operator-labelled
+    better vs poorer group. Persists per-setup feature rows and
+    the session-level comparison to SQLite (Mongo is untouched).
+    See ``services.alpha_discernment_postmortem`` for the design
+    contract (no ticker rules, no new gates from small samples).
+    """
+    await _require_admin(request)
+    from services import alpha_discernment_postmortem as _pm
+    result = await _pm.run_postmortem(
+        db,
+        session_date=body.session_date,
+        better_group=body.better_group,
+        poorer_group=body.poorer_group,
+        invoke_llm=body.invoke_llm,
+    )
+    return result
+
+
+@router.get("/discernment-postmortem")
+async def get_discernment_postmortem(
+    request: Request, session_date: str = Query(..., regex=r"^\d{4}-\d{2}-\d{2}$"),
+):
+    """Return the most recent stored postmortem for a session date,
+    or ``{"present": false}`` when none has been run yet."""
+    await _require_admin(request)
+    from services import alpha_discernment_postmortem as _pm
+    row = _pm.get_latest_postmortem(session_date)
+    if row is None:
+        return {"present": False, "session_date": session_date}
+    return {"present": True, **row}

@@ -1,5 +1,53 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-09-04 (Trade Discernment Layer + Claude Opus 4.8 integration)
+
+### 🎯 What shipped
+
+Same-session postmortem infrastructure that reconstructs setup features at detection + trigger, joins with resolved outcomes, computes seven candidate discriminators, and hands the structured comparison to Claude Opus 4.8 for narrative synthesis. All persistence lands in the same SQLite hot-store DB (Mongo untouched). Explicitly designed as data collection for future learning — no ticker-specific rules, no new hard trading gates from small samples.
+
+### Files
+
+- `services/alpha_discernment_postmortem.py` (new) — full pipeline (extract → compute → compare → synthesize → persist)
+- `routes/admin_alpha_daytrader.py` — added `POST /api/admin/alpha-daytrader/discernment-postmortem` (run) and `GET /api/admin/alpha-daytrader/discernment-postmortem?session_date=...` (fetch latest)
+- `tests/test_alpha_discernment_postmortem.py` (new) — 12 tests covering discriminators, group comparison, end-to-end persistence, and mocked Claude wrapper
+
+### Seven candidate discriminators
+
+Every feature is optional; missing values stay `None` (never fabricated).
+
+1. `move_maturity_pct` — completed intraday move at detection (over-extension signal)
+2. `rvol_delta_detection_to_trigger` — RVOL delta from detection to trigger (fading volume signal)
+3. `price_delta_pct_detection_to_trigger` — price movement between detection and actual trigger fire (momentum deceleration signal)
+4. `relative_strength_vs_spy` / `relative_strength_vs_qqq` — mirrored from payload when populated
+5. `regime_pattern_mismatch` — 1.0 when the pattern fights the regime (momo in chop, mean-revert in trend), 0.0 when aligned, `None` when unclassifiable
+6. `detect_to_trigger_ms` — elapsed time from detection to trigger firing (late-trigger signal)
+7. `reward_over_risk` — `|target - trigger| / |trigger - invalidation|` computed against the setup's own levels
+
+### SQLite schema (new tables in the hot-store DB)
+
+`alpha_discernment_features` — one row per reconstructable setup with `features_at_detection`, `features_at_trigger`, `outcome`, and `discriminators` as JSON blobs plus `group_label` (`better` / `poorer` / `unlabeled`).
+
+`alpha_discernment_postmortems` — one row per postmortem run with `better_group`, `poorer_group`, `comparison` JSON (feature-by-feature mean delta, direction, sample size, `insufficient_data` markers), `narrative` (Claude Opus 4.8 synthesis), and `warnings`.
+
+### Claude Opus 4.8 wiring
+
+- Provider: `anthropic` via `emergentintegrations.llm.chat.LlmChat`
+- Model: `claude-opus-4-8`
+- Auth: `EMERGENT_LLM_KEY` (Universal Key)
+- System prompt hard-codes the operator's guardrails: no ticker-specific rules, no new hard gates from small samples, flag insufficient-sample features, terse prose only
+- Fails open: missing key → placeholder narrative + `model_used="none"`; API error → error text + `model_used="error"`. Postmortem still lands.
+
+### Live verification
+
+`POST /api/admin/alpha-daytrader/discernment-postmortem` with `{"session_date":"2026-09-02","better_group":["WMT","QQQ"],"poorer_group":["TSLA","NFLX"]}` returned an empty reconstructable set on the preview pod (as expected — those trades were on production, not preview) with clear per-symbol warnings. The service correctly reports what it can and cannot see. Same call on production will produce the actual analysis.
+
+### Testing
+
+12/12 discernment tests green: unit (3 regime-mismatch cases, 2 discriminator paths, 2 comparison scenarios), integration (2 end-to-end SQLite persistence + graceful missing-data), and Claude wrapper (2 mocked — invocation + missing-key fallback).
+
+
+
 ## Latest Update — 2026-09-03 (Code review response — HIGH + MEDIUM defect fixes)
 
 ### 🎯 Findings from Code Review Agent
