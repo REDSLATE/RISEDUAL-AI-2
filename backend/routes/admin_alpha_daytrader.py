@@ -479,3 +479,48 @@ async def get_discernment_postmortem(
     if row is None:
         return {"present": False, "session_date": session_date}
     return {"present": True, **row}
+
+
+# ─────────────────────────────────────────────
+#  Compact Authority Receipts
+# ─────────────────────────────────────────────
+
+@router.get("/authority-receipts")
+async def list_authority_receipts(
+    request: Request, limit: int = Query(50, ge=1, le=500),
+):
+    """List recent compact authority receipts. One doc per resolved
+    trade, chain-summarised. See ``services.alpha_authority_receipt``
+    for the design contract."""
+    await _require_admin(request)
+    from services.alpha_authority_receipt import list_receipts
+    receipts = await list_receipts(db, limit=limit)
+    return {"receipts": receipts, "returned": len(receipts)}
+
+
+@router.get("/authority-receipts/{setup_id}")
+async def get_authority_receipt(request: Request, setup_id: str):
+    """Fetch the compact authority receipt for a single setup."""
+    await _require_admin(request)
+    from services.alpha_authority_receipt import get_receipt
+    receipt = await get_receipt(db, setup_id=setup_id)
+    if receipt is None:
+        raise HTTPException(status_code=404, detail="no receipt for that setup_id")
+    return receipt
+
+
+@router.post("/authority-receipts/rebuild/{setup_id}")
+async def rebuild_authority_receipt(request: Request, setup_id: str):
+    """Force-rebuild a receipt from the SQLite hot store. Useful
+    when the raw lifecycle stream has been updated after the
+    original outcome landed (e.g. late-arriving broker events)."""
+    await _require_admin(request)
+    from services.alpha_authority_receipt import build_and_persist
+    receipt = await build_and_persist(db, setup_id=setup_id)
+    if receipt is None:
+        raise HTTPException(
+            status_code=404,
+            detail="no lifecycle events for that setup_id",
+        )
+    return receipt
+

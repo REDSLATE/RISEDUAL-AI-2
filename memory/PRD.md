@@ -1,5 +1,41 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-09-07 Labor Day (Compact Authority Receipts)
+
+### 🎯 What shipped
+
+Every resolved trade now produces ONE compact Mongo document that summarises the full authority chain (brain vote → wave intelligence → trigger → intent → seat authority → RoadGuard → broker capability → broker submit). Raw lifecycle events stay in the SQLite hot store (unbounded, cheap to prune); Mongo gets a single bounded-volume audit summary per trade.
+
+### Files
+
+- `services/alpha_authority_receipt.py` (new) — assembler that reads SQLite lifecycle events + joins Mongo outcome + writes one compact upsert receipt keyed on `setup_id`. Idempotent by design.
+- `services/alpha_day_trader.py` — `_record_outcome` now fires `alpha_authority_receipt.build_and_persist` as fire-and-forget after every Mongo outcome insert. Receipt failure never affects trade path.
+- `routes/admin_alpha_daytrader.py` — 3 new endpoints:
+  - `GET /api/admin/alpha-daytrader/authority-receipts?limit=50`
+  - `GET /api/admin/alpha-daytrader/authority-receipts/{setup_id}`
+  - `POST /api/admin/alpha-daytrader/authority-receipts/rebuild/{setup_id}` (for late-arriving broker events)
+- `tests/test_alpha_authority_receipt.py` (new) — 9/9 tests green
+
+### Design contract
+
+- **Never fabricate a pass.** Stages that had no lifecycle event surface as `"not_recorded"`, not fake authority grants.
+- **First-in-time block wins.** `failure_stage` attributes the failure to the earliest blocking event.
+- **Idempotent persistence.** Upsert by `setup_id` — safe to rebuild from the hot store after late broker events.
+- **Bounded Mongo growth.** One doc per trade forever; SQLite carries the detail stream.
+
+### Live verification
+
+After a scheduled tick post-restart, an invalidated setup (`GFAIW`) automatically produced a receipt reporting `final_status: blocked_at_trigger`, `authority_verified: False`, `failure_stage: trigger` — visible via the list endpoint. Exactly the "prove the authority path" audit the brief called for.
+
+### Queued behind this
+
+- Kraken maintenance-advisory gate (hard block on `imminent_5m` / `final_warning_30s` per operator)
+- Webull order-event watchdog (5s threshold → `broker_event_stale` per operator)
+- LULD RoadGuard input for equities
+- Kraken stocks/xStocks evaluation (deferred until API-order confirmed for the account)
+
+
+
 ## Latest Update — 2026-09-04 (Trade Discernment Layer + Claude Opus 4.8 integration)
 
 ### 🎯 What shipped

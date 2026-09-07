@@ -1120,6 +1120,19 @@ async def _record_outcome(db: Any, *, setup: ActiveSetup, intent_id: Optional[st
     except Exception as exc:  # noqa: BLE001
         logger.debug("[alpha_daytrader] outcome write failed: %s", exc)
 
+    # 2026-09-07 — Compact Authority Receipt.
+    # After every resolved outcome (submit, block, or invalidate)
+    # regenerate the setup's authority chain receipt so the operator
+    # can audit the whole gate stack from a single Mongo doc. Details
+    # live in the SQLite hot store; this is the compact summary.
+    # Fire-and-forget: a receipt-side crash must never affect the
+    # trade path.
+    try:
+        from services.alpha_authority_receipt import build_and_persist
+        await build_and_persist(db, setup_id=setup.setup_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[alpha_daytrader] authority receipt build failed: %s", exc)
+
 
 # Module-level Wave Intelligence singleton — the machine holds a
 # per-symbol LRU state cache for mode hysteresis. Fresh evaluation of

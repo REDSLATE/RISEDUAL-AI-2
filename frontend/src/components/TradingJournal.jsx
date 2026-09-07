@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { X, Plus, TrendingUp, TrendingDown, Target, BarChart3, BookOpen, Trash2, Paperclip, Lock, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
