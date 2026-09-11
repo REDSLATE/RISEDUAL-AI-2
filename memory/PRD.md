@@ -1,5 +1,79 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (MooMoo hybrid Option 2 — local OpenD bridge + readiness ladder)
+
+### 🎯 What shipped
+
+Operator directive: HYBRID Option 2. Build the local-OpenD bridge and Alpha web control panel; **keep Public.com fully operational whether MooMoo is connected or not**. Smoke test must be read-only. Introduce an explicit readiness ladder so Alpha can consult MooMoo for research long before it is trusted for execution.
+
+**Readiness ladder (monotonic):**
+
+```
+DISCONNECTED → CONNECTED → DATA_READY → RESEARCH_READY → EXECUTION_READY
+```
+
+- `CONNECTED`      — TCP handshake to OpenD succeeds.
+- `DATA_READY`     — canary quote fetch returns a fresh price.
+- `RESEARCH_READY` — trade context opens AND `account_info()` returns; Alpha may consult MooMoo as a Funnel research witness.
+- `EXECUTION_READY`— **both** `MOOMOO_LIVE_ENABLED=1` AND `MOOMOO_EXECUTION_READY=1`. Only at this rung does `moomoo_broker_adapter.submit_equity` submit orders.
+
+### Files
+
+- `services/moomoo_bridge_health.py` (new) — `compute_health()` runs the ladder probe (TCP → quote → account → gates). `run_smoke_test(symbol)` performs the read-only end-to-end path: tunnel → OpenD → account/permission → fresh quote → normalized `BrokerResearchSnapshot`. All probes non-raising; missing OpenD reports, never propagates.
+- `services/moomoo_broker_adapter.py` — `submit_equity()` now gates on `compute_health().state == EXECUTION_READY`. Below that rung it returns `SubmitResult(ok=False, error="moomoo_not_execution_ready:<state>")`. Public.com path completely untouched.
+- `routes/admin_alpha_daytrader.py` — three new endpoints:
+  - `GET /api/admin/alpha-daytrader/moomoo-bridge/health` — ladder state + granular diagnostics (OpenD reachability, TCP latency, quote latency, buying power, trading permission, gate flags).
+  - `POST /api/admin/alpha-daytrader/moomoo-bridge/smoke-test?symbol=SPY` — read-only end-to-end probe. Returns per-stage `{ok, latency_ms, error}` + `overall.failed_at` on first failure.
+  - `POST /api/admin/alpha-daytrader/moomoo-bridge/endpoint` (owner-only) — runtime override for `MOOMOO_OPEND_HOST`, `MOOMOO_OPEND_PORT`, `MOOMOO_CANARY_SYMBOL`, `MOOMOO_EXECUTION_READY`. Forces trade context reopen against the new endpoint. `.env` unchanged (operator persists there manually).
+- `frontend/src/components/admin/ConnectMoomooCard.jsx` (new) — admin card with:
+  - Current state banner + full 5-rung ladder visualization
+  - Status pills (OpenD, Quote, Account, Live Flag, Exec Ready) with latency/buying-power hints
+  - Warnings/errors surface for the current probe
+  - **Read-only Smoke Test** button and result panel (pass/fail per stage + duration + broker snapshot summary)
+  - **Endpoint config drawer** (host/port/canary/execution-ready toggle) with Save that hits the runtime override endpoint
+  - Auto-refreshes every 30s
+- `frontend/src/components/admin/AlphaDayTraderPanel.jsx` — imports `ConnectMoomooCard` and renders it right after `WavePanelCard`.
+- `tests/test_moomoo_bridge_health.py` (new) — 14 tests covering ladder monotonicity, gate combinations (only LIVE_ENABLED on → still RESEARCH_READY, only EXEC_READY on → still RESEARCH_READY, both on → EXECUTION_READY), TCP probe safety (real bind/probe + unreachable port), smoke-test stage-stop semantics (tunnel-fail short-circuits before market_data), and the critical "smoke test NEVER submits" guarantee (fixture stubs `submit_equity` with an AssertionError; test passes only if the smoke path never touches it).
+
+### Architectural guarantee — Public.com independence
+
+The MooMoo bridge lives entirely in its own module tree. `public_equity_live_executor.py` has zero references to `moomoo_bridge_health` or the readiness state. Public's trade path is not affected whether MooMoo is DISCONNECTED, RESEARCH_READY, or EXECUTION_READY. Alpha's two-broker architecture is preserved with MooMoo strictly opt-in.
+
+### Env config
+
+- `MOOMOO_OPEND_HOST` (default `moomoo-opend`)
+- `MOOMOO_OPEND_PORT` (default `11111`)
+- `MOOMOO_CANARY_SYMBOL` (default `SPY`)
+- `MOOMOO_LIVE_ENABLED` (hardware kill switch — must be `1` for EXECUTION_READY)
+- `MOOMOO_EXECUTION_READY` (operator's explicit execution gate — must be `1` for EXECUTION_READY)
+- `MOOMOO_ACC_ID` (from operator, already configured)
+- `MOOMOO_TRADE_UNLOCK_PASSWORD` (from operator, already configured)
+
+### Live verification
+
+- Backend endpoints tested green against preview: `GET /health` returns `state=DISCONNECTED` with `opend.reachable=false` (correct baseline — no OpenD in pod). Smoke test returns `overall.failed_at=tunnel` with `tcp_error:gaierror` (correct). `POST /endpoint` applies runtime env override, forces trade context close.
+- Adapter gate proven at `python -c` boundary: `submit_equity(...)` at DISCONNECTED returns `SubmitResult(ok=False, error='moomoo_not_execution_ready:DISCONNECTED')`. No SDK call attempted below EXECUTION_READY.
+- Frontend verified via testing agent: card renders on `/admin` → Alpha DayTrader tab, state banner shows `DISCONNECTED`, ladder rungs render dim/active correctly, Smoke Test button runs and populates result panel (`FAIL at tunnel`), config drawer opens, host/port/exec-ready fields fill, Save closes without error.
+
+### What's still needed from operator to fully activate
+
+1. Run OpenD locally on your Mac/PC.
+2. Expose it via a tunnel (ngrok / Cloudflare Tunnel / Tailscale).
+3. Update `backend/.env` `MOOMOO_OPEND_HOST` + `MOOMOO_OPEND_PORT` to the tunnel endpoint (or use the runtime override in the admin card).
+4. When you're ready to arm MooMoo for execution: set both `MOOMOO_LIVE_ENABLED=1` AND `MOOMOO_EXECUTION_READY=1` in `.env`.
+
+### Testing
+
+- 14/14 bridge unit tests green.
+- 6/6 bridge API integration tests green (`tests/test_moomoo_bridge_api.py`, added by testing agent).
+- 6/6 frontend UI assertions green.
+- No regressions in existing 135+ tests from prior workstreams (SEC-001, watchdog, LULD).
+
+⚠️ **Preview-only.** Save to GitHub to redeploy the bridge to production.
+
+---
+
+
 ## Latest Update — 2026-02 (SEC-001 patch + normalized broker order-event watchdog + LULD RoadGuard)
 
 ### 🎯 What shipped (three workstreams, one pass)

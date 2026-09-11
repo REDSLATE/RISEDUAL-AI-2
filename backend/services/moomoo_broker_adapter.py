@@ -220,6 +220,22 @@ def submit_equity(*, symbol: str, side: str, qty: float, limit_price: float,
     hand off to another broker.
     """
     start = time.time_ns()
+    # ── Readiness ladder gate: MooMoo executes only when the bridge
+    # is at EXECUTION_READY (both MOOMOO_LIVE_ENABLED=1 AND
+    # MOOMOO_EXECUTION_READY=1). Below that rung we refuse cleanly —
+    # Public.com continues to operate independently.
+    try:
+        from services.moomoo_bridge_health import compute_health, ReadinessState
+        _h = compute_health()
+        if _h.state != ReadinessState.EXECUTION_READY:
+            return SubmitResult(
+                False, None, None,
+                f"moomoo_not_execution_ready:{_h.state}",
+                0, 0,
+            )
+    except Exception:  # noqa: BLE001
+        # If the health probe itself fails we treat it as not ready.
+        return SubmitResult(False, None, None, "moomoo_health_probe_failed", 0, 0)
     # ── Broker order-event watchdog: block resubmit if a prior order
     # is frozen (BROKER_EVENT_STALE / BROKER_STATE_UNKNOWN) for this
     # (broker, symbol, account) triple. Reconcile out-of-band first.

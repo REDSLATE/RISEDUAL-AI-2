@@ -658,3 +658,69 @@ async def broker_watchdog_clear(request: Request, broker: str, client_order_id: 
     if not cleared:
         raise HTTPException(status_code=404, detail="No frozen entry for this (broker, client_order_id)")
     return {"cleared": True, "broker": broker.lower(), "client_order_id": client_order_id}
+
+
+
+# ── MooMoo Bridge (Option 2 — local OpenD + web control panel) ────
+
+
+@router.get("/moomoo-bridge/health")
+async def moomoo_bridge_health(request: Request):
+    """Read-only readiness ladder for the local MooMoo OpenD bridge.
+
+    Returns the current rung (DISCONNECTED / CONNECTED / DATA_READY /
+    RESEARCH_READY / EXECUTION_READY) plus granular diagnostics so
+    the admin card can render OpenD reachability, quote latency,
+    trading permission, and the execution gate."""
+    await _require_admin(request)
+    from services.moomoo_bridge_health import compute_health
+    return compute_health().as_dict()
+
+
+@router.post("/moomoo-bridge/smoke-test")
+async def moomoo_bridge_smoke_test(request: Request, symbol: str | None = Query(None)):
+    """Run a READ-ONLY smoke test through the whole bridge:
+    tunnel → OpenD → account/permission → fresh quote → normalized
+    BrokerResearchSnapshot. Never submits an order."""
+    await _require_admin(request)
+    from services.moomoo_bridge_health import run_smoke_test
+    return run_smoke_test(symbol=symbol)
+
+
+class MoomooEndpointOverride(BaseModel):
+    host: str | None = None
+    port: int | None = None
+    canary_symbol: str | None = None
+    execution_ready: bool | None = None
+
+
+@router.post("/moomoo-bridge/endpoint")
+async def moomoo_bridge_endpoint(request: Request, body: MoomooEndpointOverride):
+    """Owner-only runtime override for the tunnel endpoint and
+    execution-ready flag. Updates process env so the change takes
+    effect immediately without a restart. Backend .env is NOT
+    written — set values there for persistence across restarts."""
+    user = await _require_admin(request)
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
+    import os as _os
+    applied: dict[str, str] = {}
+    if body.host is not None:
+        _os.environ["MOOMOO_OPEND_HOST"] = str(body.host).strip()
+        applied["MOOMOO_OPEND_HOST"] = _os.environ["MOOMOO_OPEND_HOST"]
+    if body.port is not None:
+        _os.environ["MOOMOO_OPEND_PORT"] = str(int(body.port))
+        applied["MOOMOO_OPEND_PORT"] = _os.environ["MOOMOO_OPEND_PORT"]
+    if body.canary_symbol is not None:
+        _os.environ["MOOMOO_CANARY_SYMBOL"] = str(body.canary_symbol).strip().upper()
+        applied["MOOMOO_CANARY_SYMBOL"] = _os.environ["MOOMOO_CANARY_SYMBOL"]
+    if body.execution_ready is not None:
+        _os.environ["MOOMOO_EXECUTION_READY"] = "1" if body.execution_ready else "0"
+        applied["MOOMOO_EXECUTION_READY"] = _os.environ["MOOMOO_EXECUTION_READY"]
+    # Force the cached trade context to reopen against the new endpoint.
+    try:
+        from services import moomoo_broker_adapter
+        moomoo_broker_adapter.close()
+    except Exception:  # noqa: BLE001
+        pass
+    return {"applied": applied}

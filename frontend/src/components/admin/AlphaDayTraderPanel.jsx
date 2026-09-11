@@ -3,6 +3,7 @@ import { Activity, AlertTriangle, CheckCircle2, ExternalLink, Play, RefreshCw, T
 import BotStatusCard from './BotStatusCard';
 import OperatorWatchlistCard from './OperatorWatchlistCard';
 import WavePanelCard from './WavePanelCard';
+import ConnectMoomooCard from './ConnectMoomooCard';
 
 const API = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -749,6 +750,12 @@ export default function AlphaDayTraderPanel() {
           leaderboard. DANGER_PAUSE mode vetoes trades on that symbol
           without touching Alpha's SPY-level regime state. Auto-45s. */}
       <WavePanelCard />
+
+      {/* MooMoo bridge — local OpenD readiness ladder + smoke test.
+          Public.com runs independently of this card's state. MooMoo
+          participates in Funnel research at RESEARCH_READY; execution
+          routing needs the explicit EXECUTION_READY gate flipped. */}
+      <ConnectMoomooCard />
 
       {/* Paste research → parsed picks → live coverage against
           Alpha's own predictions. Never injects synthetic signals;

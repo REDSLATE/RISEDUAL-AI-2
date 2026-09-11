@@ -1,0 +1,26 @@
+{
+  "summary": "Tested RISEDUAL MooMoo Hybrid Option 2 bridge end-to-end. Backend: 14/14 unit tests pass (tests/test_moomoo_bridge_health.py), 6/6 new API integration tests pass (tests/test_moomoo_bridge_api.py) — /moomoo-bridge/health, /smoke-test, /endpoint all correctly return 200 as owner and 401/403 unauth; DISCONNECTED baseline + FAIL-at-tunnel smoke confirmed. Adapter gate verified via `python -c` import: submit_equity at DISCONNECTED returns error='moomoo_not_execution_ready:DISCONNECTED'. Public.com executor is fully independent — 0 MooMoo cross-references in public_equity_live_executor.py. Frontend: after skipping onboarding tour and opening Admin Panel → Alpha DayTrader tab, ConnectMoomooCard renders with data-testid=moomoo-bridge-card. State banner shows 'DISCONNECTED', rung [moomoo-rung-connected] present, smoke-test button click renders [moomoo-smoke-result] with 'FAIL at tunnel', config drawer opens, host/port/exec-ready fields fill, Save closes drawer with no errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_moomoo_bridge_health.py",
+    "/app/backend/tests/test_moomoo_bridge_api.py",
+    "/app/test_reports/pytest/moomoo_bridge_health.xml",
+    "/app/test_reports/pytest/moomoo_bridge_api.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "moomoo_bridge_health.py: read-only smoke test correctly never touches submit paths — confirmed by test_smoke_test_never_submits fixture that stubs adapter.submit_equity with AssertionError.",
+    "moomoo_broker_adapter.submit_equity places the readiness gate BEFORE any watchdog/notional/RTH checks — good defense-in-depth ordering.",
+    "Endpoint override route writes to os.environ only (not .env) and calls moomoo_broker_adapter.close() to force ctx reopen — correct runtime override without persistence side effects.",
+    "compute_health() is monotonic and non-raising (all probes wrapped) — behaves as documented."
+  ],
+  "updated_files": ["/app/backend/tests/test_moomoo_bridge_api.py"],
+  "success_rate": {"backend": "100% (20/20 tests)", "frontend": "100% (6/6 UI assertions)"},
+  "test_credentials": "admin@risedual.ai / RiseDual2026! (role=owner, verified via /api/auth/me)",
+  "seed_data_creation": "None. Endpoint override applied host=127.0.0.1 port=11111 canary=SPY execution_ready=false (transient env vars only).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "OpenD daemon is intentionally not running in the pod — DISCONNECTED / FAIL-at-tunnel is the correct baseline. Frontend requires (1) login, (2) dismissing OnboardingTour ('Skip Tour'), (3) opening user-menu dropdown, (4) clicking nav-admin-btn, (5) clicking admin-tab-alpha-daytrader before ConnectMoomooCard is visible. The tour overlay silently intercepts pointer events if not dismissed.",
+  "rca of the issue": "N/A — no issues found; all backend + frontend flows behave per spec."
+}
