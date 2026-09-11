@@ -591,6 +591,7 @@ export default function AlphaDayTraderPanel() {
   const [brokerCmp, setBrokerCmp] = useState(null);
   const [brokerCmpRows, setBrokerCmpRows] = useState([]);
   const [brokerCmpWindow, setBrokerCmpWindow] = useState('1d');
+  const [sessionState, setSessionState] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
 
@@ -598,7 +599,7 @@ export default function AlphaDayTraderPanel() {
     setLoading(true);
     setErr('');
     try {
-      const [c, s, o, r, rt, rg, fr, eg, rp] = await Promise.all([
+      const [c, s, o, r, rt, rg, fr, eg, rp, ss] = await Promise.all([
         apiGet('/api/admin/alpha-daytrader/counters'),
         apiGet('/api/admin/alpha-daytrader/setups?limit=25'),
         apiGet('/api/admin/alpha-daytrader/outcomes?limit=25'),
@@ -608,6 +609,7 @@ export default function AlphaDayTraderPanel() {
         apiGet('/api/admin/alpha-daytrader/fast-regime'),
         apiGet('/api/admin/alpha-daytrader/edge'),
         apiGet('/api/admin/alpha-daytrader/resolved-trades?limit=50'),
+        apiGet('/api/admin/alpha-daytrader/session-state').catch(() => null),
       ]);
       setCounters(c);
       setSetups(s.setups || []);
@@ -618,6 +620,7 @@ export default function AlphaDayTraderPanel() {
       setFastRegime(fr);
       setEdges(eg.rollups || []);
       setReport(rp);
+      setSessionState(ss);
     } catch (e) {
       setErr(String(e.message || e));
     } finally {
@@ -903,6 +906,33 @@ export default function AlphaDayTraderPanel() {
       </div>
 
       <div>
+        {sessionState && !sessionState.is_market_open && sessionState.phase !== 'regular' && (
+          <div
+            data-testid="alpha-market-closed-banner"
+            className={`mb-3 rounded border px-3 py-2 text-xs flex items-center gap-2 ${
+              sessionState.phase === 'closed_holiday'
+                ? 'border-amber-700/60 bg-amber-950/40 text-amber-300'
+                : 'border-zinc-700 bg-zinc-900/60 text-zinc-400'
+            }`}
+          >
+            <span className="uppercase tracking-wide font-semibold">
+              {sessionState.phase === 'closed_holiday'
+                ? `Market Closed — ${sessionState.holiday_name}`
+                : sessionState.phase === 'closed_weekend'
+                  ? 'Market Closed — Weekend'
+                  : sessionState.phase === 'pre_market'
+                    ? 'Pre-Market'
+                    : sessionState.phase === 'after_hours'
+                      ? 'After Hours'
+                      : 'Market Closed'}
+            </span>
+            <span className="opacity-75">·</span>
+            <span className="opacity-90">{sessionState.note}</span>
+            <span className="opacity-60 ml-auto">
+              Alpha equity loop idle by design
+            </span>
+          </div>
+        )}
         <h3 className="text-sm font-medium text-zinc-300 mb-2">Today lifecycle</h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <Cell label="Candidates" value={counters?.candidates_seen} />
@@ -961,9 +991,25 @@ export default function AlphaDayTraderPanel() {
                 <tr><td colSpan={10} className="px-3 py-4 text-center text-zinc-500">
                   No resolved outcomes yet. Rollups fill in as trades close.
                 </td></tr>
-              ) : rollups.map((r) => (
+              ) : rollups.map((r) => {
+                const isShortSide = String(r.pattern || '').toLowerCase().startsWith('short_')
+                  || String(r.pattern || '').toLowerCase().includes('_breakdown')
+                  || String(r.pattern || '').toLowerCase().includes('_reject')
+                  || String(r.pattern || '').toLowerCase() === 'failed_breakout';
+                return (
                 <tr key={r.pattern} className="border-t border-zinc-800/60">
-                  <td className="px-3 py-2 font-medium">{r.pattern}</td>
+                  <td className="px-3 py-2 font-medium">
+                    <span>{r.pattern}</span>
+                    {isShortSide && (
+                      <span
+                        data-testid={`short-side-badge-${r.pattern}`}
+                        title="Broker adapter has supports_short_sales=False — these count as signal only, never submitted"
+                        className="ml-2 inline-block rounded bg-orange-950/50 border border-orange-700/50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-300 uppercase tracking-wide"
+                      >
+                        Short · Signal Only
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-right">{r.unique_setups}</td>
                   <td className="px-3 py-2 text-right">{r.executed}</td>
                   <td className="px-3 py-2 text-right">{r.win_rate !== null && r.win_rate !== undefined ? `${(r.win_rate * 100).toFixed(0)}%` : '—'}</td>
@@ -980,7 +1026,8 @@ export default function AlphaDayTraderPanel() {
                     }`}>{r.sample_confidence}</span>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

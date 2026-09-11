@@ -524,3 +524,56 @@ async def rebuild_authority_receipt(request: Request, setup_id: str):
         )
     return receipt
 
+
+# ─────────────────────────────────────────────
+#  Session state (NYSE + holidays)
+# ─────────────────────────────────────────────
+
+@router.get("/session-state")
+async def alpha_session_state(request: Request):
+    """Return the current US equity session phase with holiday
+    context. Consumed by the panel to render a MARKET CLOSED
+    banner instead of a bare "0% intent → broker" that looks
+    like a bug on holidays."""
+    await _require_admin(request)
+    from services.alpha_session_state import get_session_state
+    return get_session_state()
+
+
+# ─────────────────────────────────────────────
+#  Hardware kill switch (fail-closed)
+# ─────────────────────────────────────────────
+
+@router.get("/hw-kill-switch")
+async def get_hw_kill_switch(request: Request):
+    """Read the fail-closed hardware kill switch state. Distinct
+    from the operator-facing discipline profile — this is a
+    hardware halt (corrupt state, repeated errors, drawdown)."""
+    await _require_admin(request)
+    from services import alpha_hardware_kill_switch as _hw
+    return _hw.get_state()
+
+
+class HwKillTripBody(BaseModel):
+    reason: str
+
+
+@router.post("/hw-kill-switch/trip")
+async def trip_hw_kill_switch(request: Request, body: HwKillTripBody):
+    await _require_admin(request)
+    if not body.reason.strip():
+        raise HTTPException(status_code=400, detail="reason required")
+    from services import alpha_hardware_kill_switch as _hw
+    _hw.trip(body.reason.strip(), by="admin_api")
+    return _hw.get_state()
+
+
+@router.post("/hw-kill-switch/reset")
+async def reset_hw_kill_switch(request: Request):
+    """Operator-confirmed reset. The confirmed_by is the auth user
+    id; missing auth was already caught by _require_admin."""
+    user = await _require_admin(request)
+    from services import alpha_hardware_kill_switch as _hw
+    _hw.reset(confirmed_by=str(user.get("email") or user.get("id") or "admin"))
+    return _hw.get_state()
+

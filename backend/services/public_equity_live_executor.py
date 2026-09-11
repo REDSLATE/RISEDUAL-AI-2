@@ -33,6 +33,23 @@ from typing import Any, Mapping, Optional
 logger = logging.getLogger(__name__)
 
 
+# ── Adapter capability flags ─────────────────────────────────────────
+#
+# 2026-09-11 (Foundation v2.1 port): explicit short-sale capability.
+# Public.com does NOT support short sales through this adapter (long-
+# only per the doctrine pin at the top of this file). The executor
+# will refuse to submit any ``open_short`` intent while this flag is
+# False, log ``short_signal_only``, and let the compact authority
+# receipt attribute the block to ``roadguard``. When a broker adapter
+# that supports shorts is wired in, override this via
+# ``PUBLIC_LIVE_SUPPORTS_SHORTS=1`` — you'll also need to teach
+# ``_maybe_route_live`` how to translate ``open_short`` into the
+# broker's short-sale order type.
+SUPPORTS_SHORT_SALES: bool = os.environ.get(
+    "PUBLIC_LIVE_SUPPORTS_SHORTS", "0",
+).strip().lower() in ("1", "true", "on", "yes")
+
+
 # ── Env knobs ────────────────────────────────────────────────────────
 
 
@@ -535,6 +552,44 @@ async def maybe_route_live(
         await _log_skip(db, symbol=(intent.get("symbol") or "").upper(),
                         reason="live_exec_disabled", intent=intent)
         return None
+
+    # 2026-09-11 (Foundation v2.1) — hardware kill switch first.
+    # A corrupt state file / repeated errors / drawdown breach must
+    # halt the broker path even if every other gate looks fine.
+    # Fail-closed: the switch reads its own state through a schema
+    # validator that returns TRIPPED with FAIL_CLOSED:... on any
+    # malformed row, so the operator sees WHY execution paused.
+    try:
+        from services import alpha_hardware_kill_switch as _hw
+        tripped, hw_reason = _hw.check()
+    except Exception as exc:  # noqa: BLE001
+        # If even the switch subsystem crashes, fail closed — the
+        # authority path is not allowed to swallow safety failures.
+        tripped, hw_reason = True, f"FAIL_CLOSED:kill_switch_exception:{type(exc).__name__}"
+    if tripped:
+        await _log_skip(
+            db, symbol=(intent.get("symbol") or "").upper(),
+            reason="hw_kill_switch_tripped", intent=intent,
+            detail={"kill_reason": hw_reason or "unknown"},
+        )
+        return None
+
+    # 2026-09-11 (Foundation v2.1) — short-sale capability gate.
+    # If Alpha emits an ``open_short`` intent but the current
+    # broker adapter doesn't support short sales, we must refuse
+    # to submit AND we must not silently map to a plain SELL
+    # (which would either be a no-op on a no-position account or
+    # close an unrelated existing long). Log the intent as
+    # ``short_signal_only`` so the panel can count it separately.
+    if (intent.get("direction") or "").upper() in ("SHORT", "SELL_SHORT", "OPEN_SHORT"):
+        if not SUPPORTS_SHORT_SALES:
+            await _log_skip(
+                db, symbol=(intent.get("symbol") or "").upper(),
+                reason="short_signal_only", intent=intent,
+                detail={"broker": "public.com",
+                        "note": "adapter has supports_short_sales=False"},
+            )
+            return None
 
     # 2026-08-11 — Session gate. Public.com's broker API rejects
     # fractional / notional-based orders outside 9:30-16:00 ET

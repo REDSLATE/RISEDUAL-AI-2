@@ -1,5 +1,40 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-09-11 (Foundation v2.1 port — 4 fixes in one batch)
+
+### 🎯 What shipped
+
+Operator uploaded `RISEDUAL_Foundation_v2.1.zip` (reference implementation) and requested four fixes ported in parallel: hardware kill-switch fail-closed, RVOL time-of-day baseline, short-sale capability gate, and NYSE session-state banner. All four landed in one batch, 18 new tests green, live-verified.
+
+### Files
+
+- `services/alpha_hardware_kill_switch.py` (new) — SQLite-backed fail-closed kill switch. Distinct from the operator discipline profile — this is a hardware halt for corrupt state / consecutive errors / drawdown breach. Any malformed row returns TRIPPED with `FAIL_CLOSED:` reason instead of silently permitting trading.
+- `services/alpha_volume_baseline.py` (new) — time-of-day RVOL baseline. Same-slot UTC bucket compare vs prior dates. Returns `None` when fewer than 5 samples exist — never fabricates 1.0. Legacy daily-avg RVOL stays as fallback until the baseline warms up.
+- `services/alpha_session_state.py` (new) — NYSE session phase with holiday awareness. Enumerated 2026 holidays (incl. Labor Day) and half-day early closes. Renders as a coloured banner on the Alpha panel so "0% intent → broker" on a holiday doesn't look like a bug.
+- `services/alpha_day_trader.py` — `_snapshot_symbol` now `observe()`s each bar and prefers the time-of-day RVOL when the baseline is ready; falls back to the legacy daily-avg otherwise.
+- `services/public_equity_live_executor.py` — module-level `SUPPORTS_SHORT_SALES=False` capability flag. `maybe_route_live` now hits the HW kill switch AND the short-sale gate at entry, so any `SHORT`/`SELL_SHORT`/`OPEN_SHORT` intent is logged as `short_signal_only` and never submitted.
+- `routes/admin_alpha_daytrader.py` — new endpoints: `GET /session-state`, `GET|POST /hw-kill-switch`, `POST /hw-kill-switch/trip`, `POST /hw-kill-switch/reset`.
+- `frontend/src/components/admin/AlphaDayTraderPanel.jsx` — session-state banner above "Today lifecycle" (amber on holidays, zinc on weekends/pre-market/after-hours); `SHORT · SIGNAL ONLY` badge on any pattern whose name starts with `short_`, ends in `_breakdown`, contains `_reject`, or equals `failed_breakout`.
+- `tests/test_foundation_v21_ports.py` (new) — 18/18 tests green.
+
+### Guardrails locked in tests
+
+- HW kill switch: corrupt-JSON row → `FAIL_CLOSED:state_not_json`; missing required keys → `FAIL_CLOSED:state_missing_required_keys`; N consecutive errors → tripped; drawdown breach → tripped.
+- RVOL: returns `None` during warm-up (< 5 samples); UTC slot bucketing is correct (14:33 and 14:44 share a bucket, 14:59 doesn't); zero/negative volumes are dropped.
+- Session state: Labor Day 2026 → `closed_holiday` with holiday name; Wednesday RTH → `regular`; Thanksgiving half-day → `regular` before 13:00 ET, `after_hours` after; weekends → `closed_weekend`.
+
+### Env config
+
+- `PUBLIC_LIVE_SUPPORTS_SHORTS` (default `0`) — override when a broker adapter with shorts is wired
+- `ALPHA_HW_KILL_MAX_ERRORS` (default `10`), `ALPHA_HW_KILL_MAX_DRAWDOWN_PCT` (default `20`)
+- `ALPHA_RVOL_MIN_SAMPLES` (default `5`), `ALPHA_RVOL_LOOKBACK_DAYS` (default `30`), `ALPHA_RVOL_SLOT_MINUTES` (default `15`)
+
+### Live verification
+
+Post-restart on preview: session-state endpoint returned `closed_overnight` (it's after 20:00 ET), HW kill switch state clean at default, forced tick ran (`candidates_seen: 49`) and the RVOL baseline observed each snapshot symbol. The full end-to-end wiring is confirmed.
+
+
+
 ## Latest Update — 2026-09-07 Labor Day (Compact Authority Receipts)
 
 ### 🎯 What shipped

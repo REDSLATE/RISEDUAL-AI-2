@@ -408,7 +408,32 @@ async def _snapshot_symbol(symbol: str) -> Optional[MarketSnapshot]:
         avg_volume = sum(vols) / len(vols) if vols else 0.0
     except (TypeError, ValueError):
         avg_volume = 0.0
-    rel_vol = volume / avg_volume if avg_volume > 0 else 0.0
+    rel_vol_daily = volume / avg_volume if avg_volume > 0 else 0.0
+
+    # 2026-09-11 — Time-of-day RVOL upgrade (Foundation v2.1 fix).
+    # The daily-avg ratio above is a legacy fallback; it produces
+    # false-positive setups for midday RVOL because it compares
+    # today's cumulative to yesterday's total. The time-of-day
+    # baseline compares THIS bar to prior dates at the SAME UTC
+    # slot. Warm-up honesty: when we don't have ``min_samples``
+    # historical rows yet, the baseline returns ``None`` and we
+    # keep the legacy fallback so downstream gates don't regress.
+    # As the baseline table fills, RVOL sharpens automatically.
+    rel_vol = rel_vol_daily
+    try:
+        from services import alpha_volume_baseline
+        now_utc = datetime.now(timezone.utc)
+        alpha_volume_baseline.observe(symbol, now_utc, volume)
+        tod_rvol, tod_samples = alpha_volume_baseline.rvol(symbol, now_utc, volume)
+        if tod_rvol is not None:
+            rel_vol = float(tod_rvol)
+        else:
+            logger.debug(
+                "[alpha_daytrader] rvol warmup %s samples=%d fallback=%.2f",
+                symbol, tod_samples, rel_vol_daily,
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[alpha_daytrader] rvol baseline failed for %s: %s", symbol, exc)
 
     # Very cheap volume-acceleration proxy: today's volume vs
     # yesterday's. When intraday bars are wired we can replace this
