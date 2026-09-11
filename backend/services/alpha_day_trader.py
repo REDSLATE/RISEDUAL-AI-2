@@ -1974,6 +1974,15 @@ async def run_alpha_day_trader_tick(
         "tick_tag": tick_tag or ("stream" if is_streaming else "5min"),
     }
     logger.info("[alpha_daytrader] tick %s", summary)
+
+    # Fail-visible invariant: sweep any intent that lingered without a
+    # terminal event so it can't silently disappear from why-not-trade.
+    try:
+        from services import alpha_orphan_reaper
+        await alpha_orphan_reaper.sweep_orphaned_intents(db)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[alpha_daytrader] orphan reaper skipped: %s", exc)
+
     return summary
 
 

@@ -724,3 +724,70 @@ async def moomoo_bridge_endpoint(request: Request, body: MoomooEndpointOverride)
     except Exception:  # noqa: BLE001
         pass
     return {"applied": applied}
+
+
+# ── Orphaned-intent reaper (fail-visible invariant) ────────────────
+
+
+@router.post("/orphan-reaper/sweep")
+async def orphan_reaper_sweep(request: Request):
+    """Manually trigger the orphan-intent reaper. Also runs
+    automatically at the end of each Alpha tick — this endpoint is
+    for on-demand cleanup when the operator suspects a stuck intent."""
+    await _require_admin(request)
+    from services import alpha_orphan_reaper
+    from server import db as _db  # local import to avoid cycle
+    return await alpha_orphan_reaper.sweep_orphaned_intents(_db)
+
+
+# ── Rejection taxonomy (protection vs infrastructure vs session) ──
+
+
+@router.get("/rejection-taxonomy")
+async def rejection_taxonomy(request: Request, since_seconds: int = Query(86400)):
+    """Return today's rejection counts folded into three classes:
+    ``protection`` (Alpha correctly refusing), ``infrastructure``
+    (plumbing failed), ``session`` (market/config state).
+
+    Reads from ``intent_skip_log`` (executor gate rejections) merged
+    with ``alpha_observations.execution_blocked`` (day-trader gate
+    rejections). Aggregates by ``reason`` then classifies."""
+    await _require_admin(request)
+    from server import db as _db
+    from datetime import datetime, timezone, timedelta
+    from services.alpha_rejection_taxonomy import summarize, health_hint
+
+    since = max(60, min(int(since_seconds or 86400), 7 * 24 * 3600))
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=since)
+    counts: dict[str, int] = {}
+    if _db is not None:
+        try:
+            skip_cursor = _db.intent_skip_log.find(
+                {"ts": {"$gte": cutoff}}, {"reason": 1, "_id": 0},
+            )
+            async for row in skip_cursor:
+                reason = str(row.get("reason") or "unknown")
+                counts[reason] = counts.get(reason, 0) + 1
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            obs_cursor = _db.alpha_observations.find(
+                {"ts": {"$gte": cutoff},
+                 "event": {"$in": ["executor_rejected", "execution_blocked",
+                                    "execution_quote_blocked", "invalidated"]}},
+                {"event": 1, "payload.reject_reason": 1, "_id": 0},
+            )
+            async for row in obs_cursor:
+                payload = row.get("payload") or {}
+                reason = str(payload.get("reject_reason") or row.get("event") or "unknown")
+                counts[reason] = counts.get(reason, 0) + 1
+        except Exception:  # noqa: BLE001
+            pass
+
+    taxonomy = summarize(counts)
+    return {
+        "since_seconds": since,
+        "total": sum(taxonomy[k]["total"] for k in taxonomy),
+        "taxonomy": taxonomy,
+        "health_hint": health_hint(taxonomy),
+    }

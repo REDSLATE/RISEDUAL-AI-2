@@ -1,5 +1,80 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (Intent → Broker observability — 3 fixes shipped)
+
+### 🎯 Operator finding
+
+The "27 intents → 0 broker submissions" screenshot revealed the pipeline WAS reporting rejections — but bundled protection (Alpha correctly refusing), infrastructure (plumbing broken), and session (market closed) together as one indistinguishable count, plus 8 gates that returned silently with no reason at all. Operator's principle: **mixing protection and infrastructure hides both. Loosening protection when infrastructure is the real culprit recreates late-entry / bad-entry regressions.**
+
+### 🎯 What shipped
+
+**1. Eight silent-return paths in `maybe_route_live` now log specific reasons.**
+
+- `public_equity_live_executor.py` — each of the following bare `return None` calls is now preceded by `_log_skip(...)` with a distinct reason code:
+  - `dup_open_row` (already-open row on `open_long` intent)
+  - `sell_no_position` (`close_long` but broker reports 0 shares)
+  - `no_mark_price` (mark quote fetch returned None/0)
+  - `qty_zero` (fractional-share rounding produced 0)
+  - `client_init_failed` (broker client couldn't initialize)
+  - `broker_watchdog_frozen` (prior submission stuck in unknown state)
+  - `place_order_exception` (Public.com REST raised)
+  - `broker_empty_response` (Public.com returned empty body)
+- Regression tests source-scan `maybe_route_live` and assert no bare `return None` exists without a preceding `_log_skip` within 30 lines. Guard against re-introducing the silent-skip regression.
+
+**2. Orphan-intent reaper — the fail-visible invariant.**
+
+- `services/alpha_orphan_reaper.py` (new) — `sweep_orphaned_intents(db)` finds intents older than the window (env `ALPHA_ORPHAN_REAPER_SECONDS`, default 600s, min-clamped to 60s) with `submitted=False` and null/empty `reject_reason`. Backfills them with `reject_reason="orphaned:no_terminal_event"` AND writes an `execution_blocked` observation so they surface in the why-not-trade stream. Non-invasive: never touches submitted or already-blocked intents.
+- Auto-invoked at the tail of every `_run_alpha_tick_impl` in `alpha_day_trader.py`. Manual trigger: `POST /api/admin/alpha-daytrader/orphan-reaper/sweep`.
+- The operator's contract enforced: every intent MUST terminate as `BROKER_SUBMITTED` or `EXECUTION_BLOCKED(reason_code)` — no silent disappearance possible.
+
+**3. Rejection taxonomy — protection vs infrastructure vs session.**
+
+- `services/alpha_rejection_taxonomy.py` (new) — `classify(reason)` maps every known rejection into one of five buckets:
+  - **protection** (18 reasons: `chasing_filter`, `luld_roadguard`, `symbol_cooldown`, `confidence_floor`, `hw_kill_switch_tripped`, `dup_open_row`, `sell_no_position`, `qty_zero`, `insufficient_buying_power`, `short_signal_only`, `broker_watchdog_frozen`, etc.)
+  - **infrastructure** (11 reasons: `execution_quote_blocked`, `no_broker_price`, `broker_degraded`, `no_mark_price`, `no_broker_creds`, `client_init_failed`, `place_order_exception`, `broker_empty_response`, `moomoo_not_execution_ready`, `moomoo_health_probe_failed`, `orphaned:*` prefix match)
+  - **session** (`market_closed`, `live_exec_disabled`)
+  - **concurrency** (`exec_lock_conflict`, `intent_deduplicated`)
+  - **unknown** — fallback that FORCES taxonomy maintenance (loudly incomplete rather than silently misclassifying)
+- `summarize(counts)` folds a `{reason: count}` map into class buckets. `health_hint(taxonomy)` returns a one-sentence tone (`alert`/`warn`/`ok`/`neutral`) — infrastructure dominance always alerts, even tied with protection (bias toward "don't loosen the wrong knob").
+- Admin endpoint: `GET /api/admin/alpha-daytrader/rejection-taxonomy?since_seconds=86400` — merges executor `intent_skip_log` with `alpha_observations` (executor_rejected / execution_blocked / execution_quote_blocked / invalidated), aggregates by reason, classifies, returns `{taxonomy, health_hint, total}`.
+- Dashboard card: `RejectionTaxonomyCard.jsx` — five side-by-side class tiles with top-6 reasons each, prominent health-hint banner. Auto-refreshes 45s. Rendered after `ConnectMoomooCard` in `AlphaDayTraderPanel`.
+
+### Live data from the fix
+
+24-hour production window at deploy:
+- **Session: 103** — `market_closed` (Alpha correctly waiting for RTH)
+- **Protection: 24** — `chasing_filter` (Alpha correctly refusing over-extended entries)
+- **Infrastructure: 0** — no plumbing failures
+- **Concurrency: 0**, **Unknown: 0**
+- Health hint: `{"tone": "neutral", "message": "Session state dominates (103). Market is closed or live exec is off — no rejections require action."}`
+
+**Diagnosis**: the "27 intents → 0 broker" screenshot was Alpha correctly refusing to trade. The pipeline was healthy the whole time; observability made it look broken. With the taxonomy tile in place, this exact scenario now shows unambiguously as `session-dominates` (do nothing) instead of `27 rejected` (call debug).
+
+### Tests
+
+- 30 new tests across 3 suites (all green):
+  - `tests/test_executor_silent_gaps.py` — 2 tests, source-scan invariant.
+  - `tests/test_alpha_orphan_reaper.py` — 6 tests, window floor, no-touch-terminal, exception safety.
+  - `tests/test_alpha_rejection_taxonomy.py` — 22 tests, per-reason classification, folding, hint tones, unknown fallback.
+- Testing agent iteration 199: 100% backend + 100% frontend. Live probe confirmed 127 real rejections in the correct classes with correct health hint.
+- Regression sweep: `test_alpha_funnel.py`, `test_alpha_broker_event_watchdog.py`, `test_media_auth.py`, `test_security_hardening.py`, `test_moomoo_bridge_health.py` — 81 tests green, zero regressions.
+
+### Files
+
+- `backend/services/public_equity_live_executor.py` (8 patched silent returns)
+- `backend/services/alpha_orphan_reaper.py` (new)
+- `backend/services/alpha_rejection_taxonomy.py` (new)
+- `backend/services/alpha_day_trader.py` (reaper invocation at tick tail)
+- `backend/routes/admin_alpha_daytrader.py` (2 new endpoints)
+- `backend/tests/test_executor_silent_gaps.py`, `test_alpha_orphan_reaper.py`, `test_alpha_rejection_taxonomy.py`, `test_admin_alpha_taxonomy_endpoints.py` (all new)
+- `frontend/src/components/admin/RejectionTaxonomyCard.jsx` (new)
+- `frontend/src/components/admin/AlphaDayTraderPanel.jsx` (wires the new card)
+
+⚠️ **Preview-only.** Save to GitHub to redeploy.
+
+---
+
+
 ## Latest Update — 2026-02 (Security audit hardening — SEC-001/002/003 closed)
 
 ### 🎯 What shipped

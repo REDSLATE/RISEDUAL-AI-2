@@ -901,6 +901,11 @@ async def maybe_route_live(
             "[public-live] symbol=%s already has open live row — skip dupe",
             symbol,
         )
+        await _log_skip(
+            db, symbol=symbol, reason="dup_open_row", intent=intent,
+            detail={"intent_kind": intent_kind,
+                    "existing_row_id": str(existing_row.get("_id") or "")},
+        )
         return None
 
     if intent_kind == "close_long":
@@ -928,6 +933,10 @@ async def maybe_route_live(
                 "long position to close (Public cash account; opening "
                 "new shorts not supported)", symbol,
             )
+            await _log_skip(
+                db, symbol=symbol, reason="sell_no_position", intent=intent,
+                detail={"intent_kind": intent_kind, "current_qty": current_qty},
+            )
             return None
 
     # Sizing.
@@ -942,6 +951,10 @@ async def maybe_route_live(
     mark = await _fetch_mark_price(symbol)
     if not mark or mark <= 0:
         logger.warning("[public-live] symbol=%s SKIPPED — no mark price", symbol)
+        await _log_skip(
+            db, symbol=symbol, reason="no_mark_price", intent=intent,
+            detail={"mark_returned": mark},
+        )
         return None
 
     # ── LULD RoadGuard (equity) — narrow safety gate ────────────
@@ -980,11 +993,21 @@ async def maybe_route_live(
             "[public-live] symbol=%s SKIPPED — computed qty %.6f ≤ 0",
             symbol, qty,
         )
+        await _log_skip(
+            db, symbol=symbol, reason="qty_zero", intent=intent,
+            detail={"qty": qty, "mark": mark, "notional": notional,
+                    "intent_kind": intent_kind},
+        )
         return None
 
     # Execute
     client = _public_client(secret_key, account_id)
     if client is None:
+        await _log_skip(
+            db, symbol=symbol, reason="client_init_failed", intent=intent,
+            detail={"has_secret_key": bool(secret_key),
+                    "has_account_id": bool(account_id)},
+        )
         return None
     order_side = "buy" if intent_kind == "open_long" else "sell"
     client_order_id = str(uuid.uuid4())
@@ -1002,6 +1025,11 @@ async def maybe_route_live(
                 "[public-live] symbol=%s SKIPPED — prior submission frozen "
                 "(broker_state_unknown or broker_event_stale). Reconcile before retrying.",
                 symbol,
+            )
+            await _log_skip(
+                db, symbol=symbol, reason="broker_watchdog_frozen",
+                intent=intent,
+                detail={"account_id": account_id},
             )
             return None
     except Exception as exc:  # noqa: BLE001
@@ -1064,6 +1092,13 @@ async def maybe_route_live(
                                     reason_code=f"exception:{exc.__class__.__name__}")
         except Exception:  # noqa: BLE001
             pass
+        await _log_skip(
+            db, symbol=symbol, reason="place_order_exception", intent=intent,
+            detail={"exception_class": exc.__class__.__name__,
+                    "message": str(exc)[:200],
+                    "intent_kind": intent_kind,
+                    "qty": qty, "mark": mark},
+        )
         return None
     _ack_ms = (time.time_ns() - _submit_start_ns) // 1_000_000
     if not resp:
@@ -1099,6 +1134,10 @@ async def maybe_route_live(
                                     reason_code="empty_response")
         except Exception:  # noqa: BLE001
             pass
+        await _log_skip(
+            db, symbol=symbol, reason="broker_empty_response", intent=intent,
+            detail={"intent_kind": intent_kind, "qty": qty, "mark": mark},
+        )
         return None
 
     order_id = resp.get("id") or ""

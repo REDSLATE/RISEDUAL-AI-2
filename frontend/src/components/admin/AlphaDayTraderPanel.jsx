@@ -4,6 +4,7 @@ import BotStatusCard from './BotStatusCard';
 import OperatorWatchlistCard from './OperatorWatchlistCard';
 import WavePanelCard from './WavePanelCard';
 import ConnectMoomooCard from './ConnectMoomooCard';
+import RejectionTaxonomyCard from './RejectionTaxonomyCard';
 
 const API = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -756,6 +757,12 @@ export default function AlphaDayTraderPanel() {
           participates in Funnel research at RESEARCH_READY; execution
           routing needs the explicit EXECUTION_READY gate flipped. */}
       <ConnectMoomooCard />
+
+      {/* Rejection taxonomy — protection vs infrastructure vs session.
+          The operator's core principle: never loosen protection when
+          infrastructure is the real culprit. This tile makes the
+          distinction unmistakable at a glance. Auto-45s. */}
+      <RejectionTaxonomyCard />
 
       {/* Paste research → parsed picks → live coverage against
           Alpha's own predictions. Never injects synthetic signals;
