@@ -577,3 +577,84 @@ async def reset_hw_kill_switch(request: Request):
     _hw.reset(confirmed_by=str(user.get("email") or user.get("id") or "admin"))
     return _hw.get_state()
 
+
+
+# ─────────────────────────────────────────────
+#  Funnel — state + config
+# ─────────────────────────────────────────────
+
+@router.get("/funnel-state")
+async def get_funnel_state(request: Request):
+    """Return the current funnel state grouped by candidate state.
+    Powers the future 'why did the ranking change' panel."""
+    await _require_admin(request)
+    from services import alpha_funnel_state as fs, alpha_funnel
+    ranked = fs.rank_candidates()
+    grouped: dict[str, list[dict]] = {}
+    for c in ranked:
+        grouped.setdefault(c.state, []).append(c.to_dict())
+    return {
+        "config": alpha_funnel.get_config().__dict__,
+        "counts": {k: len(v) for k, v in grouped.items()},
+        "by_state": grouped,
+        "total": len(ranked),
+    }
+
+
+class FunnelConfigOverride(BaseModel):
+    discovery_universe: int | None = None
+    preliminary_survivors: int | None = None
+    broker_research_max: int | None = None
+    deep_discernment_max: int | None = None
+    promoted_armed: int | None = None
+
+
+@router.post("/funnel-config")
+async def update_funnel_config(request: Request, body: FunnelConfigOverride):
+    """Runtime override of funnel stage sizes. Pass ``null`` (or
+    omit a field) to leave it alone; the boot env default remains
+    in effect for fields not overridden."""
+    await _require_admin(request)
+    from services import alpha_funnel
+    changes = body.model_dump(exclude_none=True)
+    for key, value in changes.items():
+        alpha_funnel.set_runtime_override(key, int(value))
+    return {"effective": alpha_funnel.get_config().__dict__, "applied": changes}
+
+
+@router.get("/funnel-config")
+async def get_funnel_config(request: Request):
+    await _require_admin(request)
+    from services import alpha_funnel
+    return {"effective": alpha_funnel.get_config().__dict__}
+
+
+
+# ── Broker order-event watchdog ────────────────────────────────────
+
+
+@router.get("/broker-watchdog")
+async def broker_watchdog_state(request: Request, only_frozen: bool = Query(False)):
+    """List broker-event-watchdog entries. ``?only_frozen=1`` filters to
+    submissions currently frozen at ``BROKER_EVENT_STALE`` or
+    ``BROKER_STATE_UNKNOWN`` — i.e. the intents an operator must
+    reconcile before Alpha will re-arm for that symbol/account."""
+    await _require_admin(request)
+    from services import alpha_broker_event_watchdog as _watchdog
+    entries = _watchdog.list_entries(only_frozen=bool(only_frozen))
+    return {"entries": entries, "count": len(entries)}
+
+
+@router.post("/broker-watchdog/clear/{broker}/{client_order_id}")
+async def broker_watchdog_clear(request: Request, broker: str, client_order_id: str):
+    """Manually clear a frozen watchdog entry after the operator has
+    verified the true broker state out-of-band. Owner-only — clearing
+    a frozen intent lets Alpha submit again for that (symbol, account)."""
+    user = await _require_admin(request)
+    if user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required")
+    from services import alpha_broker_event_watchdog as _watchdog
+    cleared = _watchdog.clear_frozen(broker, client_order_id, reason="operator_cleared_via_admin")
+    if not cleared:
+        raise HTTPException(status_code=404, detail="No frozen entry for this (broker, client_order_id)")
+    return {"cleared": True, "broker": broker.lower(), "client_order_id": client_order_id}

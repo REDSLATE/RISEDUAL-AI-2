@@ -1,10 +1,23 @@
-"""Media upload/download routes — admin media manager for videos, images, etc."""
+"""Media upload/download routes — admin media manager for videos, images, etc.
+
+SEC-001 hardening (2026-02): upload/list/delete endpoints now require admin
+authentication (owner/admin role), ``uploaded_by`` is derived from the
+authenticated user's email/id (never hardcoded), and chunked staging is
+bounded by explicit per-chunk and per-upload caps to prevent memory-exhaustion
+DoS from unauthenticated callers.
+
+The two public read paths remain unauthenticated on purpose:
+* ``GET /api/media/landing-video`` — used by the pre-login landing page.
+* ``GET /api/media/file/{file_id}`` — public streaming path for embedded
+  media.
+"""
 import re
 import logging
 import threading
 import time
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Response
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Response, Request
 from services.storage_service import MediaService, get_object
+from services.auth_helpers import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["media"])
@@ -28,6 +41,25 @@ _CHUNK_STAGE_LOCK = threading.Lock()
 # Anything older than this without a completing chunk is garbage-
 # collected so a stalled client can't pin memory forever.
 _CHUNK_STAGE_TTL_SECS = 60 * 30
+
+# Explicit memory-DoS caps. Individual chunks and the aggregated staging
+# buffer are bounded independently so that a single call cannot pin
+# unbounded memory even before assembly hits the storage-service cap.
+_MAX_CHUNK_BYTES = 8 * 1024 * 1024      # 8 MiB per chunk
+_MAX_UPLOAD_BYTES = 100 * 1024 * 1024   # 100 MiB total per upload_id
+
+
+async def _require_admin(request: Request) -> dict:
+    """Owner/admin gate. Mirrors ``admin_alpha_daytrader._require_admin``."""
+    user = await get_current_user(request)
+    if not user or user.get("role") not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
+def _uploader_label(user: dict) -> str:
+    """Prefer email; fall back to id; never the caller-supplied hardcode."""
+    return str(user.get("email") or user.get("id") or user.get("user_id") or "admin")
 
 
 def _validate_upload_id(upload_id: str) -> str:
@@ -62,24 +94,34 @@ def _gc_stage_locked() -> None:
 
 @router.post("/media/upload")
 async def upload_media(
+    request: Request,
     file: UploadFile = File(...),
     category: str = Form("general"),
 ):
-    """Upload a media file (video, image, audio). Max 100MB."""
+    """Upload a media file (video, image, audio). Max 100MB. Admin only."""
+    user = await _require_admin(request)
     try:
         data = await file.read()
         if len(data) < 100:
             raise HTTPException(status_code=400, detail="File is empty or too small")
+        if len(data) > _MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"file exceeds {_MAX_UPLOAD_BYTES // 1024 // 1024}MB cap",
+            )
 
         svc = MediaService()
+        uploader = _uploader_label(user)
         result = await svc.upload(
             filename=file.filename or "upload.bin",
             data=data,
             content_type=file.content_type or "application/octet-stream",
-            uploaded_by="admin",
+            uploaded_by=uploader,
             category=category,
         )
-        return result
+        # Echo the derived uploader so clients can confirm attribution
+        # without a follow-up GET /api/media round-trip.
+        return {**result, "uploaded_by": uploader}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
@@ -91,6 +133,7 @@ async def upload_media(
 
 @router.post("/media/upload-chunk")
 async def upload_chunk(
+    request: Request,
     file: UploadFile = File(...),
     chunk_index: int = Form(0),
     total_chunks: int = Form(1),
@@ -99,20 +142,41 @@ async def upload_chunk(
     category: str = Form("general"),
     content_type: str = Form("application/octet-stream"),
 ):
-    """Upload a file in chunks for large files. Assembles on last chunk."""
+    """Upload a file in chunks for large files. Assembles on last chunk.
+    Admin only."""
+    user = await _require_admin(request)
     # Validate FIRST — never let a malicious upload_id become a dict key.
     upload_id = _validate_upload_id(upload_id)
 
     chunk_data = await file.read()
+
+    # Reject oversized single chunks before they hit the staging dict.
+    if len(chunk_data) > _MAX_CHUNK_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"chunk exceeds {_MAX_CHUNK_BYTES // 1024 // 1024}MB cap",
+        )
 
     # Stage the chunk entirely in memory. No pod-local staging file.
     with _CHUNK_STAGE_LOCK:
         _gc_stage_locked()
         entry = _CHUNK_STAGE.get(upload_id)
         if entry is None:
-            entry = {"chunks": {}, "updated_at": time.time()}
+            entry = {"chunks": {}, "total_bytes": 0, "updated_at": time.time()}
             _CHUNK_STAGE[upload_id] = entry
+
+        # Compute delta so replacing a chunk doesn't double-count against
+        # the total cap.
+        existing = entry["chunks"].get(chunk_index)
+        delta = len(chunk_data) - (len(existing) if existing else 0)
+        if entry["total_bytes"] + delta > _MAX_UPLOAD_BYTES:
+            _CHUNK_STAGE.pop(upload_id, None)
+            raise HTTPException(
+                status_code=413,
+                detail=f"upload exceeds {_MAX_UPLOAD_BYTES // 1024 // 1024}MB cap",
+            )
         entry["chunks"][chunk_index] = chunk_data
+        entry["total_bytes"] += delta
         entry["updated_at"] = time.time()
         received = len(entry["chunks"])
 
@@ -137,14 +201,15 @@ async def upload_chunk(
                 assembled.extend(part)
 
             svc = MediaService()
+            uploader = _uploader_label(user)
             result = await svc.upload(
                 filename=filename,
                 data=bytes(assembled),
                 content_type=content_type,
-                uploaded_by="admin",
+                uploaded_by=uploader,
                 category=category,
             )
-            return {**result, "complete": True}
+            return {**result, "uploaded_by": uploader, "complete": True}
         except HTTPException:
             raise
         except Exception as e:
@@ -157,8 +222,9 @@ async def upload_chunk(
 
 
 @router.get("/media")
-async def list_media(category: str = None):
-    """List all uploaded media files."""
+async def list_media(request: Request, category: str = None):
+    """List all uploaded media files. Admin only."""
+    await _require_admin(request)
     svc = MediaService()
     files = await svc.list_media(category)
     return {"files": files, "count": len(files)}
@@ -204,8 +270,9 @@ async def download_media(file_id: str):
 
 
 @router.delete("/media/{file_id}")
-async def delete_media(file_id: str):
-    """Soft-delete a media file."""
+async def delete_media(request: Request, file_id: str):
+    """Soft-delete a media file. Admin only."""
+    await _require_admin(request)
     svc = MediaService()
     deleted = await svc.delete_file(file_id)
     if not deleted:

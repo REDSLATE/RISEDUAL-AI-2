@@ -1472,6 +1472,26 @@ async def run_alpha_day_trader_tick(
         except Exception as exc:  # noqa: BLE001
             logger.debug("[alpha_daytrader] top-10 seed failed (non-fatal): %s", exc)
 
+        # 2026-09-11 — Funnel orchestrator (operator design).
+        # Wrap the ranked discovery output with discovery →
+        # preliminary → broker research → deep discernment →
+        # ARMED promotion. The funnel's ARMED list becomes the
+        # 60s stream's watchlist so ACTIONABLE never persists
+        # across cycles — it must be re-earned each 60s tick.
+        try:
+            from services import alpha_funnel
+            funnel_input = [
+                {
+                    "symbol": s.symbol,
+                    "score": float(score),
+                    "signal_price": float(s.price),
+                }
+                for (s, score) in ranked
+            ]
+            await alpha_funnel.run_funnel_cycle(db, ranked_discovery=funnel_input)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[alpha_daytrader] funnel cycle failed (non-fatal): %s", exc)
+
         # ── Regime context (fetched ONCE per tick, best-effort) ──
         # Fetched BEFORE pattern detection so mean-reversion setups can
         # arm during chop and momentum setups can be softly de-emphasized

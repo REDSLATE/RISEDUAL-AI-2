@@ -45,12 +45,28 @@ async def run_alpha_top10_stream_tick(db: Any) -> dict:
     from services import alpha_top10_state
     from services.alpha_day_trader import run_alpha_day_trader_tick
 
-    snap = alpha_top10_state.get_top10()
-    symbols = list(snap.get("symbols") or [])
+    # 2026-09-11 — Prefer the funnel's ARMED list. When the funnel
+    # hasn't run yet (fresh boot before the first 5-min tick) fall
+    # back to the legacy top-10 watchlist so the stream still has
+    # work to do.
+    try:
+        from services import alpha_funnel
+        promoted = alpha_funnel.get_promoted_symbols()
+    except Exception:  # noqa: BLE001
+        promoted = []
+
+    if promoted:
+        symbols = promoted
+        source = "funnel_armed"
+    else:
+        snap = alpha_top10_state.get_top10()
+        symbols = list(snap.get("symbols") or [])
+        source = "top10_legacy"
+
     if not symbols:
         return {"skipped": True, "reason": "no_watchlist"}
 
-    tag = f"stream:{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}"
+    tag = f"stream:{source}:{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}"
     return await run_alpha_day_trader_tick(
         db, symbols_only=set(symbols), tick_tag=tag,
     )

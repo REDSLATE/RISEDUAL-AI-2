@@ -220,6 +220,18 @@ def submit_equity(*, symbol: str, side: str, qty: float, limit_price: float,
     hand off to another broker.
     """
     start = time.time_ns()
+    # ── Broker order-event watchdog: block resubmit if a prior order
+    # is frozen (BROKER_EVENT_STALE / BROKER_STATE_UNKNOWN) for this
+    # (broker, symbol, account) triple. Reconcile out-of-band first.
+    try:
+        from services import alpha_broker_event_watchdog as _watchdog
+        from services import alpha_broker_reconcilers as _reconcilers
+        _reconcilers.register_all()
+        _acc_for_check = str(_acc_id() or "")
+        if _watchdog.is_frozen("moomoo", symbol, _acc_for_check):
+            return SubmitResult(False, None, None, "broker_watchdog_frozen", 0, 0)
+    except Exception:  # noqa: BLE001
+        pass
     if not _live_enabled():
         return SubmitResult(False, None, None, "moomoo_live_disabled", 0, 0)
     ctx = _get_trade_ctx()
@@ -253,6 +265,18 @@ def submit_equity(*, symbol: str, side: str, qty: float, limit_price: float,
         return SubmitResult(False, None, None, "unlock_exception", 0, 0)
 
     ack_start = time.time_ns()
+    # Register with the watchdog BEFORE the OpenD RPC so a hung call
+    # still starts the 5s stale timer.
+    try:
+        from services import alpha_broker_event_watchdog as _watchdog
+        _watchdog.register_submission(
+            broker="moomoo",
+            client_order_id=client_order_id,
+            symbol=symbol,
+            account_id=str(acc),
+        )
+    except Exception:  # noqa: BLE001
+        pass
     try:
         side_enum = TrdSide.BUY if side.upper() == "BUY" else TrdSide.SELL
         ret, data = ctx.place_order(
@@ -269,6 +293,9 @@ def submit_equity(*, symbol: str, side: str, qty: float, limit_price: float,
         )
     except Exception as exc:  # noqa: BLE001
         _safe_lock(ctx)
+        # OpenD raised — we don't know if the order reached the broker.
+        # Leave the watchdog in SUBMITTED so the 5s timer triggers a
+        # reconciliation query against the order list.
         return SubmitResult(False, None, None, f"place_order_exception:{exc.__class__.__name__}",
                              (time.time_ns() - start) // 1_000_000,
                              (time.time_ns() - ack_start) // 1_000_000)
@@ -279,12 +306,40 @@ def submit_equity(*, symbol: str, side: str, qty: float, limit_price: float,
     submit_ms = (time.time_ns() - start) // 1_000_000
 
     if ret != RET_OK:
+        try:
+            from services import alpha_broker_event_watchdog as _watchdog
+            _watchdog.record_event(
+                broker="moomoo", client_order_id=client_order_id,
+                event=_watchdog.Event.REJECTED,
+                detail=f"place_order_rejected:{str(data)[:120]}",
+            )
+        except Exception:  # noqa: BLE001
+            pass
         return SubmitResult(False, None, None, f"place_order_rejected:{str(data)[:200]}",
                              submit_ms, ack_ms)
     rows = data.to_dict("records") if hasattr(data, "to_dict") else []
     row = rows[0] if rows else {}
     order_id = str(row.get("order_id") or "")
     status_v = str(row.get("order_status") or "")
+
+    # Normalize the OpenD status into the watchdog event vocabulary.
+    try:
+        from services import alpha_broker_event_watchdog as _watchdog
+        from services.alpha_broker_reconcilers import _map_moomoo_status
+        _norm = _map_moomoo_status(status_v)
+        _evt_map = {
+            "FILLED": _watchdog.Event.FILLED,
+            "OPEN": _watchdog.Event.ACKNOWLEDGED,
+            "CANCELED": _watchdog.Event.CANCELED,
+            "REJECTED": _watchdog.Event.REJECTED,
+        }
+        _evt = _evt_map.get(_norm, _watchdog.Event.ACKNOWLEDGED)
+        _watchdog.record_event(
+            broker="moomoo", client_order_id=client_order_id, event=_evt,
+            broker_order_id=order_id or None, detail=f"order_status={status_v}",
+        )
+    except Exception:  # noqa: BLE001
+        pass
 
     # Broker-comparison telemetry (SQLite hot store, not Mongo).
     try:

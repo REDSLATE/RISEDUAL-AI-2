@@ -737,6 +737,26 @@ async def startup_event():
     try:
         await _start_schedulers()
         logger.info("Schedulers started")
+
+        # 2026-09-11 — restore funnel candidate state from SQLite.
+        # ACTIONABLE candidates are downgraded to WATCH on restore
+        # per the operator design (never execute automatically
+        # after a restart — must revalidate first).
+        try:
+            from services import alpha_funnel_state
+            n = alpha_funnel_state.restore_from_sqlite()
+            logger.info("[alpha_funnel] restored %d candidates from SQLite", n)
+        except Exception as e:  # noqa: BLE001
+            logger.debug("[alpha_funnel] restore skipped: %s", e)
+
+        # Register broker order-event watchdog reconcilers (Public + MooMoo).
+        # Idempotent — safe to call every boot.
+        try:
+            from services import alpha_broker_reconcilers
+            alpha_broker_reconcilers.register_all()
+            logger.info("[alpha_broker_watchdog] reconcilers registered (public, moomoo)")
+        except Exception as e:  # noqa: BLE001
+            logger.debug("[alpha_broker_watchdog] reconciler registration skipped: %s", e)
     except Exception as e:
         logger.warning(f"Scheduler startup failed (non-critical): {e}")
         # Surface this to the Health panel so the operator can read

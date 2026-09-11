@@ -1,5 +1,135 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (SEC-001 patch + normalized broker order-event watchdog + LULD RoadGuard)
+
+### 🎯 What shipped (three workstreams, one pass)
+
+Operator directive: equities-first (Public.com + MooMoo). Kraken/crypto out of scope. Watchdog A/A order. The watchdog must FREEZE stale intents and trigger reconciliation — never assume failure, never auto-resubmit. LULD must stay narrow to avoid the overblocking regression.
+
+**1. SEC-001 — Unauthenticated media upload closed (P0, recurring, deferred 2 forks).**
+
+- `routes/media.py` — upload / upload-chunk / list / delete now require admin role via `_require_admin` (mirrors `admin_alpha_daytrader._require_admin`). `uploaded_by` is derived from the authenticated user's email/id via `_uploader_label`, never the hardcoded `"admin"` string. Response echoes the derived `uploaded_by` so clients can confirm attribution without a follow-up GET.
+- Public read paths preserved: `GET /api/media/landing-video` and `GET /api/media/file/{id}` remain open (pre-login landing page + public embed).
+- Memory-DoS caps: explicit per-chunk cap `_MAX_CHUNK_BYTES = 8 MiB` and per-upload cap `_MAX_UPLOAD_BYTES = 100 MiB`. Chunked staging tracks total bytes so replacing a chunk doesn't double-count.
+- Live-verified: unauth POST/DELETE → 401; unauth `/media/landing-video` → 200.
+
+**2. Broker order-event watchdog — Public.com + MooMoo unified.**
+
+- `services/alpha_broker_event_watchdog.py` (new) — broker-agnostic FSM with the operator's normalized event vocabulary: `SUBMITTED / ACKNOWLEDGED / PARTIALLY_FILLED / FILLED / CANCELED / REJECTED / EXPIRED / BROKER_EVENT_STALE / BROKER_STATE_UNKNOWN`. `register_submission()` arms a 5-second timer (env `BROKER_EVENT_STALE_SECONDS`, default 5s). ACK-tier events cancel the timer; timeout marks intent `BROKER_EVENT_STALE`, freezes it, and triggers reconciliation via a registered callback. `is_frozen(broker, symbol, account_id)` is the duplicate-submit guard.
+- Reconciliation outcomes route explicitly: `FILLED` / `OPEN → ACKNOWLEDGED` / `CANCELED` / `REJECTED` / `ABSENT → BROKER_ABSENT` (all unfreeze) versus `UNREACHABLE / reconciler exception → BROKER_STATE_UNKNOWN` (freeze retained). A missing broker response never becomes "the order failed".
+- `services/alpha_broker_reconcilers.py` (new) — `reconcile_public` (Public.com REST `get_order` + `get_orders` scan) and `reconcile_moomoo` (OpenD `order_list_query`). Both map broker-native statuses (`FILLED`, `PENDING`, `FILLED_ALL`, `SUBMITTED`, …) into the normalized outcome vocabulary. Any exception downgrades to `UNREACHABLE`.
+- SQLite mirror in `alpha_hot_store` DB (`alpha_broker_event_watchdog` table, WAL). Fire-and-forget lifecycle events also stream to `alpha_hot_store.lifecycle_events` for audit alongside existing setup lifecycle.
+- Executor wiring:
+  - `public_equity_live_executor.maybe_route_live` — pre-submit `is_frozen("public", symbol, account_id)` gate; `register_submission` immediately before `client.place_order`; sync response → `record_event` (FILLED / REJECTED / ACKNOWLEDGED) which cancels the timer. Empty response → `REJECTED("empty_response")`. Raised exception → the 5s timer takes over and reconciles.
+  - `moomoo_broker_adapter.submit_equity` — same pattern: pre-submit `is_frozen`, `register_submission` before OpenD `place_order`, `record_event` mapped from `_map_moomoo_status(order_status)` on success, `REJECTED` on synchronous `ret != RET_OK`.
+- Admin endpoints (`routes/admin_alpha_daytrader.py`):
+  - `GET /api/admin/alpha-daytrader/broker-watchdog?only_frozen=0|1` — list entries.
+  - `POST /api/admin/alpha-daytrader/broker-watchdog/clear/{broker}/{client_order_id}` — owner-only manual unfreeze after out-of-band reconciliation.
+- Boot: `server.py` startup registers both reconcilers (`[alpha_broker_watchdog] reconcilers registered (public, moomoo)`).
+- 54 new tests locking: ACK cancels timer, stale freezes + calls reconciler, FILLED / OPEN / ABSENT / UNREACHABLE routing, reconciler exception → UNKNOWN (freeze retained), no reconciler registered → UNKNOWN, `is_frozen` symbol+account+broker isolation, case-insensitive normalization, `clear_frozen`, terminal-event unfreeze, race condition (ACK between timer fire and callback grabbing the lock).
+
+**3. LULD RoadGuard — narrow equity safety gate (P2).**
+
+- `services/luld_roadguard.py` (new) — `check_luld(symbol, mark_price, context, strict=False) → LULDVerdict`. Blocks on:
+  - Explicit `halt_status ∈ {halted, trading_halt, pause}`.
+  - Explicit `reopening=True` (post-halt auction / collar transition).
+  - Derived LULD proximity — only when caller supplies `reference_price` + `luld_tier` (or explicit `band_high` / `band_low`). Uses Reg NMS bands: Tier 1 = 5%, Tier 2 = 10%, sub-$3 = 20%, sub-$0.75 = min(75%, $0.15/price). Buffer = 0.5% inside the band edge (env `LULD_PROXIMITY_BUFFER_PCT`).
+- Deliberately does NOT block on absolute move percentage without a reference price. Fail-open on unknown LULD state (`strict=True` opts in to fail-closed). Prevents the "volatile stock = LULD" overblocking regression the operator called out.
+- Enforcement toggle `LULD_ROADGUARD_ENFORCE` (default `1`); `0` = shadow log only.
+- Wired into `public_equity_live_executor.maybe_route_live` immediately after `mark = _fetch_mark_price(symbol)` and before the `# Execute` block. Reads `intent["luld"]` context dict. Blocks log `luld_roadguard` observation with the full verdict payload.
+- 27 tests covering: Reg NMS tier tables, halt/reopening blocks, upper/lower proximity blocks at 5%/10%/20% bands, within-band-but-outside-buffer allows, explicit bands override derived, unknown state fails open (regression-critical), strict opt-in fails closed, shadow-mode enforcement toggle, bad input safety.
+
+### Test results
+
+**135/135 tests green across the three workstreams:**
+
+- `tests/test_media_auth.py` — 14 (SEC-001)
+- `tests/test_alpha_broker_event_watchdog.py` — 16 (FSM + freeze semantics)
+- `tests/test_alpha_broker_reconcilers.py` — 38 (Public + MooMoo status mapping + reconciliation)
+- `tests/test_luld_roadguard.py` — 27 (narrow scope, fail-open guarantee)
+- Plus regression sweep: `test_moomoo_broker_quote_freshness.py` (6), `test_symbol_lock_concurrency.py` (5), `test_alpha_funnel.py` (17), `test_chasing_filter_pattern_aware.py` (21), `test_alpha_family_floor.py` (11), `test_alpha_short_side_exhaustion.py` (7).
+
+Live-verified via testing agent (iteration 197, 133/133 green): unauth POST/DELETE/upload-chunk/list all 401/403; landing-video stays public; authenticated upload persists `uploaded_by` = JWT email; admin watchdog list returns `{entries:[],count:0}` when empty; `POST /clear/public/nonexistent` returns 404 for owner; startup log confirms `[alpha_broker_watchdog] reconcilers registered (public, moomoo)`.
+
+### Env config
+
+- `BROKER_EVENT_STALE_SECONDS` (default `5.0`, clamped 0.05..60.0)
+- `LULD_ROADGUARD_ENFORCE` (default `1`)
+- `LULD_PROXIMITY_BUFFER_PCT` (default `0.5`, applied inside the band edge)
+
+### Deferred / dropped
+
+- Kraken maintenance-advisory gate (crypto — out of scope this session).
+- Kraken stocks/xStocks eval (blocked on API order support).
+- `.gitignore .env` block — confirmed by operator as expected; Emergent deploy platform injects env separately.
+
+### Files
+
+- `backend/routes/media.py` (rewritten — SEC-001)
+- `backend/services/alpha_broker_event_watchdog.py` (new)
+- `backend/services/alpha_broker_reconcilers.py` (new)
+- `backend/services/luld_roadguard.py` (new)
+- `backend/services/public_equity_live_executor.py` (watchdog + LULD wiring)
+- `backend/services/moomoo_broker_adapter.py` (watchdog wiring)
+- `backend/routes/admin_alpha_daytrader.py` (2 new watchdog endpoints)
+- `backend/server.py` (startup reconciler registration)
+- 4 new test files (`test_media_auth.py`, `test_alpha_broker_event_watchdog.py`, `test_alpha_broker_reconcilers.py`, `test_luld_roadguard.py`)
+
+⚠️ **Preview-only.** Click **Save to GitHub** to redeploy so SEC-001 + the watchdog land on `algo-trader-ai-1.emergent.host`.
+
+---
+
+
+## Latest Update — 2026-09-11 (Alpha Funnel — discernment as a process)
+
+### 🎯 What shipped
+
+Operator architectural directive: convert Alpha from "immediate narrow decision" to a **funnel** where broker research replaces speculation with truth, and candidate state is fluid — a strengthening #11 can overtake a weakening #2. Shipped in one batch per the specification (1-B, 2-C, 3-C, 4-C, 5-C).
+
+Pipeline:
+```
+5-min discovery (49 candidates) → preliminary rank (12 survivors)
+  → broker research (up to 8 — MooMoo primary / Public fallback)
+  → deep discernment (top 4) → ARMED (up to 3)
+  → 60s stream re-evaluates ARMED on every tick
+  → ACTIONABLE only during a single trade attempt (never persists)
+```
+
+### Files
+
+- `services/alpha_broker_research.py` (new) — normalized `BrokerResearchSnapshot` contract. v1 populates signal/current/drift/bid/ask/mid/spread_bps/broker_ts_age; the rest of the schema slots (recent_bars, positions, open_orders, buying_power, volume_confirmation) surface as `"not_available"` — never synthesized. `compute_research_delta()` treats spread/drift/staleness as objective hard-blocks; everything else is a re-rank delta (0.69 vs 0.70 is a nudge, not a veto).
+- `services/alpha_funnel_state.py` (new) — in-memory promotable candidate registry with a SQLite mirror. Score history logged per candidate (`{delta, reason, from_state, to_state, at_ns}`). Restore rehydrates DISCOVERED/RESEARCH/WATCH; ARMED comes back as WATCH (re-earn), ACTIONABLE/EXECUTED never restored.
+- `services/alpha_funnel.py` (new) — orchestrator with env-tunable + runtime-overrideable stage sizes. `run_funnel_cycle()` walks all stages, transitions fluid (backward moves allowed).
+- `services/alpha_day_trader.py` — 5-min tick now feeds the funnel after ranking; discovery output preserved in full (no tail chop).
+- `services/alpha_top10_stream.py` — 60s stream now prefers the funnel's ARMED list; falls back to the legacy top-10 only on a fresh boot before the first funnel cycle. Tick tag distinguishes `stream:funnel_armed:` vs `stream:top10_legacy:`.
+- `server.py` — funnel state restored from SQLite on boot with ARMED → WATCH downgrade.
+- `routes/admin_alpha_daytrader.py` — `GET /funnel-state`, `GET /funnel-config`, `POST /funnel-config` (runtime overrides).
+- `tests/test_alpha_funnel.py` (new) — 17/17 tests green.
+
+### Guardrails locked in tests
+
+- Discovery `max_n` caps NEW additions only; existing candidates never displaced (operator rule: don't shrink Alpha's field of view).
+- Score deltas ALWAYS carry a reason string — history bounded at 40 entries.
+- Backward transitions supported (ARMED → WATCH on deterioration).
+- Strengthening lower candidate overtakes weakening leader (test_rank_promotes_strengthening_over_leader).
+- Restore downgrades ARMED to WATCH (never auto-execute after restart).
+- ACTIONABLE / EXECUTED skipped on restore.
+- Broker research: stale quote / over-spread / over-drift / missing price hard-block; "confidence gap" doesn't (0.69 vs 0.70 is a delta).
+
+### Env config (all runtime-overrideable via `POST /funnel-config`)
+
+- `ALPHA_FUNNEL_DISCOVERY` (default 40)
+- `ALPHA_FUNNEL_SURVIVORS` (default 12)
+- `ALPHA_FUNNEL_BROKER_RESEARCH` (default 8)
+- `ALPHA_FUNNEL_DEEP_DISCERNMENT` (default 4)
+- `ALPHA_FUNNEL_PROMOTED` (default 3)
+
+### Live verification
+
+Post-restart on preview (after-hours): forced tick ran, 10 candidates ingested, 8 went to broker research, all 8 hard-blocked correctly (no live broker quote in off-hours — exactly the intended behavior), 0 armed, 0 execution attempts. The funnel refuses to promote on missing broker truth — proving the design is functioning as specified rather than fabricating confidence.
+
+
+
 ## Latest Update — 2026-09-11 (Foundation v2.1 port — 4 fixes in one batch)
 
 ### 🎯 What shipped

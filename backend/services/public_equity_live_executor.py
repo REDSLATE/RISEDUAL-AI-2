@@ -943,6 +943,31 @@ async def maybe_route_live(
     if not mark or mark <= 0:
         logger.warning("[public-live] symbol=%s SKIPPED — no mark price", symbol)
         return None
+
+    # ── LULD RoadGuard (equity) — narrow safety gate ────────────
+    # Blocks on explicit halt / reopening / LULD proximity signals only.
+    # Fails open on unknown state to avoid recreating the overblocking
+    # regression.
+    try:
+        from services.luld_roadguard import check_luld
+        _luld_ctx = intent.get("luld") if isinstance(intent, Mapping) else None
+        _luld_verdict = check_luld(
+            symbol=symbol, mark_price=mark,
+            context=_luld_ctx if isinstance(_luld_ctx, Mapping) else None,
+        )
+        if not _luld_verdict.allowed and _luld_verdict.enforce:
+            logger.info(
+                "[public-live] symbol=%s SKIPPED — LULD RoadGuard "
+                "reason=%s source=%s",
+                symbol, _luld_verdict.reason, _luld_verdict.source,
+            )
+            await _log_skip(
+                db, symbol=symbol, reason="luld_roadguard",
+                intent=intent, detail=_luld_verdict.as_dict(),
+            )
+            return None
+    except Exception as _luld_exc:  # noqa: BLE001
+        logger.debug("[public-live] LULD check failed: %s", _luld_exc)
     if intent_kind == "close_long":
         qty = current_qty
     else:
@@ -964,6 +989,24 @@ async def maybe_route_live(
     order_side = "buy" if intent_kind == "open_long" else "sell"
     client_order_id = str(uuid.uuid4())
 
+    # ── Broker order-event watchdog: refuse to resubmit while a prior
+    # order for this (broker, symbol, account) is stuck in an unknown
+    # state. Never assume the missing ACK means "failed" — a live order
+    # may still exist. Operator must reconcile before re-arming.
+    try:
+        from services import alpha_broker_event_watchdog as _watchdog
+        from services import alpha_broker_reconcilers as _reconcilers
+        _reconcilers.register_all()
+        if _watchdog.is_frozen("public", symbol, account_id):
+            logger.warning(
+                "[public-live] symbol=%s SKIPPED — prior submission frozen "
+                "(broker_state_unknown or broker_event_stale). Reconcile before retrying.",
+                symbol,
+            )
+            return None
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[public-live] watchdog freeze-check failed: %s", exc)
+
     # ── Atlas: fire-and-forget observational claim. Runs in a
     # background task with a hard 100 ms budget — Atlas is
     # structurally incapable of blocking or slowing this trade.
@@ -982,6 +1025,18 @@ async def maybe_route_live(
         _atlas_intent_id = None
 
     _submit_start_ns = time.time_ns()
+    # Register with the watchdog immediately BEFORE the HTTP call so
+    # that a hung/dropped request still starts the 5s stale timer.
+    try:
+        from services import alpha_broker_event_watchdog as _watchdog
+        _watchdog.register_submission(
+            broker="public",
+            client_order_id=client_order_id,
+            symbol=symbol,
+            account_id=account_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[public-live] watchdog register failed: %s", exc)
     try:
         resp = client.place_order(
             symbol=symbol, qty=qty, side=order_side, order_type="market",
@@ -1017,6 +1072,16 @@ async def maybe_route_live(
             "Public.com rejected (check vault token + connect)",
             symbol,
         )
+        # Synchronous empty response = broker explicitly rejected.
+        # Record REJECTED so the watchdog doesn't false-freeze on stale timer.
+        try:
+            from services import alpha_broker_event_watchdog as _watchdog
+            _watchdog.record_event(
+                broker="public", client_order_id=client_order_id,
+                event=_watchdog.Event.REJECTED, detail="empty_response",
+            )
+        except Exception:  # noqa: BLE001
+            pass
         try:
             from services import broker_comparison_service
             broker_comparison_service.record_public_submit(
@@ -1037,6 +1102,24 @@ async def maybe_route_live(
         return None
 
     order_id = resp.get("id") or ""
+    # Map Public.com's sync status into a normalized watchdog event.
+    # Cancels the 5s stale timer — sync ACK means the broker received it.
+    try:
+        from services import alpha_broker_event_watchdog as _watchdog
+        _status_lc = str(resp.get("status") or "accepted").lower()
+        if _status_lc in ("filled", "closed", "completed", "executed"):
+            _evt = _watchdog.Event.FILLED
+        elif _status_lc in ("rejected", "canceled", "cancelled", "expired"):
+            _evt = _watchdog.Event.REJECTED
+        else:
+            _evt = _watchdog.Event.ACKNOWLEDGED
+        _watchdog.record_event(
+            broker="public", client_order_id=client_order_id,
+            event=_evt, broker_order_id=str(order_id) if order_id else None,
+            detail=f"public_status={_status_lc}",
+        )
+    except Exception:  # noqa: BLE001
+        pass
     try:
         from services import broker_comparison_service
         broker_comparison_service.record_public_submit(
