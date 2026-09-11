@@ -8,7 +8,7 @@ from services.datetime_utils import ensure_utc
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from typing import Optional
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, MultiFernet
 import base64
 import hashlib
 import requests as http_requests
@@ -25,11 +25,62 @@ def set_db(database):
     db = database
 
 
-# --- Encryption helpers (derive Fernet key from JWT_SECRET) ---
-def _get_fernet():
-    secret = os.environ.get("JWT_SECRET", "fallback-secret-key")
-    key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest())
-    return Fernet(key)
+# --- Credential encryption (SEC-001 hardening 2026-02) ---
+#
+# Prior design derived the Fernet key from ``JWT_SECRET``, coupling
+# session forgery and stored broker credentials to the same secret.
+# The hardened flow uses a dedicated ``CREDENTIAL_ENC_KEY`` with the
+# legacy JWT_SECRET-derived key retained ONLY as a decrypt fallback
+# for rows written before the split. New writes never use the legacy
+# key. No hardcoded fallback string — missing config fails loudly.
+_LEGACY_WARNED = False
+
+
+def _derive_fernet_key(secret: str) -> bytes:
+    return base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest())
+
+
+def _primary_key() -> Optional[bytes]:
+    raw = (os.environ.get("CREDENTIAL_ENC_KEY") or "").strip()
+    if not raw:
+        return None
+    return _derive_fernet_key(raw)
+
+
+def _legacy_key() -> Optional[bytes]:
+    """Legacy key from JWT_SECRET, kept for backward-compatible
+    decryption of rows encrypted before the SEC-001 hardening."""
+    raw = (os.environ.get("JWT_SECRET") or "").strip()
+    if not raw:
+        return None
+    return _derive_fernet_key(raw)
+
+
+def _get_fernet() -> MultiFernet:
+    """Return a MultiFernet — new encrypts use the primary key; both
+    keys are tried on decrypt for zero-downtime rotation. Raises when
+    neither key is configured (fail-fast, no silent fallback)."""
+    global _LEGACY_WARNED
+    primary = _primary_key()
+    legacy = _legacy_key()
+    keys: list[Fernet] = []
+    if primary is not None:
+        keys.append(Fernet(primary))
+    if legacy is not None:
+        keys.append(Fernet(legacy))
+        if primary is None and not _LEGACY_WARNED:
+            logger.warning(
+                "[broker-crypto] CREDENTIAL_ENC_KEY not set; using "
+                "legacy JWT_SECRET-derived key. Set CREDENTIAL_ENC_KEY "
+                "to a dedicated secret and rotate broker credentials."
+            )
+            _LEGACY_WARNED = True
+    if not keys:
+        raise RuntimeError(
+            "broker credential encryption not configured: set "
+            "CREDENTIAL_ENC_KEY (preferred) or JWT_SECRET"
+        )
+    return MultiFernet(keys)
 
 def encrypt_value(plaintext: str) -> str:
     return _get_fernet().encrypt(plaintext.encode()).decode()

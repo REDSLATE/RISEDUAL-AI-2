@@ -1,5 +1,61 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (Security audit hardening — SEC-001/002/003 closed)
+
+### 🎯 What shipped
+
+Security audit (2026-02) returned PASS with three LOW/P3 hardening items open. Operator directed knock-them-all-out. All three closed in one pass.
+
+**SEC-001 — Broker credential encryption key split from JWT_SECRET.**
+
+- `routes/broker.py::_get_fernet()` — rewritten to use `MultiFernet` with a dedicated `CREDENTIAL_ENC_KEY` as the primary write key and `JWT_SECRET`-derived key as a legacy DECRYPT-only fallback for pre-split rows. New encrypts never touch the legacy key. Zero-downtime rotation: existing rows keep decrypting; new writes are bound to the new secret.
+- Hardcoded `"fallback-secret-key"` string is GONE. If neither key is configured, `RuntimeError("broker credential encryption not configured...")` — fail-fast instead of silent fallback.
+- One-time boot warning when running on legacy key alone: `[broker-crypto] CREDENTIAL_ENC_KEY not set; using legacy JWT_SECRET-derived key. Set CREDENTIAL_ENC_KEY to a dedicated secret and rotate broker credentials.`
+- `.env` seeded with a fresh `CREDENTIAL_ENC_KEY` (`secrets.token_urlsafe(48)`).
+
+**SEC-002 — CORS wildcard: app never emits `*`, ingress noted for ops.**
+
+- `server.py::DynamicCORSMiddleware` — documentation updated to explicitly state the middleware NEVER emits `Access-Control-Allow-Origin: *`. Any wildcard observed on the wire comes from the Kubernetes ingress / CDN layer for the two deliberately-public read routes (`/api/media/landing-video`, `/api/media/file/{id}`). The ops-side fix is to mirror `CORS_ALLOWED_ORIGINS` at the ingress.
+- Regression test locked: `TestCorsMiddlewareNeverWildcards` — 5 tests, including a source-scan assertion (`'Access-Control-Allow-Origin"] = "*"'` is not present anywhere in the middleware) and behavioural probes proving allowed origins get reflected (never wildcarded), attacker origins get NO ACAO header, and public route responses don't wildcard from Python code.
+
+**SEC-003 — CSRF exemption: substring match → prefix/exact match.**
+
+- `services/csrf_middleware.py` — the vulnerable `for needle in _SKIP_SUBSTRINGS: if needle in path` block is DELETED. Replaced with a `_SKIP_PREFIXES` tuple checked via `path.startswith(prefix)`. New prefix list is precise: `/api/webhooks/`, `/api/webhook/`, `/api/oauth/`, `/api/broker/oauth/`, `/api/auth/oauth/`, `/api/bots/webhook/`, `/api/billing/webhook`.
+- Ripgrep-confirmed every existing OAuth callback + webhook route in the codebase is covered (Stripe billing webhook, Stripe subscription webhook, trading-bots webhook, broker OAuth callbacks). Admin routes like `/api/admin/broker-oauth` correctly stay CSRF-enforced (they're state-mutating admin actions, not OAuth callbacks).
+- Regression tests locked: `TestCsrfExemptionPrefixMatch` — 9 tests including the specific attacker-substring scenarios that used to bypass (`/api/foo/oauthx`, `/api/oauthy`, `/api/notreallyoauth`, `/api/pretendwebhook`, `/api/webhookx`, `/api/auth/login/impersonate`, `/api/auth/refresh/steal`), plus a source-scan asserting the `_SKIP_SUBSTRINGS` symbol is completely gone from the module.
+
+### Tests
+
+- `tests/test_security_hardening.py` (new) — 20 tests covering all three fixes:
+  - SEC-001: dedicated key round-trip, legacy row backward-compat, primary-key rotation, missing-both-keys raises, hardcoded-fallback-string absent, dedicated-only works.
+  - SEC-002: allowed origin reflected (not wildcarded), attacker origin gets no ACAO, public route not wildcarded by app, preflight never wildcards, source scan.
+  - SEC-003: legitimate OAuth/webhook still skipped, `/foo/oauthx` no longer bypasses, admin broker-oauth still CSRF-enforced, pre-auth exact paths still skipped, substring-symbol source scan.
+
+Live-verified end-to-end via preview:
+- `POST /api/tick` (cookie-auth, no `X-Requested-With`) → 403 `csrf_header_missing`.
+- `POST /api/tick` (cookie-auth, with `X-Requested-With`) → 404 (route doesn't exist — CSRF passed, not 403).
+- `POST /api/broker/oauth/alpaca/callback` (no header) → 405 (Method Not Allowed — CSRF bypass working for legitimate OAuth path, hit the route).
+- `POST /api/webhook/stripe` → 400 (webhook validation, not CSRF — bypass working).
+- `GET /api/broker/connections` returns Kraken connection encrypted pre-split — decrypt via legacy fallback works.
+- `[broker-crypto]` warning fires only when no `CREDENTIAL_ENC_KEY` set (silent when configured).
+
+### Files
+
+- `backend/routes/broker.py` (SEC-001)
+- `backend/services/csrf_middleware.py` (SEC-003)
+- `backend/server.py` (SEC-002 documentation)
+- `backend/.env` (added `CREDENTIAL_ENC_KEY`)
+- `backend/tests/test_security_hardening.py` (new — 20 tests, 46 total green in the security suite: 14 CSRF + 12 CORS + 20 hardening)
+
+### Remaining open
+
+None. All P0/P1/P2/P3 items from the 2026-02 audit are closed. The only remaining SEC-002 residual is at the ingress layer (a K8s config change) — noted in the middleware and documented as an ops task.
+
+⚠️ **Preview-only.** Save to GitHub to redeploy the hardening + new `CREDENTIAL_ENC_KEY` to production.
+
+---
+
+
 ## Latest Update — 2026-02 (MooMoo hybrid Option 2 — local OpenD bridge + readiness ladder)
 
 ### 🎯 What shipped

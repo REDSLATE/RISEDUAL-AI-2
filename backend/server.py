@@ -142,6 +142,15 @@ register_all_routers(app)
 # as a logged-in user. We now match ``Origin`` against a fixed
 # allowlist configured via env vars.
 #
+# 2026-02 (SEC-002 hardening): This middleware NEVER emits
+# ``Access-Control-Allow-Origin: *``. If you observe a wildcard on
+# any response, it is coming from the Kubernetes ingress / CDN edge,
+# not from application code. The ingress currently wildcards the two
+# deliberately-public read routes (``/api/media/landing-video`` and
+# ``/api/media/file/{id}`` — embedded on the pre-login landing page).
+# The ops-side fix is to mirror ``CORS_ALLOWED_ORIGINS`` at the ingress
+# so the wildcard cannot silently drift onto other routes.
+#
 # Env:
 #   * ``CORS_ALLOWED_ORIGINS`` — comma-separated origin list (preferred).
 #     Example: "https://algo-trader-ai-1.emergent.host,https://risedual-trading.preview.emergentagent.com"

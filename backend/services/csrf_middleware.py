@@ -58,11 +58,18 @@ logger = logging.getLogger(__name__)
 
 _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
-# Path *substrings* that skip CSRF enforcement. Substring match keeps
-# the list compact — no need to enumerate every webhook variant.
-_SKIP_SUBSTRINGS: tuple[str, ...] = (
-    "/webhook",
-    "/oauth",
+# Path *prefixes* that skip CSRF enforcement. Prefix match (not substring)
+# so a route like ``/api/foo/oauthx`` doesn't silently bypass — only
+# genuine OAuth callbacks and webhook endpoints under these exact
+# subtrees are exempt.
+_SKIP_PREFIXES: tuple[str, ...] = (
+    "/api/webhooks/",
+    "/api/webhook/",
+    "/api/oauth/",
+    "/api/broker/oauth/",
+    "/api/auth/oauth/",
+    "/api/bots/webhook/",
+    "/api/billing/webhook",
 )
 
 # Exact paths that skip CSRF enforcement (pre-auth flows).
@@ -85,8 +92,8 @@ def _path_skipped(path: str) -> bool:
         return True
     if path in _SKIP_EXACT:
         return True
-    for needle in _SKIP_SUBSTRINGS:
-        if needle in path:
+    for prefix in _SKIP_PREFIXES:
+        if path.startswith(prefix):
             return True
     return False
 
