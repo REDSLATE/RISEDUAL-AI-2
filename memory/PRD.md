@@ -1,6 +1,55 @@
 # RISEDUAL AI — PRD
 
-## Latest Update — 2026-02 (P1-A Short Execution Port — Public REST direct-path)
+## Latest Update — 2026-02 (P1-B Discernment Patch — rank-before-execute, installed unwired)
+
+### 🎯 What shipped
+
+Operator ship: the P1-B Discernment patch (extracted from Foundation v2.3, minus the parts that would conflict with P1-A). Adds a direction-neutral opportunity ranker so Alpha can compare BUY and SELL_SHORT candidates head-to-head with penalties for chasing / execution risk / short borrow cost — while `ENABLE_SHORT_EXECUTION=false` remains the default and the proven long path is untouched.
+
+**1. Direction-neutral opportunity ranker** (`services/alpha_opportunity_ranker.py`) — pure, execution-agnostic:
+- `compute_opportunity_score(signal, entry_quality, liquidity, market_alignment, relative_strength, chase_risk, execution_risk, borrow_cost_risk, weights)` → 0..1 capital-allocation score. Discernment dominates (0.50 weight); penalties total up to 0.36 so they can materially demote a signal without ever driving the score negative.
+- `rank_actionable(candidates, context_by_symbol, min_score)` → best-first ordered list. **WATCH / REJECT / HOLD candidates are filtered out BEFORE scoring** — they cannot consume capital.
+- `borrow_cost_risk` is a short-only knob (defaults to zero for longs) — the ranker treats a legitimate long and a HTB short comparably, and lets borrow cost demote the short below a slightly weaker but cleaner long.
+
+**2. Advisory discernment helper** (`services/foundation_v23_discernment.py`) — namespaced pattern classifier extracted from v2.3 as an ADVISORY feed. NOT wired into Alpha's production five-pattern matcher; sitting on the shelf for A/B validation later. Zero import from Alpha's live path.
+
+**3. Tests: 113/113 green**
+- `tests/test_alpha_opportunity_ranker.py` (3 tests) — best-first ordering, non-actionable filtering, HTB demotion.
+- `tests/test_alpha_opportunity_ranker_extra.py` (7 tests) — WATCH+REJECT+HOLD filter in one call, high-scoring REJECT can't leak, chase-risk demotes late entries, execution-risk demotes stale quotes, **borrow cost is independent of the other penalty knobs**, longs are never penalized for a short-only cost, score clamps to [0, 1] under adversarial input.
+- All existing P1-A / P1-B / Round-Trip / executor / router / fill-writer tests still green (103 pre-patch → 113 post-patch).
+
+### What was intentionally EXCLUDED from Foundation v2.3
+
+Per the patch's `FILES_EXCLUDED_FROM_FOUNDATION.txt` and operator directive — these were **not** transplanted because they'd overwrite production infrastructure that's already correct:
+- `execution_client.py` — would clobber P1-A's Public REST short executor.
+- `orchestrator.py` — Alpha's current wiring is authoritative.
+- `models.py` — would replace production schemas.
+- `risk_gate.py` / `entry_timing.py` / `kill_switch.py` — current gates are authoritative.
+- `ledger.py` — current accounting is authoritative.
+- `config.py` / `.env.example` — would overwrite production flags/defaults.
+
+**P1-A short executor untouched. `ENABLE_SHORT_EXECUTION=false` remains the default.**
+
+### Deliberately deferred: the loop wire-in
+
+The ranker module is **installed but unwired**. The current `alpha_day_trader.py` loop scans and immediately dispatches per symbol; the target flow is scan → collect ACTIONABLE → rank → dispatch in ranked order. That refactor:
+- Touches a proven long path — must be done carefully to avoid regressing P1-B / Round-Trip / P1-A.
+- Requires `build_opportunity_context()` mapping existing Alpha intent metadata into the ranker's 7 context fields (chase_risk from chasing filter, execution_risk from quote-freshness + broker-health, borrow_cost_risk from P1-A ladder for shorts, etc.).
+- Should follow the deployment doctrine: (1) ship rank-before-execute + logging with EXEC off; (2) confirm ranking improves selection quality; (3) THEN run the $25 P1-A canary.
+
+Backlog task with a clear entry point — no engineering surprises left.
+
+### Safety pins
+
+- **P1-A short executor untouched.** Verified by tests asserting SDK's `place_order` is never called on short paths.
+- **`ENABLE_SHORT_EXECUTION=false` remains the default.**
+- **No new raw-event journal in MongoDB** per the patch's doctrine — the existing SQLite hot-store + rollups are the outcome path.
+- **Ranker is pure.** No async, no I/O, no broker calls, no imports of executor modules — cannot accidentally submit an order.
+- **WATCH/REJECT/HOLD filter is BEFORE the score** — a high-scoring non-actionable candidate cannot leak into the ranked capital-allocation queue.
+
+---
+
+## Historical Update — 2026-02 (P1-A Short Execution Port — Public REST direct-path)
 
 ### 🎯 What shipped
 
