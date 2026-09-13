@@ -1,6 +1,54 @@
 # RISEDUAL AI — PRD
 
-## Latest Update — 2026-02 (P1-B Position-aware Trade Exits — SELL_TO_CLOSE + BUY_TO_COVER)
+## Latest Update — 2026-02 (Round-Trip Proof — Alpha completes a full long lifecycle end-to-end)
+
+### 🎯 What shipped
+
+Operator directive (P1-B follow-up): before enabling short entries, prove the existing long lifecycle works completely — no stage may be inferred. Broker order/fill IDs must link the entry and exit to the outcome row.
+
+**1. Round-Trip Proof test** (`tests/test_alpha_round_trip_proof.py`) walks every stage explicitly:
+```
+Long intent → Public submit → ACK → fill → position tracking →
+  SELL_TO_CLOSE → ACK → fill → reconcile position → outcome → realized_r
+```
+
+The proof fails at any stage where an artifact is missing:
+- Stage 1: `equity_live_trades` row exists with `status="open"` and non-empty `broker_order_id`
+- Stage 2: Entry broker order ID propagates from Public (not fabricated)
+- Stage 3: Fill price recorded (`entry_price > 0`)
+- Stage 4: `track_open_excursions` updates `peak_price` on a mid-trade tick
+- Stage 5: SELL_TO_CLOSE with `exit_only=True` transitions the same row to `status="closed"` with `close_order_id` set and `close_filled_qty == entry qty`
+- Stage 6: Exit broker order ID differs from entry order ID (proving they're distinct broker submissions)
+- Stage 7: `resolve_closed_outcomes` upserts `alpha_outcomes` with `entry_broker_order_id`, `exit_broker_order_id`, `direction`, `entry_fill_price`, `exit_fill_price` — the audit-join foundation
+- Stage 8: `realized_r` math verified against actual fills — a +$10 move on a $5 stop-risk long = exactly 2.0R
+
+Plus a symmetric guard test: `SELL_TO_CLOSE + exit_only=True + no position → place_order MUST NOT be called`. If exit paths ever silently open a short, this test breaks.
+
+**2. Wire fixes discovered by the proof** (real gaps closed):
+
+- `public_equity_live_executor.py` OPEN branch now carries the `alpha_daytrader` payload (`setup_id`, `stop_price`, `target_price`, `confirmation_price`) onto the `equity_live_trades` row. Previously the row had no back-link to the setup, so `alpha_fill_writer.resolve_closed_outcomes` couldn't join back to `alpha_outcomes` and outcomes silently never resolved.
+- Stop price and target price now snapshotted on the row at open time so realized_r has a stable risk-distance anchor even if the caller's intent shape changes later.
+- `alpha_fill_writer._resolve_metrics` now writes `entry_broker_order_id`, `exit_broker_order_id`, `close_filled_qty`, and `close_requested_qty` onto the outcome doc. The whole point of the proof: an auditor can join outcome → entry order → exit order without inferring anything.
+
+**3. Test results:** 158/158 green across all executor / fill-writer / exit / round-trip / day-trader suites. Zero regressions.
+
+### Doctrine pin
+
+> **Every stage of the lifecycle must be verifiable from persisted state.** If the outcome row doesn't carry the entry+exit broker order IDs, we can't prove the outcome corresponds to the trades we think it does. Alpha is now testing an autonomous trading lifecycle, not just an entry engine.
+
+### What this unlocks
+
+P1-A (Foundation v2.2 Short Execution) can now proceed on a proven lifecycle foundation. Every property the operator required is enforceable and asserted:
+- SELL_TO_CLOSE cannot become SELL_SHORT (router + executor tests)
+- BUY_TO_COVER cannot create a new long (router + executor tests)
+- Broker position wins over Mongo belief (P1-B executor tests)
+- Exit intents are idempotent (`close_in_flight` guard)
+- Partial fills are resolvable (`status=partial_closed` + `close_remaining_qty`)
+- Outcome row links back to real broker orders (Round-Trip Proof)
+
+---
+
+## Historical Update — 2026-02 (P1-B Position-aware Trade Exits — SELL_TO_CLOSE + BUY_TO_COVER)
 
 ### 🎯 What shipped
 

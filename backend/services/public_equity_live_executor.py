@@ -1747,6 +1747,23 @@ async def maybe_route_live(
         "sovereign_decision_id": intent.get("sovereign_decision_id"),
         "prediction_id": intent.get("prediction_id"),
         "source_signal": intent.get("source_signal"),
+        # Round-Trip Proof — carry the alpha_daytrader payload
+        # (setup_id, stop_price, target_price, confirmation_price)
+        # onto the row so the fill writer can join back to
+        # alpha_outcomes and compute realized_r from the actual risk
+        # distance. Without this, outcomes silently never resolve.
+        "alpha_daytrader": intent.get("alpha_daytrader") or None,
+        # Snapshot stop / target at open time so the outcome resolver
+        # can compute realized_r even if the caller's intent shape
+        # changes later.
+        "stop_price": (
+            float((intent.get("alpha_daytrader") or {}).get("stop_price") or 0.0)
+            or None
+        ),
+        "target_price": (
+            float((intent.get("alpha_daytrader") or {}).get("target_price") or 0.0)
+            or None
+        ),
         **{f"evidence_{k}": v for k, v in evidence_meta.items()},
     }
     if db is not None:

@@ -225,6 +225,25 @@ def _resolve_metrics(row: dict) -> dict:
     metrics["exit_fill_price"] = close
     metrics["close_reason"] = close_reason or None
     metrics["direction"] = direction
+    # Round-Trip Proof link: carry broker order IDs onto the outcome
+    # row so an auditor can join outcome → entry order → exit order
+    # without inferring anything. If either ID is missing, the outcome
+    # is still recorded but the missing side is explicit rather than
+    # silently absent.
+    metrics["entry_broker_order_id"] = row.get("broker_order_id") or None
+    metrics["exit_broker_order_id"] = row.get("close_order_id") or None
+    _cfq = row.get("close_filled_qty")
+    _crq = row.get("close_requested_qty")
+    if _cfq is not None:
+        try:
+            metrics["close_filled_qty"] = float(_cfq)
+        except (TypeError, ValueError):
+            pass
+    if _crq is not None:
+        try:
+            metrics["close_requested_qty"] = float(_crq)
+        except (TypeError, ValueError):
+            pass
     metrics["resolved_at"] = datetime.now(timezone.utc)
     return metrics
 
