@@ -1,5 +1,138 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-02 (P1-B Position-aware Trade Exits — SELL_TO_CLOSE + BUY_TO_COVER)
+
+### 🎯 What shipped
+
+Operator directive: before enabling short entries (P1-A), prove position closing works cleanly on both sides. An exit must never accidentally create a new directional position, the broker always wins over Alpha's internal belief, and partial fills stay resolvable.
+
+**1. Position-aware exit router** (`services/alpha_exit_router.py`) — pure classifier that resolves ambiguous intents:
+- `SELL_TO_CLOSE` against LONG → `close_long`, never `open_short`
+- `BUY_TO_COVER` against SHORT → `close_short`, never `open_long`
+- `OPEN_LONG` blocked when SHORT open (`ambiguous_reverse_short_open`) and vice versa — reversing exposure must be an explicit two-step.
+- `exit_only=True` flag guarantees no new position can be opened.
+- Explicit `intent_action` (SELL_TO_CLOSE / BUY_TO_COVER / OPEN_LONG / OPEN_SHORT) wins over direction inference.
+
+**2. Public equity executor now supports `close_short`** (`services/public_equity_live_executor.py`):
+- Order side mapping: `open_long→BUY`, `close_long→SELL`, `open_short→SELL`, `close_short→BUY`.
+- Early broker-position probe when the intent could be an exit (exit_only, SELL-family, explicit close, or existing Mongo open row).
+- **Broker qty wins.** If Mongo believes 2.3 shares but Public reports 1.8, the close order is sent for 1.8 and the discrepancy is logged as a warning — never a phantom order for the missing 0.5.
+- **`close_in_flight` idempotency.** Flag stamped on the row before `place_order`, cleared on success/failure. 120s stale window prevents wedging. Concurrent SELL re-fires are refused with `close_in_flight`.
+- **Partial-fill handling.** If broker returns `filled_qty < qty`, row is marked `status="partial_closed"` with `close_remaining_qty`; the fill writer / reconciler will finish the exit on the next sweep. Prior behaviour silently marked the whole row `closed`, losing residual exposure.
+
+**3. Direction-aware Outcome Engine metrics** (`services/alpha_fill_writer._resolve_metrics`):
+- SHORT PnL = (entry − close) × size; LONG unchanged.
+- For SHORT, MFE uses `trough_price` (favorable drop), MAE uses `peak_price` (adverse rise).
+- Entry/exit slippage_bps sign-normalized so positive always means "worse than reference."
+
+**4. Safety pins:**
+- `open_short` intent_kind is refused unless `PUBLIC_LIVE_SUPPORTS_SHORTS=1` — pending P1-A / v2.2. Closes are always allowed (they're exits, not new short exposure).
+- `open_long` blocked when any existing open row is present (long or short) — prevents both duplicate opens and short→long auto-reverse.
+- `no_op` router verdicts log to `intent_skip_log` with `router_*` reason codes so the taxonomy dashboard can surface why an exit was refused.
+
+### Tests
+
+- `tests/test_alpha_exit_router.py` — 18 unit tests: explicit actions, direction inference, exit_only guard, ambiguous-reverse, zero-qty edge cases, negative-qty normalization.
+- `tests/test_alpha_fill_writer_short.py` — 7 tests: SHORT PnL, SHORT MFE/MAE (trough vs peak), sign-normalized slippage.
+- `tests/test_public_executor_exits.py` — 8 integration tests: broker qty wins on close_long, explicit BUY_TO_COVER, BUY-vs-short auto-covers-never-opens-long, SELL-no-position + shorts-disabled, exit_only guard, partial close, close_in_flight blocks / stale clears, OPEN_LONG blocked by open short.
+- `tests/test_public_equity_live_executor.py` — 29 pre-existing tests unchanged and still passing.
+
+**Total: 63/63 passing. Zero regressions across broader executor / fill-writer suites (backend testing agent iteration 200: 100% success).**
+
+### Contract shift for callers
+
+`_build_intent_dict` in `alpha_day_trader.py` and any other executor caller can now include:
+- `intent["exit_only"] = True` when the intent is guaranteed to be an exit (e.g. from `day_trade_exit_monitor`).
+- `intent["intent_action"] = "SELL_TO_CLOSE" | "BUY_TO_COVER" | "OPEN_LONG" | "OPEN_SHORT"` for explicit override; otherwise direction+position inference applies.
+
+Neither is required — legacy callers continue to work with just `direction`.
+
+### Doctrine pin
+
+> **The broker is the authority.** For every close, we ask `get_positions` first and use that qty. Alpha's Mongo row is a hint; the broker's report is the truth. Discrepancies get logged and reconciled on the next sweep.
+
+---
+
+## Previous Update — 2026-02 (Chasing filter forensic audit + skip-log dedup + extreme-move validator)
+
+
+# RISEDUAL AI — PRD
+
+## Historical Update — 2026-02 (Chasing filter forensic audit + skip-log dedup + extreme-move validator)
+
+### 🎯 What shipped
+
+Operator directive: before loosening the chasing_filter (24/24 rejections yesterday), expose the anchors, dedup the log-amplification, and route extreme moves through a validator that distinguishes "real 27% move" from "broken anchor / split-desync."
+
+**1. Sizing cap raised** — `PUBLIC_LIVE_NOTIONAL_USD` 1 → 350, `MOOMOO_MAX_NOTIONAL_USD` 50 → 350. Code-level hard clamp stays at $1,000 (safe ceiling for later $500-750 experiments). Verified fractional sizing math across $10-$800 marks.
+
+**2. Enriched chasing_filter payload.** Every chasing_filter rejection now writes a full audit shape:
+- `move_pct`, `cap_pct`, `excess_over_cap`, `setup_type`, `direction_class`, `knife_mult`
+- `reference_price` (prev_close), `today_close`, `signal_price` (from intent)
+- `move_at_signal_pct`, `adverse_drift_since_signal_pct`, `signal_age_seconds`
+- `extreme_move_verdict` (new — see #4 below)
+
+**3. Skip-log dedup with amplification counter.** `_log_skip` upserts into a 5-min rolling window keyed by `(symbol, reason, direction)`. Same key within window → increment `refire_count`, update `last_seen` + latest `detail`. Different key or expired window → new row with `refire_count=0`, fresh `first_seen`. Audit endpoint now returns both `total` (unique events) and `total_observations` (unique + refires) plus `amplification_factor`. Collapses the "19 SMCI at 4.96% + 6 ADBE at 7.24%" amplification into single entries with an honest refire count.
+
+**4. Extreme-move validator (EXTREME_MOVE_REQUIRES_VALIDATION at 15%+).** `services/alpha_extreme_move_validator.py` runs 5 checks on any move exceeding threshold:
+- `reference_integrity` (structural — both closes from single provider row)
+- `quote_freshness` (bar timestamp within 96h)
+- `session_boundary` (1-5 days between prev/today, catches spanning-corporate-event gaps)
+- `corporate_action` (adjustment_factor 0.95-1.05 if provider exposes it; skipped otherwise, not failed)
+- `cross_broker_confirm` (MooMoo canary quote if bridge ≥ DATA_READY; skipped otherwise)
+
+Verdicts:
+- `EXTREME_MOVE_CONFIRMED` — ≥2 checks passed, none failed → move is real. Cap still blocks the entry on its own merits. Audit classifies as `clearly_extended`.
+- `REFERENCE_PRICE_ANOMALY` — any hard check failed → anchor broken. Alpha won't use this reading to argue anything about the cap. Audit classifies as `reference_anomaly`.
+- `EXTREME_MOVE_UNVERIFIED` — insufficient signal → trade blocked, tagged for review. Audit falls through to normal classification.
+
+The validator NEVER unblocks a trade — the chasing filter's block stands regardless. Verdicts are purely diagnostic.
+
+**5. Audit endpoint** `GET /api/admin/alpha-daytrader/chasing-filter-audit?since_seconds=N` — classifies rows into 5 buckets (`clearly_extended`, `marginally_over`, `stale_signal`, `reference_anomaly`, `insufficient_data`), returns `caps_by_pattern` (per-pattern effective envelope + knife multiplier), `amplification_factor`, and a one-sentence recommendation biased toward "prove the anchors first."
+
+**6. Coarse fallback for pre-enrichment historical data.** Old rows (only `move_pct` + `cap_pct`) still classify as extended vs marginal by ratio to cap. Stale/anomaly detection only applies to enriched rows.
+
+### 7-day audit at deploy (historical, pre-enrichment)
+
+```
+7-day: 44 unique | 44 total obs | amplification 1.0x
+★ clearly_extended    25 (57%)  — worst: PCLA +27%, PARAW +19%, ADBE +7.24%
+★ marginally_over     19 (43%)  — all SMCI +4.96% × 19 (one signal re-firing)
+  stale_signal         0        — awaits enriched rows Monday
+  reference_anomaly    0        — awaits enriched rows Monday
+```
+
+Amplification=1.0× reflects pre-dedup data. Monday's rows will collapse the SMCI/ADBE amplifications automatically.
+
+### Tests
+
+- 116/116 green across new + regression suites:
+  - `tests/test_skip_log_dedup.py` — 9 tests (window rollover, key isolation, latest-detail on refire, exception safety)
+  - `tests/test_alpha_extreme_move_validator.py` — 15 tests (threshold, verdicts, env override, check-shape)
+  - `tests/test_alpha_chasing_audit.py` — 24 tests (5 buckets, extreme_verdict precedence, coarse fallback, recommendations)
+  - Plus 68 regression tests from prior workstreams.
+
+### Files
+
+- `backend/services/public_equity_live_executor.py` (enriched chasing payload + dedup upsert + timedelta import)
+- `backend/services/alpha_chasing_audit.py` (new — classification, per-pattern caps, recommendations)
+- `backend/services/alpha_extreme_move_validator.py` (new — 5-check validator with 3 verdicts)
+- `backend/routes/admin_alpha_daytrader.py` (new endpoint `GET /chasing-filter-audit`)
+- `backend/.env` (`PUBLIC_LIVE_NOTIONAL_USD=350`, `MOOMOO_MAX_NOTIONAL_USD=350`)
+- 3 new test files (48 tests)
+
+### Env config
+
+- `PUBLIC_LIVE_NOTIONAL_USD` (default `25`, now `350`)
+- `MOOMOO_MAX_NOTIONAL_USD` (default `50`, now `350`)
+- `PUBLIC_LIVE_MAX_INTRADAY_MOVE_PCT` (default `4.0`)
+- `EXTREME_MOVE_THRESHOLD_PCT` (default `15.0`, clamped 5-50)
+
+⚠️ **Preview-only.** Save to GitHub to redeploy.
+
+---
+
+
 ## Latest Update — 2026-02 (Intent → Broker observability — 3 fixes shipped)
 
 ### 🎯 Operator finding

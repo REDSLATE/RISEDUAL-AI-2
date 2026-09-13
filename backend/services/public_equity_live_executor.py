@@ -27,7 +27,7 @@ import logging
 import os
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Mapping, Optional
 
 logger = logging.getLogger(__name__)
@@ -218,12 +218,20 @@ def _max_intraday_move_pct() -> float:
 
 
 async def _intraday_move_pct(symbol: str) -> Optional[float]:
-    """Best-effort measure of today's move on ``symbol``.
+    """Convenience wrapper: return just the signed move % (or None).
 
-    Returns ``(today_close - previous_close) / previous_close * 100`` as
-    a signed float, or ``None`` when the data providers are all
-    unavailable / return garbage. Callers treat ``None`` as "don't gate
-    on this" — a data outage must never *silently* re-arm chasing.
+    See :func:`_intraday_move_detail` for the audit-rich version.
+    """
+    detail = await _intraday_move_detail(symbol)
+    if detail is None:
+        return None
+    return detail[0]
+
+
+async def _intraday_move_detail(symbol: str) -> Optional[tuple[float, float, float]]:
+    """Return ``(move_pct, previous_close, today_close)`` so callers
+    can log the actual reference anchors used by the chasing filter,
+    or ``None`` when the data providers are unavailable.
 
     2026-08-11 forensic: the previous implementation compared a live
     quote from one provider against the previous close from another
@@ -267,7 +275,7 @@ async def _intraday_move_pct(symbol: str) -> Optional[float]:
             symbol, move_pct,
         )
         return None
-    return move_pct
+    return move_pct, prev_close, today_close
 
 
 def _rth_only_enabled() -> bool:
@@ -382,10 +390,55 @@ async def _log_skip(
     """
     if db is None:
         return
-    doc: dict[str, Any] = {
-        "ts": datetime.now(timezone.utc),
+    now_ts = datetime.now(timezone.utc)
+    dedup_window_seconds = 300  # 5-minute rolling window
+    direction = (intent.get("direction") if intent else None) or None
+    dedup_key = {
         "symbol": symbol or "",
         "reason": reason,
+        "direction": direction,
+    }
+    # Upsert into a bounded rolling window. Same (symbol, reason,
+    # direction) within 5 min → increment ``refire_count`` and update
+    # ``last_seen`` + latest ``detail``. Different window → new row.
+    # The audit endpoint reads unique rows for headline numbers;
+    # ``refire_count`` surfaces amplification separately.
+    try:
+        cutoff = now_ts - timedelta(seconds=dedup_window_seconds)
+        existing = await db.intent_skip_log.find_one({
+            **dedup_key,
+            "last_seen": {"$gte": cutoff},
+        }, sort=[("last_seen", -1)])
+    except Exception:  # noqa: BLE001
+        existing = None
+
+    if existing is not None:
+        try:
+            await db.intent_skip_log.update_one(
+                {"_id": existing["_id"]},
+                {
+                    "$set": {
+                        "last_seen": now_ts,
+                        "ts": now_ts,   # keep ts fresh for compat with old readers
+                        "detail": dict(detail or {}),
+                        "prediction_id": (intent or {}).get("prediction_id"),
+                    },
+                    "$inc": {"refire_count": 1},
+                },
+            )
+            return
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[public-live] intent_skip_log upsert failed: %s", exc)
+            # Fall through to insert as a new row.
+
+    doc: dict[str, Any] = {
+        "ts": now_ts,
+        "first_seen": now_ts,
+        "last_seen": now_ts,
+        "refire_count": 0,
+        "symbol": symbol or "",
+        "reason": reason,
+        "direction": direction,
         "detail": dict(detail or {}),
     }
     if intent:
@@ -394,7 +447,6 @@ async def _log_skip(
         doc["prediction_id"] = intent.get("prediction_id")
         doc["source_signal"] = intent.get("source_signal")
         doc["confidence"] = intent.get("confidence")
-        doc["direction"] = intent.get("direction")
     try:
         await db.intent_skip_log.insert_one(doc)
     except Exception as exc:  # noqa: BLE001
@@ -581,7 +633,19 @@ async def maybe_route_live(
     # (which would either be a no-op on a no-position account or
     # close an unrelated existing long). Log the intent as
     # ``short_signal_only`` so the panel can count it separately.
-    if (intent.get("direction") or "").upper() in ("SHORT", "SELL_SHORT", "OPEN_SHORT"):
+    #
+    # 2026-02 (P1-B) — this gate protects OPEN_SHORT only. Explicit
+    # BUY_TO_COVER / CLOSE_SHORT actions are always allowed to reach
+    # the router below because covering an existing short is an
+    # *exit*, not a new short exposure, and must never be blocked by
+    # a capability gate on short *entries*.
+    _explicit_close = (intent.get("intent_action") or "").upper() in (
+        "SELL_TO_CLOSE", "CLOSE_LONG", "BUY_TO_COVER", "CLOSE_SHORT",
+    )
+    if (
+        (intent.get("direction") or "").upper() in ("SHORT", "SELL_SHORT", "OPEN_SHORT")
+        and not _explicit_close
+    ):
         if not SUPPORTS_SHORT_SALES:
             await _log_skip(
                 db, symbol=(intent.get("symbol") or "").upper(),
@@ -610,19 +674,133 @@ async def maybe_route_live(
         await _log_skip(db, symbol="", reason="empty_symbol", intent=intent)
         return None
 
-    # Direction classification → side + intent_kind.
-    if direction in ("BUY", "LONG", "STRONG_BUY", "WEAK_BUY", "UP", "BULLISH"):
-        intent_kind = "open_long"
-    elif direction in ("SELL", "SHORT", "STRONG_SELL", "WEAK_SELL",
-                       "DOWN", "BEARISH"):
-        intent_kind = "close_long"
-    else:
-        logger.info(
-            "[public-live] symbol=%s SKIPPED — non-directional signal: %r",
-            symbol, direction,
+    # Direction + position classification (P1-B position-aware exit router).
+    #
+    # The router centralises the "SELL against long → close_long, never
+    # open_short" / "BUY against short → close_short, never open_long"
+    # safety property. It is broker-position-aware, so we need a fast
+    # broker-position probe first when the intent could be an exit
+    # (SELL, BUY_TO_COVER, or explicit exit_only).
+    #
+    # Fast path — for pure BUY signals with no ``exit_only`` and no
+    # explicit action, we skip the broker probe (position defaults to
+    # ``None`` and the router returns ``open_long``). The idempotency
+    # block below still guards against duplicate open rows.
+    from services.alpha_exit_router import classify as _classify_intent
+    exit_only_flag = bool(intent.get("exit_only"))
+    intent_action_raw = intent.get("intent_action")
+    intent_action = (intent_action_raw or "").upper() if intent_action_raw else None
+    _direction_upper = (intent.get("direction") or intent.get("action") or "").upper()
+    # Decide whether to probe the broker up-front. Probe when:
+    #  - ``exit_only=True`` (must not open, must confirm the close target exists)
+    #  - explicit CLOSE_LONG / CLOSE_SHORT / SELL_TO_CLOSE / BUY_TO_COVER
+    #  - direction is SELL-family (may close a long)
+    #  - we hold ANY open position for this symbol (Mongo hint) — the
+    #    position may be a SHORT that a plain BUY should cover, so we
+    #    must resolve before the router can classify safely.
+    #  Otherwise (fresh BUY with no open row) we take the fast path
+    #  and let the existing idempotency check catch reversal cases.
+    _need_early_position = (
+        exit_only_flag
+        or intent_action in (
+            "SELL_TO_CLOSE", "CLOSE_LONG", "BUY_TO_COVER", "CLOSE_SHORT",
         )
-        await _log_skip(db, symbol=symbol, reason="non_directional",
-                        intent=intent, detail={"direction": direction})
+        or _direction_upper in ("SELL", "STRONG_SELL", "WEAK_SELL",
+                                 "DOWN", "BEARISH")
+    )
+    # Cheap Mongo probe: if any open row exists for this symbol, we
+    # need broker truth before the router runs.
+    if not _need_early_position and db is not None:
+        try:
+            _mongo_open = await db.equity_live_trades.find_one(
+                {"symbol": symbol, "status": "open", "broker_id": "public"},
+                {"_id": 1, "direction": 1},
+            )
+            if _mongo_open is not None:
+                _need_early_position = True
+        except Exception:  # noqa: BLE001
+            _mongo_open = None
+    _early_broker_position_side: Optional[str] = None
+    _early_broker_position_qty: float = 0.0
+    if _need_early_position:
+        try:
+            _early_creds = await _aresolve_connect_creds(db)
+            if _early_creds is not None:
+                _sk, _acct = _early_creds
+                _client_probe = _public_client(_sk, _acct)
+                if _client_probe is not None:
+                    _positions = _client_probe.get_positions() or []
+                    for _p in _positions:
+                        if (_p.get("symbol") or "").upper() == symbol:
+                            try:
+                                _qty = float(_p.get("qty") or 0.0)
+                            except (TypeError, ValueError):
+                                _qty = 0.0
+                            _side = (_p.get("side") or "").lower()
+                            if _side not in ("long", "short"):
+                                # Alpaca-style adapters report side by qty sign.
+                                _side = "long" if _qty >= 0 else "short"
+                            _early_broker_position_side = _side
+                            _early_broker_position_qty = abs(_qty)
+                            break
+        except Exception as _pos_exc:  # noqa: BLE001
+            logger.debug(
+                "[public-live] early-position probe failed for %s: %s",
+                symbol, _pos_exc,
+            )
+
+    _cls = _classify_intent(
+        direction=_direction_upper,
+        exit_only=exit_only_flag,
+        intent_action=intent_action,
+        broker_position_side=_early_broker_position_side,
+        broker_position_qty=_early_broker_position_qty,
+    )
+    if _cls.kind == "no_op":
+        logger.info(
+            "[public-live] symbol=%s SKIPPED — exit-router no_op (%s, exit_only=%s)",
+            symbol, _cls.reason, exit_only_flag,
+        )
+        await _log_skip(
+            db, symbol=symbol, reason=f"router_{_cls.reason}",
+            intent=intent,
+            detail={
+                "router_kind": _cls.kind,
+                "router_reason": _cls.reason,
+                "exit_only": exit_only_flag,
+                "intent_action": intent_action,
+                "direction": _direction_upper,
+                "broker_position_side": _early_broker_position_side,
+                "broker_position_qty": _early_broker_position_qty,
+            },
+        )
+        return None
+    intent_kind = _cls.kind
+    # Router-derived close qty (broker-authoritative). Only meaningful
+    # for close_* kinds; opens overwrite this via notional sizing below.
+    router_close_qty: float = float(_cls.close_qty or 0.0)
+
+    # P1-B — Router may classify SELL-with-no-position as ``open_short``
+    # (a v2.2 candidate). Until Foundation v2.2 short execution lands in
+    # P1-A and the adapter reports SUPPORTS_SHORT_SALES=True, we must
+    # refuse ``open_short`` here — otherwise a stray SELL from a fresh
+    # signal would fall through the historical short-sale gate
+    # (which only checked ``direction``) and attempt a real short entry.
+    if intent_kind == "open_short" and not SUPPORTS_SHORT_SALES:
+        logger.info(
+            "[public-live] symbol=%s SKIPPED — open_short intent but "
+            "adapter has SUPPORTS_SHORT_SALES=False (v2.2 P1-A pending)",
+            symbol,
+        )
+        await _log_skip(
+            db, symbol=symbol, reason="short_signal_only", intent=intent,
+            detail={
+                "broker": "public.com",
+                "intent_kind": intent_kind,
+                "router_reason": _cls.reason,
+                "note": "P1-B router classified open_short; short entries pending P1-A",
+            },
+        )
         return None
 
     # 2026-06-18: Confidence floor gate. Refuses live execution when
@@ -656,11 +834,10 @@ async def maybe_route_live(
                         intent=intent, detail={"allowlist_size": len(allow)})
         return None
 
-    # 2026-07-30 — Per-symbol re-fire cooldown. Applies to OPEN_LONG
-    # only; SELL/close paths bypass because closing a stale position
-    # must never be gated by a cooldown. Preview forensic showed
-    # JPM/UNH/SPY fired 3× each within the same day.
-    if intent_kind == "open_long":
+    # 2026-07-30 — Per-symbol re-fire cooldown. Applies to OPEN paths
+    # only (open_long AND open_short); close paths bypass because
+    # closing a stale position must never be gated by a cooldown.
+    if intent_kind in ("open_long", "open_short"):
         cooldown_min = _symbol_cooldown_min()
         if cooldown_min > 0:
             last_at = await _last_symbol_fire_at(db, symbol)
@@ -698,14 +875,15 @@ async def maybe_route_live(
         #   * Unknown setup type  → default to abs() safety
         max_move = _max_intraday_move_pct()
         if max_move > 0:
-            move_pct = await _intraday_move_pct(symbol)
-            if move_pct is None:
+            move_detail = await _intraday_move_detail(symbol)
+            if move_detail is None:
                 logger.info(
                     "[public-live] symbol=%s chasing-filter data unavailable — "
                     "allowing fire (fail-open)",
                     symbol,
                 )
             else:
+                move_pct, prev_close, today_close = move_detail
                 setup_type = (intent.get("setup_type") or "").strip().lower()
                 # Local imports to avoid a circular dep at module load.
                 from services.alpha_day_trader import (  # noqa: PLC0415
@@ -759,11 +937,88 @@ async def maybe_route_live(
                         "(intraday move %.2f%%, cap %.2f%%, setup=%s)",
                         symbol, move_pct, max_move, setup_type or "unknown",
                     )
-                    await _log_skip(db, symbol=symbol, reason="chasing_filter",
-                                    intent=intent,
-                                    detail={"move_pct": round(move_pct, 2),
-                                            "cap_pct": max_move,
-                                            "setup_type": setup_type or None})
+                    # Rich audit payload: expose EVERY anchor the
+                    # chasing filter used so a 100% rejection rate
+                    # can be forensically classified into
+                    # "clearly extended" vs "marginally over cap" vs
+                    # "stale signal / late evaluation" vs
+                    # "reference-price anomaly".
+                    ad = intent.get("alpha_daytrader") or {}
+                    signal_price = None
+                    signal_age_seconds = None
+                    move_at_signal_pct = None
+                    adverse_drift_since_signal_pct = None
+                    try:
+                        signal_price = float(ad.get("confirmation_price") or 0.0) or None
+                    except (TypeError, ValueError):
+                        signal_price = None
+                    try:
+                        from datetime import datetime as _dt, timezone as _tz
+                        _created_iso = ad.get("created_at")
+                        if _created_iso:
+                            _created = _dt.fromisoformat(_created_iso.replace("Z", "+00:00"))
+                            signal_age_seconds = round(
+                                (_dt.now(_tz.utc) - _created).total_seconds(), 1,
+                            )
+                    except Exception:  # noqa: BLE001
+                        signal_age_seconds = None
+                    if signal_price and prev_close > 0:
+                        move_at_signal_pct = round(
+                            (signal_price - prev_close) / prev_close * 100.0, 3,
+                        )
+                        adverse_drift_since_signal_pct = round(
+                            (today_close - signal_price) / signal_price * 100.0, 3,
+                        )
+                    excess_over_cap = round(abs(move_pct) - max_move, 3)
+
+                    # Extreme-move validation (operator directive):
+                    # any move ≥ EXTREME_MOVE_THRESHOLD_PCT gets checked
+                    # for reference-price integrity BEFORE we let it
+                    # count as an ordinary chasing_filter rejection.
+                    # The trade stays blocked either way — this is
+                    # purely diagnostic tagging.
+                    extreme_verdict = None
+                    try:
+                        from services.alpha_extreme_move_validator import (
+                            validate_extreme_move,
+                        )
+                        _v = await validate_extreme_move(
+                            symbol=symbol,
+                            move_pct=move_pct,
+                            prev_close=prev_close,
+                            today_close=today_close,
+                        )
+                        if _v is not None:
+                            extreme_verdict = _v.as_dict()
+                    except Exception as _exc:  # noqa: BLE001
+                        logger.debug(
+                            "[public-live] extreme-move validator failed: %s", _exc,
+                        )
+
+                    await _log_skip(
+                        db, symbol=symbol, reason="chasing_filter",
+                        intent=intent,
+                        detail={
+                            "move_pct": round(move_pct, 3),
+                            "cap_pct": max_move,
+                            "excess_over_cap": excess_over_cap,
+                            "setup_type": setup_type or None,
+                            "direction_class": (
+                                "momentum" if is_momentum
+                                else "dip_buy" if is_dip_buy
+                                else "unknown"
+                            ),
+                            "knife_mult": knife_mult,
+                            "reference_price": round(prev_close, 4),
+                            "today_close": round(today_close, 4),
+                            "signal_price": signal_price,
+                            "move_at_signal_pct": move_at_signal_pct,
+                            "adverse_drift_since_signal_pct":
+                                adverse_drift_since_signal_pct,
+                            "signal_age_seconds": signal_age_seconds,
+                            "extreme_move_verdict": extreme_verdict,
+                        },
+                    )
                     return None
 
     # Connect-state gate
@@ -828,7 +1083,10 @@ async def maybe_route_live(
         council_result = await consult_council(
             db,
             symbol=symbol,
-            alpha_direction="BUY" if intent_kind == "open_long" else "SELL",
+            alpha_direction=(
+                "BUY" if intent_kind in ("open_long", "close_short")
+                else "SELL"
+            ),
             alpha_confidence=intent.get("confidence"),
             strategy_id=strategy_id_raw,
         )
@@ -882,62 +1140,155 @@ async def maybe_route_live(
 
     # Idempotency / direction-aware position check.
     # For OPEN_LONG: refuse to open a duplicate live row.
-    # For CLOSE_LONG: require an actual open long position to close
-    # (either tracked by us in ``equity_live_trades`` OR live on the
-    # broker — operator may have manually bought a position).
+    # For CLOSE_LONG / CLOSE_SHORT: require an actual open position on
+    # the matching side (either tracked by us in ``equity_live_trades``
+    # OR live on the broker — operator may have manually opened it).
+    #
+    # P1-B: close_in_flight idempotency guard. When a close order is
+    # in flight (submitted but not yet reconciled by the fill writer),
+    # a re-fired SELL/BUY_TO_COVER intent within the stale window is
+    # rejected to avoid over-closing. The 120s stale window balances
+    # slow broker ACKs vs. wedged flags — after 120s we assume the
+    # prior close never happened / already reconciled and let the new
+    # intent proceed.
+    _CLOSE_IN_FLIGHT_STALE_SECONDS = 120
     current_qty = 0.0
     existing_row = None
     if db is not None:
         try:
+            # Match either an open LONG (BUY entry) or open SHORT
+            # (SELL_TO_OPEN entry). The router already told us which
+            # side to close; we filter by direction to match.
+            _expected_direction = None
+            if intent_kind == "close_long":
+                _expected_direction = "LONG"
+            elif intent_kind == "close_short":
+                _expected_direction = "SHORT"
+            _query = {"symbol": symbol, "status": "open", "broker_id": "public"}
+            if _expected_direction is not None:
+                _query["direction"] = _expected_direction
             existing_row = await db.equity_live_trades.find_one(
-                {"symbol": symbol, "status": "open", "broker_id": "public"},
-                {"_id": 1, "size": 1, "trade_id": 1},
+                _query,
+                {"_id": 1, "size": 1, "trade_id": 1, "direction": 1,
+                 "close_in_flight_at": 1},
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("[public-live] idempotency check failed: %s", exc)
 
-    if intent_kind == "open_long" and existing_row is not None:
-        logger.info(
-            "[public-live] symbol=%s already has open live row — skip dupe",
-            symbol,
-        )
-        await _log_skip(
-            db, symbol=symbol, reason="dup_open_row", intent=intent,
-            detail={"intent_kind": intent_kind,
-                    "existing_row_id": str(existing_row.get("_id") or "")},
-        )
-        return None
+    if intent_kind == "open_long":
+        # For an open_long, ANY existing open row on this symbol (long
+        # or short) blocks — never stack exposure atop an existing
+        # position, and never open a long while a short is out.
+        try:
+            _any_open = await db.equity_live_trades.find_one(
+                {"symbol": symbol, "status": "open", "broker_id": "public"},
+                {"_id": 1, "direction": 1},
+            ) if db is not None else None
+        except Exception:  # noqa: BLE001
+            _any_open = None
+        if _any_open is not None:
+            logger.info(
+                "[public-live] symbol=%s already has open live row (%s) — "
+                "skip dupe/reverse",
+                symbol, _any_open.get("direction"),
+            )
+            await _log_skip(
+                db, symbol=symbol, reason="dup_open_row", intent=intent,
+                detail={"intent_kind": intent_kind,
+                        "existing_row_id": str(_any_open.get("_id") or ""),
+                        "existing_direction": _any_open.get("direction")},
+            )
+            return None
 
-    if intent_kind == "close_long":
+    if intent_kind in ("close_long", "close_short"):
+        # Idempotency: close_in_flight guard.
+        if existing_row is not None:
+            _cif = existing_row.get("close_in_flight_at")
+            if _cif is not None:
+                try:
+                    _cif_age = (
+                        datetime.now(timezone.utc) - _cif
+                    ).total_seconds()
+                except Exception:  # noqa: BLE001
+                    _cif_age = 999.0
+                if _cif_age < _CLOSE_IN_FLIGHT_STALE_SECONDS:
+                    logger.info(
+                        "[public-live] symbol=%s close already in flight "
+                        "(%.1fs ago) — skip dupe close",
+                        symbol, _cif_age,
+                    )
+                    await _log_skip(
+                        db, symbol=symbol, reason="close_in_flight",
+                        intent=intent,
+                        detail={"intent_kind": intent_kind,
+                                "age_seconds": round(_cif_age, 1),
+                                "stale_seconds": _CLOSE_IN_FLIGHT_STALE_SECONDS},
+                    )
+                    return None
+
         # Ask the broker for the current position. Don't rely on the
         # Mongo row alone — the operator may have an untracked
         # position from before tracking started (SPCX/VRPX-style).
+        # Broker qty wins over Alpha's belief per the P1-B directive:
+        # if Alpha thinks 2.3 shares but Public reports 1.8, we close
+        # 1.8 and record the discrepancy.
+        _wanted_side = "long" if intent_kind == "close_long" else "short"
+        _mongo_believed_qty = 0.0
+        if existing_row is not None:
+            try:
+                _mongo_believed_qty = float(existing_row.get("size") or 0.0)
+            except (TypeError, ValueError):
+                _mongo_believed_qty = 0.0
         try:
             client_pos = _public_client(secret_key, account_id)
             if client_pos is not None:
                 positions = client_pos.get_positions() or []
                 for p in positions:
-                    if (p.get("symbol") or "").upper() == symbol:
-                        try:
-                            current_qty = float(p.get("qty") or 0.0)
-                        except (TypeError, ValueError):
-                            current_qty = 0.0
-                        break
+                    if (p.get("symbol") or "").upper() != symbol:
+                        continue
+                    try:
+                        _raw_qty = float(p.get("qty") or 0.0)
+                    except (TypeError, ValueError):
+                        _raw_qty = 0.0
+                    _p_side = (p.get("side") or "").lower()
+                    if _p_side not in ("long", "short"):
+                        _p_side = "long" if _raw_qty >= 0 else "short"
+                    if _p_side != _wanted_side:
+                        continue
+                    current_qty = abs(_raw_qty)
+                    break
         except Exception as exc:  # noqa: BLE001
             logger.debug(
                 "[public-live] positions lookup failed (non-fatal): %s", exc,
             )
         if current_qty <= 0:
+            _no_pos_reason = (
+                "sell_no_position" if intent_kind == "close_long"
+                else "cover_no_short"
+            )
             logger.info(
-                "[public-live] symbol=%s SKIPPED — SELL signal but no "
-                "long position to close (Public cash account; opening "
-                "new shorts not supported)", symbol,
+                "[public-live] symbol=%s SKIPPED — %s intent but no "
+                "matching %s position at broker to close",
+                symbol, intent_kind.upper(), _wanted_side,
             )
             await _log_skip(
-                db, symbol=symbol, reason="sell_no_position", intent=intent,
-                detail={"intent_kind": intent_kind, "current_qty": current_qty},
+                db, symbol=symbol, reason=_no_pos_reason, intent=intent,
+                detail={"intent_kind": intent_kind,
+                        "current_qty": current_qty,
+                        "mongo_believed_qty": _mongo_believed_qty,
+                        "wanted_side": _wanted_side},
             )
             return None
+        # Broker-vs-Mongo discrepancy log — never blocks, always audits.
+        if (
+            _mongo_believed_qty > 0
+            and abs(_mongo_believed_qty - current_qty) > 1e-6
+        ):
+            logger.warning(
+                "[public-live] symbol=%s broker/mongo qty discrepancy: "
+                "broker=%.6f mongo=%.6f — using broker qty",
+                symbol, current_qty, _mongo_believed_qty,
+            )
 
     # Sizing.
     # OPEN_LONG: Use $notional → qty = ceil(notional / mark, 4 dp).
@@ -981,11 +1332,12 @@ async def maybe_route_live(
             return None
     except Exception as _luld_exc:  # noqa: BLE001
         logger.debug("[public-live] LULD check failed: %s", _luld_exc)
-    if intent_kind == "close_long":
+    if intent_kind in ("close_long", "close_short"):
         qty = current_qty
     else:
-        # math.ceil to 4 dp ensures qty * mark > notional (clears
-        # Public.com's $1.00 minimum even after fractional rounding).
+        # OPEN_LONG / OPEN_SHORT sizing — math.ceil to 4 dp ensures
+        # qty * mark > notional (clears Public.com's $1.00 minimum
+        # even after fractional rounding).
         import math
         qty = math.ceil((notional / mark) * 10000.0) / 10000.0
     if qty <= 0:
@@ -1009,7 +1361,18 @@ async def maybe_route_live(
                     "has_account_id": bool(account_id)},
         )
         return None
-    order_side = "buy" if intent_kind == "open_long" else "sell"
+    # Order side mapping — router-derived, unambiguous:
+    #  open_long   → buy       (BUY_TO_OPEN)
+    #  close_long  → sell      (SELL_TO_CLOSE)
+    #  open_short  → sell      (SELL_TO_OPEN)   [gated by SUPPORTS_SHORT_SALES]
+    #  close_short → buy       (BUY_TO_COVER)   [always allowed; exit]
+    _kind_to_side = {
+        "open_long": "buy",
+        "close_long": "sell",
+        "open_short": "sell",
+        "close_short": "buy",
+    }
+    order_side = _kind_to_side.get(intent_kind, "buy")
     client_order_id = str(uuid.uuid4())
 
     # ── Broker order-event watchdog: refuse to resubmit while a prior
@@ -1043,14 +1406,38 @@ async def maybe_route_live(
     _atlas_intent_id: Optional[str] = None
     try:
         from services import atlas_bridge as _atlas
+        _atlas_direction = "BUY" if intent_kind in ("open_long", "close_short") else "SELL"
         _atlas_intent_id = _atlas.observe_intent_async({
             **intent,
             "symbol": symbol,
-            "direction": "BUY" if intent_kind == "open_long" else "SELL",
+            "direction": _atlas_direction,
+            "intent_kind": intent_kind,
             "strategy_id": strategy_id_raw,
         })
     except Exception:  # noqa: BLE001
         _atlas_intent_id = None
+
+    # P1-B — Mark existing row as close_in_flight BEFORE submitting so
+    # a concurrent re-fire is rejected by the idempotency guard above.
+    # This is best-effort; the flag is cleared in the success/failure
+    # branches below so it can't wedge forever without stale-guard rescue.
+    if (
+        intent_kind in ("close_long", "close_short")
+        and db is not None
+        and existing_row is not None
+    ):
+        try:
+            await db.equity_live_trades.update_one(
+                {"_id": existing_row["_id"]},
+                {"$set": {
+                    "close_in_flight_at": datetime.now(timezone.utc),
+                    "close_in_flight_client_order_id": client_order_id,
+                }},
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "[public-live] close_in_flight flag set failed (non-fatal): %s", exc,
+            )
 
     _submit_start_ns = time.time_ns()
     # Register with the watchdog immediately BEFORE the HTTP call so
@@ -1075,6 +1462,23 @@ async def maybe_route_live(
             "[public-live] CRITICAL — place_order raised symbol=%s "
             "kind=%s: %s", symbol, intent_kind, exc,
         )
+        # P1-B — clear the close_in_flight flag on submission failure so
+        # the next re-fire can proceed once the operator's diagnosed it.
+        if (
+            intent_kind in ("close_long", "close_short")
+            and db is not None
+            and existing_row is not None
+        ):
+            try:
+                await db.equity_live_trades.update_one(
+                    {"_id": existing_row["_id"]},
+                    {"$unset": {
+                        "close_in_flight_at": "",
+                        "close_in_flight_client_order_id": "",
+                    }},
+                )
+            except Exception:  # noqa: BLE001
+                pass
         try:
             from services import broker_comparison_service
             broker_comparison_service.record_public_submit(
@@ -1107,6 +1511,22 @@ async def maybe_route_live(
             "Public.com rejected (check vault token + connect)",
             symbol,
         )
+        # P1-B — clear close_in_flight so the next attempt isn't blocked.
+        if (
+            intent_kind in ("close_long", "close_short")
+            and db is not None
+            and existing_row is not None
+        ):
+            try:
+                await db.equity_live_trades.update_one(
+                    {"_id": existing_row["_id"]},
+                    {"$unset": {
+                        "close_in_flight_at": "",
+                        "close_in_flight_client_order_id": "",
+                    }},
+                )
+            except Exception:  # noqa: BLE001
+                pass
         # Synchronous empty response = broker explicitly rejected.
         # Record REJECTED so the watchdog doesn't false-freeze on stale timer.
         try:
@@ -1178,64 +1598,131 @@ async def maybe_route_live(
     except Exception:  # noqa: BLE001
         pass
     trade_id = str(uuid.uuid4())
-    if intent_kind == "close_long":
-        # CLOSE: update the existing open row (if any) to ``closed``.
-        # If there was no Mongo row but the position was real, still
-        # log a synthetic close row so PnL can be reconciled later.
-        close_doc = {
-            "closed_at": datetime.now(timezone.utc),
+    if intent_kind in ("close_long", "close_short"):
+        # CLOSE lifecycle (P1-B):
+        # - close_long  : SELL_TO_CLOSE on a LONG position
+        # - close_short : BUY_TO_COVER on a SHORT position
+        #
+        # Partial-fill detection: Public's synchronous response carries
+        # ``filled_qty`` / ``filledQty`` / ``qty`` fields depending on
+        # adapter version. If the fill is short of ``qty``, we mark the
+        # row as ``partial_closed`` and keep ``status=open`` with a
+        # residual quantity so the fill writer / reconciler can pick up
+        # the remainder on the next sweep. This avoids the historical
+        # bug where a partial close silently marked the row as fully
+        # closed even though real exposure remained at the broker.
+        try:
+            _filled_qty_raw = (
+                resp.get("filled_qty")
+                or resp.get("filledQty")
+                or resp.get("fillQuantity")
+                or resp.get("qty")
+                or qty
+            )
+            _filled_qty = float(_filled_qty_raw or 0.0)
+        except (TypeError, ValueError):
+            _filled_qty = qty
+        # Cap filled_qty at requested qty (defensive — a broker can't
+        # over-fill an order).
+        if _filled_qty > qty:
+            _filled_qty = qty
+        _remaining_qty = max(qty - _filled_qty, 0.0)
+        _is_partial = _remaining_qty > 1e-6 and _filled_qty > 0
+
+        _close_reason = (
+            "alpha_sell_signal" if intent_kind == "close_long"
+            else "alpha_cover_signal"
+        )
+        _row_direction = "LONG" if intent_kind == "close_long" else "SHORT"
+        _row_side = "SELL" if intent_kind == "close_long" else "BUY"
+
+        close_doc: dict[str, Any] = {
             "close_price": mark,
             "close_order_id": order_id,
-            "status": "closed",
-            "close_reason": "alpha_sell_signal",
+            "close_reason": _close_reason,
+            "close_intent_kind": intent_kind,
+            "close_filled_qty": _filled_qty,
+            "close_requested_qty": qty,
         }
+        if _is_partial:
+            close_doc.update({
+                "status": "partial_closed",
+                "close_partial": True,
+                "close_remaining_qty": _remaining_qty,
+            })
+        else:
+            close_doc.update({
+                "status": "closed",
+                "closed_at": datetime.now(timezone.utc),
+                "close_partial": False,
+            })
+
         if db is not None and existing_row is not None:
             try:
+                # Clear the in-flight flag as part of the same update
+                # so a concurrent re-fire can't slip in while we write.
                 await db.equity_live_trades.update_one(
                     {"_id": existing_row["_id"]},
-                    {"$set": close_doc},
+                    {
+                        "$set": close_doc,
+                        "$unset": {
+                            "close_in_flight_at": "",
+                            "close_in_flight_client_order_id": "",
+                        },
+                    },
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.error(
-                    "[public-live] CRITICAL — sell order placed but Mongo "
+                    "[public-live] CRITICAL — %s order placed but Mongo "
                     "close-update failed symbol=%s order_id=%s: %s",
-                    symbol, order_id, exc,
+                    intent_kind, symbol, order_id, exc,
                 )
         logger.info(
-            "[public-live] CLOSE symbol=%s qty=%.6f @ $%.2f order_id=%s "
-            "(SELL signal — closed long position)",
-            symbol, qty, mark, order_id,
+            "[public-live] %s symbol=%s filled=%.6f/%.6f @ $%.2f "
+            "order_id=%s%s",
+            "PARTIAL_CLOSE" if _is_partial else "CLOSE",
+            symbol, _filled_qty, qty, mark, order_id,
+            (" (residual=%.6f)" % _remaining_qty) if _is_partial else "",
         )
         try:
             from services import atlas_bridge as _atlas
-            _atlas.transition_async(_atlas_intent_id, "terminal",
-                                    reason_code="close_filled")
+            _atlas.transition_async(
+                _atlas_intent_id, "terminal",
+                reason_code="close_partial" if _is_partial else "close_filled",
+            )
         except Exception:  # noqa: BLE001
             pass
         return {
             "trade_id": existing_row.get("trade_id") if existing_row else trade_id,
             "broker_id": "public",
             "symbol": symbol,
-            "direction": "LONG",
-            "side": "SELL",
-            "intent_kind": "close_long",
+            "direction": _row_direction,
+            "side": _row_side,
+            "intent_kind": intent_kind,
             "size": qty,
+            "filled_qty": _filled_qty,
+            "remaining_qty": _remaining_qty,
             "close_price": mark,
-            "status": "closed",
+            "status": "partial_closed" if _is_partial else "closed",
             "broker_order_id": order_id,
-            "closed_at": datetime.now(timezone.utc),
+            "closed_at": (
+                None if _is_partial else datetime.now(timezone.utc)
+            ),
             "confidence": float(intent.get("confidence") or 0.0),
             "source_signal": intent.get("source_signal"),
         }
 
-    # OPEN_LONG path — original behaviour preserved.
+    # OPEN path — open_long or open_short (v2.2 P1-A). Row schema
+    # mirrors the historical open_long shape; direction/side vary.
+    _open_direction = "LONG" if intent_kind == "open_long" else "SHORT"
+    _open_side = "BUY" if intent_kind == "open_long" else "SELL"
     row = {
         "trade_id": trade_id,
         "broker_id": "public",
         "symbol": symbol,
-        "direction": "LONG",
-        "side": "BUY",
-        "intent_kind": "open_long",
+        "direction": _open_direction,
+        "side": _open_side,
+        "intent_kind": intent_kind,
         "size": qty,
         # 2026-07-30 — persist both the historical field name
         # (``live_notional_usd``) and the normalized ``notional``

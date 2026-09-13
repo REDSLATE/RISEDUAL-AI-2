@@ -791,3 +791,23 @@ async def rejection_taxonomy(request: Request, since_seconds: int = Query(86400)
         "taxonomy": taxonomy,
         "health_hint": health_hint(taxonomy),
     }
+
+
+# ── Chasing-filter forensic audit ─────────────────────────────────
+
+
+@router.get("/chasing-filter-audit")
+async def chasing_filter_audit(request: Request, since_seconds: int = Query(86400)):
+    """Read chasing_filter rejections in the window, classify each into
+    ``clearly_extended`` / ``marginally_over`` / ``stale_signal`` /
+    ``reference_anomaly`` / ``insufficient_data``, and return per-bucket
+    counts + representative samples with the full reference-anchor
+    payload. Powers the operator's "before we loosen the cap, prove
+    the anchors are honest" audit."""
+    await _require_admin(request)
+    from server import db as _db
+    from services.alpha_chasing_audit import audit_rejections
+    from services.public_equity_live_executor import _max_intraday_move_pct
+    env_cap = _max_intraday_move_pct()
+    return await audit_rejections(_db, env_cap_pct=env_cap, since_seconds=since_seconds)
+

@@ -113,7 +113,16 @@ async def track_open_excursions(db: Any) -> dict:
 
 
 def _resolve_metrics(row: dict) -> dict:
-    """Return the metrics dict to stamp on the outcome row."""
+    """Return the metrics dict to stamp on the outcome row.
+
+    P1-B — direction-aware. For SHORT positions:
+      * PnL = (entry - close) × size  (inverse of long)
+      * MFE (max favorable excursion) reflects trough_price (price
+        dropped in our favor)
+      * MAE (max adverse excursion) reflects peak_price (price rose
+        against us)
+    For LONG positions this is unchanged from the pre-P1-B behavior.
+    """
     entry = float(row.get("entry_price") or 0.0)
     close = float(row.get("close_price") or 0.0)
     stop = float(row.get("stop_price") or 0.0)
@@ -122,25 +131,61 @@ def _resolve_metrics(row: dict) -> dict:
     trigger = _trigger_price_of(row) or entry
     close_reason = str(row.get("close_reason") or "")
     size = float(row.get("size") or row.get("quantity") or 0.0)
+    direction = (row.get("direction") or "LONG").upper()
+    is_short = direction == "SHORT"
 
-    risk_per_share = max(0.0, entry - stop) if stop and entry > stop else None
+    # Risk-per-share: for SHORTs the stop sits ABOVE entry
+    # (entry < stop). We take the absolute distance so realized_r
+    # normalization stays sign-consistent.
+    risk_per_share: Optional[float] = None
+    if stop and entry and stop != entry:
+        risk_per_share = abs(entry - stop)
     metrics: dict = {}
 
     if risk_per_share and risk_per_share > 0:
-        metrics["realized_r"] = round((close - entry) / risk_per_share, 4)
-        if isinstance(peak, (int, float)):
-            metrics["mfe_r"] = round((float(peak) - entry) / risk_per_share, 4)
-        if isinstance(trough, (int, float)):
-            metrics["mae_r"] = round((float(trough) - entry) / risk_per_share, 4)
+        if is_short:
+            metrics["realized_r"] = round((entry - close) / risk_per_share, 4)
+            # For shorts, price dropping = favorable → use trough
+            if isinstance(trough, (int, float)):
+                metrics["mfe_r"] = round(
+                    (entry - float(trough)) / risk_per_share, 4,
+                )
+            if isinstance(peak, (int, float)):
+                metrics["mae_r"] = round(
+                    (entry - float(peak)) / risk_per_share, 4,
+                )
+        else:
+            metrics["realized_r"] = round((close - entry) / risk_per_share, 4)
+            if isinstance(peak, (int, float)):
+                metrics["mfe_r"] = round(
+                    (float(peak) - entry) / risk_per_share, 4,
+                )
+            if isinstance(trough, (int, float)):
+                metrics["mae_r"] = round(
+                    (float(trough) - entry) / risk_per_share, 4,
+                )
     else:
         # No stop distance — fall back to raw % return so the outcome
         # is still resolvable, just labelled honestly.
         if entry > 0:
-            metrics["realized_r"] = round((close - entry) / entry, 4)
+            if is_short:
+                metrics["realized_r"] = round((entry - close) / entry, 4)
+            else:
+                metrics["realized_r"] = round((close - entry) / entry, 4)
         metrics["risk_unknown"] = True
 
     if trigger and trigger > 0 and entry > 0:
-        metrics["entry_slippage_bps"] = round((entry - trigger) / trigger * 10_000.0, 2)
+        # Entry slippage: for a LONG, positive bps = we paid more than
+        # the trigger (bad); for a SHORT, positive bps = we sold below
+        # the trigger (bad). Sign-normalize so "positive bps = worse".
+        if is_short:
+            metrics["entry_slippage_bps"] = round(
+                (trigger - entry) / trigger * 10_000.0, 2,
+            )
+        else:
+            metrics["entry_slippage_bps"] = round(
+                (entry - trigger) / trigger * 10_000.0, 2,
+            )
 
     # Exit slippage: measured against the *decision* reference the exit
     # monitor used. For stop hits → stop_price; for target hits →
@@ -159,16 +204,27 @@ def _resolve_metrics(row: dict) -> dict:
         if t and close_reason.startswith(("target", "profit")):
             exit_ref = t
     if exit_ref and exit_ref > 0 and close > 0:
-        metrics["exit_slippage_bps"] = round((close - exit_ref) / exit_ref * 10_000.0, 2)
+        if is_short:
+            metrics["exit_slippage_bps"] = round(
+                (exit_ref - close) / exit_ref * 10_000.0, 2,
+            )
+        else:
+            metrics["exit_slippage_bps"] = round(
+                (close - exit_ref) / exit_ref * 10_000.0, 2,
+            )
 
     # Dollar P&L when we have position size.
     if size > 0 and entry > 0 and close > 0:
-        metrics["realized_pnl_usd"] = round((close - entry) * size, 2)
+        if is_short:
+            metrics["realized_pnl_usd"] = round((entry - close) * size, 2)
+        else:
+            metrics["realized_pnl_usd"] = round((close - entry) * size, 2)
         metrics["gross_notional_usd"] = round(entry * size, 2)
 
     metrics["entry_fill_price"] = entry
     metrics["exit_fill_price"] = close
     metrics["close_reason"] = close_reason or None
+    metrics["direction"] = direction
     metrics["resolved_at"] = datetime.now(timezone.utc)
     return metrics
 
