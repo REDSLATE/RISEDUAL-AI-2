@@ -50,6 +50,67 @@ SUPPORTS_SHORT_SALES: bool = os.environ.get(
 ).strip().lower() in ("1", "true", "on", "yes")
 
 
+# ── Short-execution env knobs (P1-A, 2026-02) ─────────────────────
+#
+# Two-flag ladder as agreed with the operator:
+#
+#   ENABLE_SHORT_SIGNALS   → routers/scanners may EMIT short intents
+#                            (this is the "learning" mode; default ON)
+#   ENABLE_SHORT_EXECUTION → the REST short executor may SUBMIT them
+#                            to Public (default OFF)
+#
+# When ENABLE_SHORT_EXECUTION=0, ``open_short`` / ``close_short``
+# intent_kinds still classify correctly through the router, but the
+# executor logs a ``short_execution_disabled`` skip instead of hitting
+# the broker. This lets us gather signal-quality data on the short
+# side without any real exposure until the ladder + eligibility path
+# is proven in prod.
+#
+# The first-fire notional is capped separately from the long path so
+# Alpha's first live short is a small canary, NOT the standard $350.
+def _short_execution_enabled() -> bool:
+    return (os.environ.get("ENABLE_SHORT_EXECUTION") or "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _short_first_fire_notional_usd() -> float:
+    """Canary size for the first live short. Default $25 — same
+    conservative bound as the initial long canary. Operator can raise
+    via ``PUBLIC_LIVE_SHORT_FIRST_NOTIONAL_USD`` once the first
+    round-trip short reconciles cleanly.
+
+    Whole shares only — the REST short path never sends fractional
+    quantities, so this floor is expressed in USD but converted via
+    ``compute_whole_share_qty`` at sizing time.
+    """
+    raw = (os.environ.get("PUBLIC_LIVE_SHORT_FIRST_NOTIONAL_USD") or "").strip()
+    if not raw:
+        return 25.0
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        return 25.0
+    if v < 1.0:
+        return 1.0
+    if v > 1000.0:
+        return 1000.0
+    return v
+
+
+def _short_max_htb_rate_pct() -> Optional[float]:
+    """Optional policy cap on hard-to-borrow rate. Unset → no cap;
+    set to a float → any HTB rate above the cap fails the ladder
+    with reason ``htb_rate_too_expensive``."""
+    raw = (os.environ.get("PUBLIC_LIVE_SHORT_MAX_HTB_PCT") or "").strip()
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 # ── Env knobs ────────────────────────────────────────────────────────
 
 
@@ -780,25 +841,25 @@ async def maybe_route_live(
     # for close_* kinds; opens overwrite this via notional sizing below.
     router_close_qty: float = float(_cls.close_qty or 0.0)
 
-    # P1-B — Router may classify SELL-with-no-position as ``open_short``
-    # (a v2.2 candidate). Until Foundation v2.2 short execution lands in
-    # P1-A and the adapter reports SUPPORTS_SHORT_SALES=True, we must
-    # refuse ``open_short`` here — otherwise a stray SELL from a fresh
-    # signal would fall through the historical short-sale gate
-    # (which only checked ``direction``) and attempt a real short entry.
-    if intent_kind == "open_short" and not SUPPORTS_SHORT_SALES:
+    # P1-A — open_short is now supported via a direct-REST path
+    # (``services.public_short_executor``) that speaks Public's current
+    # (April 2026) short-sale contract with ``openCloseIndicator=OPEN``.
+    # We still hard-gate on ``ENABLE_SHORT_EXECUTION``: when the flag
+    # is unset, we log a ``short_execution_disabled`` skip so signal
+    # analytics can still count the emission without any real exposure.
+    if intent_kind == "open_short" and not _short_execution_enabled():
         logger.info(
             "[public-live] symbol=%s SKIPPED — open_short intent but "
-            "adapter has SUPPORTS_SHORT_SALES=False (v2.2 P1-A pending)",
+            "ENABLE_SHORT_EXECUTION=false (signal recorded, no submit)",
             symbol,
         )
         await _log_skip(
-            db, symbol=symbol, reason="short_signal_only", intent=intent,
+            db, symbol=symbol, reason="short_execution_disabled", intent=intent,
             detail={
                 "broker": "public.com",
                 "intent_kind": intent_kind,
                 "router_reason": _cls.reason,
-                "note": "P1-B router classified open_short; short entries pending P1-A",
+                "note": "P1-A ladder ready; flip ENABLE_SHORT_EXECUTION=1 to arm",
             },
         )
         return None
@@ -1334,8 +1395,17 @@ async def maybe_route_live(
         logger.debug("[public-live] LULD check failed: %s", _luld_exc)
     if intent_kind in ("close_long", "close_short"):
         qty = current_qty
+    elif intent_kind == "open_short":
+        # P1-A — Public rejects fractional shorts. Whole-share qty only.
+        # Use the short-canary notional (typically smaller than the
+        # long notional) so Alpha's first live short is a small canary.
+        from services.public_short_executor import compute_whole_share_qty
+        short_notional = min(notional, _short_first_fire_notional_usd())
+        qty = compute_whole_share_qty(
+            notional_usd=short_notional, mark_price=mark,
+        )
     else:
-        # OPEN_LONG / OPEN_SHORT sizing — math.ceil to 4 dp ensures
+        # OPEN_LONG sizing — math.ceil to 4 dp ensures
         # qty * mark > notional (clears Public.com's $1.00 minimum
         # even after fractional rounding).
         import math
@@ -1439,6 +1509,48 @@ async def maybe_route_live(
                 "[public-live] close_in_flight flag set failed (non-fatal): %s", exc,
             )
 
+    # P1-A — Short-path eligibility ladder for OPEN_SHORT only.
+    # Runs the 4-rung ladder (account MARGIN/BUY_AND_SELL, no existing
+    # position, instrument shortable, Public single-leg preflight)
+    # before we ever call the REST short-open endpoint. Any failure
+    # logs the exact rung + reason so operators see WHY a short was
+    # blocked. Close_short does NOT run the ladder — covering is not
+    # a new short exposure, and rung 2 would (correctly) fail because
+    # we DO have an existing short.
+    short_eligibility_verdict: Optional[dict] = None
+    if intent_kind == "open_short":
+        try:
+            from services.public_short_eligibility import run_full_ladder
+            _ladder = run_full_ladder(
+                client, symbol=symbol, qty=int(qty),
+                max_htb_rate_pct=_short_max_htb_rate_pct(),
+            )
+            short_eligibility_verdict = _ladder.as_dict()
+            if not _ladder.eligible:
+                logger.info(
+                    "[public-live] symbol=%s SKIPPED — short ladder failed: %s",
+                    symbol, _ladder.reason,
+                )
+                await _log_skip(
+                    db, symbol=symbol,
+                    reason=f"short_ladder_{_ladder.reason}",
+                    intent=intent,
+                    detail=short_eligibility_verdict,
+                )
+                return None
+        except Exception as _exc:  # noqa: BLE001
+            logger.warning(
+                "[public-live] short eligibility ladder crashed for %s: %s",
+                symbol, _exc,
+            )
+            await _log_skip(
+                db, symbol=symbol, reason="short_ladder_exception",
+                intent=intent,
+                detail={"exception_class": _exc.__class__.__name__,
+                        "message": str(_exc)[:200]},
+            )
+            return None
+
     _submit_start_ns = time.time_ns()
     # Register with the watchdog immediately BEFORE the HTTP call so
     # that a hung/dropped request still starts the 5s stale timer.
@@ -1453,9 +1565,24 @@ async def maybe_route_live(
     except Exception as exc:  # noqa: BLE001
         logger.debug("[public-live] watchdog register failed: %s", exc)
     try:
-        resp = client.place_order(
-            symbol=symbol, qty=qty, side=order_side, order_type="market",
-        )
+        if intent_kind in ("open_short", "close_short"):
+            # P1-A — Short paths use the direct-REST helper because
+            # the installed SDK's ``OrderRequest`` doesn't know about
+            # the ``openCloseIndicator`` / ``useMargin`` fields yet.
+            from services.public_short_executor import submit_short_order
+            resp = submit_short_order(
+                client,
+                symbol=symbol,
+                qty=int(qty),
+                side="SELL" if intent_kind == "open_short" else "BUY",
+                open_close="OPEN" if intent_kind == "open_short" else "CLOSE",
+                use_margin=True,
+                client_order_id=client_order_id,
+            )
+        else:
+            resp = client.place_order(
+                symbol=symbol, qty=qty, side=order_side, order_type="market",
+            )
     except Exception as exc:  # noqa: BLE001
         _ack_ms = (time.time_ns() - _submit_start_ns) // 1_000_000
         logger.error(

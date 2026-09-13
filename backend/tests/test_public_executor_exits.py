@@ -66,6 +66,12 @@ class _FakeDB:
 
 def _make_client(*, positions=None, order_response=None, account=None):
     c = MagicMock()
+    # Real string attrs so the REST short helper can build valid URLs.
+    c.base_url = "https://api.public.com/userapigateway"
+    c.account_id = "ACCT-TEST"
+    c._auth_headers.return_value = {
+        "Authorization": "Bearer TOK", "Content-Type": "application/json",
+    }
     c.get_positions.return_value = positions or []
     c.get_account.return_value = account or {
         "id": "ACCT", "cash": 500.0, "buying_power": 500.0, "equity": 500.0,
@@ -133,15 +139,27 @@ async def test_explicit_buy_to_cover_closes_short(monkeypatch):
     }
     client = _make_client(
         positions=[{"symbol": "AAPL", "qty": 3.0, "side": "short"}],
-        order_response={"id": "COVER-1", "status": "filled",
-                        "filled_qty": 3.0},
     )
+    # close_short → REST helper. Mock the helper directly so we don't
+    # care about HTTP transport.
+    submit_calls: list = []
+
+    def _submit(_c, **kw):
+        submit_calls.append(kw)
+        return {"id": "COVER-1", "status": "filled",
+                "openCloseIndicator": "CLOSE", "useMargin": True,
+                "filled_qty": kw["qty"]}
+
     with patch(
         "services.public_equity_live_executor._fetch_mark_price",
         new=AsyncMock(return_value=195.0),
     ), patch(
         "services.public_equity_live_executor._public_client",
         return_value=client,
+    ), patch(
+        "services.public_equity_live_executor.submit_short_order"
+        if False else "services.public_short_executor.submit_short_order",
+        side_effect=_submit,
     ):
         out = await maybe_route_live(db, intent={
             "symbol": "AAPL", "direction": "BUY",
@@ -154,10 +172,11 @@ async def test_explicit_buy_to_cover_closes_short(monkeypatch):
     assert out["side"] == "BUY"
     assert out["size"] == 3.0
     assert out["status"] == "closed"
-    # Broker was asked to BUY (cover) at the short qty.
-    kwargs = client.place_order.call_args.kwargs
-    assert kwargs["side"] == "buy"
-    assert kwargs["qty"] == 3.0
+    # REST helper was called with the right shape: BUY + CLOSE.
+    assert submit_calls, "submit_short_order should have been called"
+    assert submit_calls[0]["side"] == "BUY"
+    assert submit_calls[0]["open_close"] == "CLOSE"
+    assert submit_calls[0]["qty"] == 3
 
 
 # ── BUY signal against existing short: router flips to close_short ─
@@ -176,15 +195,24 @@ async def test_buy_against_open_short_covers_never_opens_long(monkeypatch):
     }
     client = _make_client(
         positions=[{"symbol": "AAPL", "qty": 2.0, "side": "short"}],
-        order_response={"id": "COVER-2", "status": "filled",
-                        "filled_qty": 2.0},
     )
+    submit_calls: list = []
+
+    def _submit(_c, **kw):
+        submit_calls.append(kw)
+        return {"id": "COVER-2", "status": "filled",
+                "openCloseIndicator": "CLOSE", "useMargin": True,
+                "filled_qty": kw["qty"]}
+
     with patch(
         "services.public_equity_live_executor._fetch_mark_price",
         new=AsyncMock(return_value=200.0),
     ), patch(
         "services.public_equity_live_executor._public_client",
         return_value=client,
+    ), patch(
+        "services.public_short_executor.submit_short_order",
+        side_effect=_submit,
     ):
         out = await maybe_route_live(db, intent={
             "symbol": "AAPL", "direction": "BUY", "confidence": 0.8,
@@ -192,11 +220,15 @@ async def test_buy_against_open_short_covers_never_opens_long(monkeypatch):
 
     assert out is not None
     assert out["intent_kind"] == "close_short"
-    kwargs = client.place_order.call_args.kwargs
-    assert kwargs["side"] == "buy"
-    # If this were mistakenly routed as OPEN_LONG, the qty would be
-    # notional/mark = 25/200 = 0.125 (not the short position's 2.0).
-    assert kwargs["qty"] == 2.0
+    # REST helper hit with BUY + CLOSE, whole-share qty from the
+    # broker-reported short position — never a fractional open-long qty.
+    assert submit_calls[0]["side"] == "BUY"
+    assert submit_calls[0]["open_close"] == "CLOSE"
+    # If this were mistakenly routed as OPEN_LONG, qty would be
+    # notional/mark = 25/200 = 0.125. Anti-regression: assert 2.
+    assert submit_calls[0]["qty"] == 2
+    # place_order (long path) MUST NOT have been called at all.
+    client.place_order.assert_not_called()
 
 
 # ── SELL against no position + shorts disabled → short_signal_only ─

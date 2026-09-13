@@ -1,6 +1,58 @@
 # RISEDUAL AI — PRD
 
-## Latest Update — 2026-02 (Round-Trip Proof — Alpha completes a full long lifecycle end-to-end)
+## Latest Update — 2026-02 (P1-A Short Execution Port — Public REST direct-path)
+
+### 🎯 What shipped
+
+Operator directive: the installed Public Python SDK is behind Public's current REST contract (April 2026 short-selling API). Don't force `openCloseIndicator=OPEN` / `useMargin=True` into the SDK's `OrderRequest`. Build a narrow REST fallback that speaks the current endpoint directly. Keep `ENABLE_SHORT_EXECUTION=false` until the ladder proves out.
+
+**1. Public short eligibility ladder** (`services/public_short_eligibility.py`) — 4-rung fail-closed check:
+- **Rung 1** `check_account_eligibility` — account must be `brokerageAccountType=MARGIN` AND `tradePermissions=BUY_AND_SELL`. Anything else hard-fails.
+- **Rung 2** `check_no_existing_position` — Public forbids direct long↔short flips. Any existing long OR short position on the symbol blocks a new short.
+- **Rung 3** `check_instrument_shortable` — reads `shortingAvailability`. NOT_SHORTABLE hard-fails; EASY_TO_BORROW / HARD_TO_BORROW pass and expose `hardToBorrowPercentageRate` for policy.
+- **Rung 4** `preflight_short` — Public's single-leg preflight returns `buyingPowerRequirement`, `marginImpact`, `upTickRuleRequired`, `maxLocateQuantity`. Preflight rejection or max locate < requested qty hard-fails.
+- `run_full_ladder` short-circuits on first failure so a rung-1 fail never wastes rungs 2-4 API calls. Optional `max_htb_rate_pct` policy cap.
+
+**2. REST short executor** (`services/public_short_executor.py`) — direct HTTP path to Public's `/trading/{acctId}/order` with the newer fields (`openCloseIndicator`, `useMargin`) that the installed SDK's `OrderRequest` doesn't know about. Whole-share qty only (`compute_whole_share_qty` floors to integer; refuses fractional shorts). SELL+OPEN to enter, BUY+CLOSE to cover. Never touches the SDK's `place_order`.
+
+**3. Executor wiring** (`services/public_equity_live_executor.py`):
+- New env knobs: `ENABLE_SHORT_EXECUTION` (default OFF), `PUBLIC_LIVE_SHORT_FIRST_NOTIONAL_USD` (default $25 canary), `PUBLIC_LIVE_SHORT_MAX_HTB_PCT` (optional policy cap).
+- `open_short` intent_kind: refused with `short_execution_disabled` when the flag is unset. When armed, runs the full 4-rung ladder BEFORE submitting. Any rung failure logs `short_ladder_<reason>`.
+- `close_short` (BUY_TO_COVER): bypasses the ladder because covering is an exit, not new short exposure.
+- Short paths route through the REST helper (`submit_short_order`); long paths continue via the SDK's `place_order`. Clean separation, verified by tests asserting `place_order` is never called on short paths.
+- Whole-share qty on shorts uses the canary budget (never the standard $350 long allocation for a first-ever short).
+
+**4. Tests: 103/103 green.**
+- `tests/test_public_short_eligibility.py` (16 tests): every rung + full ladder short-circuit + HTB policy gate.
+- `tests/test_public_short_executor.py` (12 tests): whole-share math + REST body construction + bad-input refusals + auth failure + broker rejection + custom client_order_id.
+- `tests/test_public_short_execution_e2e.py` (7 tests): disabled-flag skip, whole-share happy path, cash-account block, NOT_SHORTABLE block, preflight-rejection block, close_short bypasses ladder, broker-truth position blocks fresh short.
+- All existing P1-B / P1-B exit / Round-Trip Proof / executor / router tests still green.
+
+### Safety pins
+
+- `ENABLE_SHORT_EXECUTION=false` remains the default. Alpha will NOT short in production without an explicit operator flip.
+- The 4-rung ladder ships enabled behind the flag — no half-baked short paths that could leak.
+- Router (from P1-B) still guarantees: SELL_TO_CLOSE cannot become SELL_SHORT; BUY_TO_COVER cannot create a new long.
+- Whole-share qty enforced at the sizing helper — Public rejects fractional shorts and we honor that at the smallest possible bound.
+- First-fire notional separate from long notional (`PUBLIC_LIVE_SHORT_FIRST_NOTIONAL_USD`, default $25) so the first live short is a small canary, not the standard long size.
+
+### What this unlocks
+
+Alpha can now be armed for its first live short — after the operator:
+1. Confirms the Public account is margin-enabled and has BUY_AND_SELL permissions
+2. Sets `ENABLE_SHORT_EXECUTION=1`
+3. Optionally sets `PUBLIC_LIVE_SHORT_MAX_HTB_PCT=<cap>` to cap HTB rate
+4. Verifies the first short round-trip reconciles: Alpha short → Public short position → BUY_TO_COVER → position back to zero → outcome row with correct realized_r
+
+### Production acceptance condition (deferred)
+
+> **First completed live long must produce a broker-reconciled round-trip receipt before we call the lifecycle production-verified.**
+
+The signed trade-lineage receipt (compact SQLite hash-chain: `trade_id`, `setup_id`, entry+exit intent_id / broker_order_id, fills, realized_pnl / realized_r, `previous_hash`, `record_hash`) is architected and queued as backlog — build after the first live long round-trip validates the pipeline against the broker.
+
+---
+
+## Historical Update — 2026-02 (Round-Trip Proof — Alpha completes a full long lifecycle end-to-end)
 
 ### 🎯 What shipped
 
