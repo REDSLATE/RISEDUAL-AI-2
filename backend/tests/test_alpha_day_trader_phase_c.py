@@ -55,10 +55,16 @@ def test_symbol_lock_blocks_second_caller():
     assert ok2 is False
 
 
-def test_symbol_lock_reentrant_for_same_setup():
+def test_symbol_lock_blocks_reacquire_same_setup():
+    # 2026-09 double-buy fix: a second acquire on a held lock is
+    # refused even for the SAME setup_id + source. The 5-min and 60s
+    # ticks both read the same active-setup doc; the old idempotent
+    # re-acquire branch let both pass and double-buy. The holder must
+    # release (or the TTL expire) before anyone re-acquires.
     a = alpha_hot_store.try_acquire_symbol_lock("BBB", setup_id="s1", source="alpha_daytrader")
     b = alpha_hot_store.try_acquire_symbol_lock("BBB", setup_id="s1", source="alpha_daytrader")
-    assert a and b
+    assert a is True
+    assert b is False
 
 
 def test_symbol_lock_release_lets_other_scanner_in():
