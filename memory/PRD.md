@@ -1,5 +1,34 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-06 (P0 zero-setup debug — Why-Not-Trade observability + market-data integrity)
+
+### 🎯 Operator finding
+Live session: ~16,138 candidates processed → **0 setups**, and no UI existed to see WHICH gate killed them. Diagnosis (high confidence): the only gate that can silently reject 100% of candidates is the pre-pattern family floor (`opportunity_score_rejected`), fed by degraded/stale intraday features (no live quote → pct≈0 + rvol<1 → everything dumped into the strict `low_vol_no_news` 0.447 floor). Preview repro confirmed all market-data providers were failing (Public creds unavailable, AV/Finnhub/Polygon errors).
+
+### 🎯 What shipped (Operator "Option A" — observability + data integrity ONLY; NO gate/threshold/execution changes)
+**1. Market-data integrity in `_snapshot_symbol`** (`services/alpha_day_trader.py`): new `MarketSnapshot` fields `data_degraded`, `degraded_reason`, `quote_available`, `bar_date` + `_bar_is_stale()` helper. Degradation requires **corroborating feed evidence** (quote fetch failed, OR no live book AND no spread, OR zero today-volume, OR stale bar > 4 days) — never pct≈0 + rvol<1 alone. A genuinely quiet-but-quoted stock is NOT flagged (verified). Degraded candidates are excluded from ranking (never masquerade as `low_vol_no_news`); the trigger loop **fails closed** on degraded data (no trade on a stale price) with a diagnostic receipt.
+
+**2. Full funnel reconciliation counters**: scan loop now bumps `symbols_scanned`, `market_data_degraded`, `rank_culled`; per-candidate loop bumps `opportunity_score_rejected`, `wave_danger_pause`, `no_pattern_match`. `get_counters` adds a `funnel` block where `candidates_seen = rank_culled + opportunity_score_rejected + wave_danger_pause + no_pattern_match + setups_created` (+`candidates_unaccounted` = 0 once fully deployed). No candidate silently disappears.
+
+**3. Why-Not-Trade UI** (`components/admin/WhyNotTradeCard.jsx`, new): reconciliation banner + per-gate tiles (counts, top symbols, sub-reasons) on the Alpha Day Trader panel; "Data Degraded" cell added to Today lifecycle. `market_data_degraded` registered in `alpha_why_not_trade.REJECTION_GATES`.
+
+### Decision tree the operator can now run on the LIVE card
+- ~10k+ `opportunity_score_rejected` with HEALTHY data → investigate scoring/floor (separate evidence-backed step, NOT done yet).
+- Thousands `market_data_degraded` → fix the feed/features, not policy.
+- Setups appear once valid data restored → floor was being fed garbage (confirmed hypothesis).
+- Setups appear but triggers/intents stay 0 → move downstream (Trigger Watcher / rank-before-execute). Don't touch Public/MooMoo execution until Intents > 0.
+
+### Tests
+- Testing agent iteration 202: **100% backend + 100% frontend**. Degradation unit-verified (no-quote/no-book/stale-bar/zero-vol flagged; healthy quiet stock NOT flagged). Regression suites green (`test_alpha_funnel`, `test_alpha_family_floor`, `test_alpha_why_not_trade`, day-trader).
+- Known pre-existing failure (unrelated): `test_alpha_day_trader_phase_c.py::test_symbol_lock_reentrant_for_same_setup` (asserts removed reentrant-lock behavior).
+
+### Explicitly NOT changed (per operator doctrine)
+Opportunity-score thresholds, family floors, chasing caps, bearish vetoes, pattern sensitivity, and all execution paths are untouched. Floor tuning is deferred until the live card proves the floor (not the feed) is the culprit on a healthy feed.
+
+⚠️ **Preview-only.** Save to GitHub to redeploy so the observability + integrity fix reach production.
+
+---
+
 ## Latest Update — 2026-02 (P1-B Discernment Patch — rank-before-execute, installed unwired)
 
 ### 🎯 What shipped

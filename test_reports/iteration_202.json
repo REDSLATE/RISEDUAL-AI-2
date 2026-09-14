@@ -1,0 +1,33 @@
+{
+  "summary": "Tested new observability endpoints (counters funnel + why-not-trade market_data_degraded gate) and the new WhyNotTradeCard on the Alpha Day Trader admin panel. All 4 backend pytest cases pass. Frontend renders the card and every required data-testid tile without crashing the panel.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/admin/alpha-daytrader/counters", "issue": "funnel.candidates_unaccounted = 980 on preview (candidates_seen=1032, setups_created=52, all other buckets=0). This is expected per the review note (transition day: pre-existing candidate ticks predate the new counters), but the operator should be aware."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_alpha_daytrader_funnel_endpoints.py",
+    "/app/test_reports/pytest/funnel_endpoints.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "services/alpha_day_trader.py is now 2214 lines — exceeds the recommended 700-line cap; consider splitting the funnel/counters + scan loop into dedicated modules (already noted in prior iterations).",
+    "WhyNotTradeCard.jsx uses only Bearer token from localStorage (no credentials:'include'); works because admin login also returns access_token in body, but if the app ever switches to cookie-only auth this card will 401. Low priority."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_alpha_daytrader_funnel_endpoints.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@risedual.ai / RiseDual2026! (owner). Verified via POST /api/auth/login (returns access_token + httpOnly cookies).",
+  "seed_data_creation": "None. Verified against live preview data (candidates_seen=1032, setups_created=52).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend endpoints: GET /api/admin/alpha-daytrader/counters returns funnel with all 10 required keys and passes reconciliation (candidates_accounted == rank_culled+opportunity_score_rejected+wave_danger_pause+no_pattern_match+setups_created). GET /api/admin/alpha-daytrader/why-not-trade?since_seconds=86400 returns rejections with market_data_degraded gate (plus opportunity_score_rejected, wave_danger_pause, no_pattern_match, invalidated, intent_deduplicated, exec_lock_conflict, execution_quote_blocked, executor_rejected). Both require admin (401/403 without auth). Frontend: WhyNotTradeCard renders inside AdminPanel > Alpha Day Trader tab (opened via window event 'risedual:open-admin-autopsy'); all 6 gate tiles + reconcile banner have correct data-testids. 'Data Degraded' cell present in Today lifecycle row.",
+  "rca of the issue": "N/A — feature verification, not bug hunt. candidates_unaccounted=980 is expected transition-day residue per the review request."
+}

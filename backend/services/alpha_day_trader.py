@@ -319,6 +319,16 @@ class MarketSnapshot:
     # list is a valid state (older snapshots) — detectors just
     # return no-match rather than crashing.
     recent_bars: list[dict] = field(default_factory=list)
+    # 2026-06: Market-data integrity flags. ``data_degraded`` is set
+    # when the intraday truth used for pct_change / relative_volume /
+    # spread is missing, stale, or provider-degraded — so a bad feed
+    # can never masquerade as a legitimate ``low_vol_no_news``
+    # candidate. Requires CORROBORATING evidence (no live book, zero
+    # spread, no volume, stale bar) — never pct≈0 + rvol<1 alone.
+    data_degraded: bool = False
+    degraded_reason: str = ""
+    quote_available: bool = False
+    bar_date: str = ""
 
 
 @dataclass
@@ -366,6 +376,26 @@ class TradeIntent:
 
 
 # ─── Data sourcing ────────────────────────────────────────────────
+
+
+def _bar_is_stale(bar_date: str, *, max_lag_days: int = 4) -> bool:
+    """True when the 'today' daily bar's date is well behind the wall
+    clock — the signature of a provider failover to an old cached bar.
+
+    Conservative by design: a lag of up to ``max_lag_days`` (covers
+    weekends + holidays + timezone skew near midnight) is treated as
+    fresh, so we never false-flag a genuinely quiet symbol on a normal
+    session. Unparseable / empty dates are treated as NOT stale (we
+    fall back to the other corroborating signals instead).
+    """
+    if not bar_date:
+        return False
+    raw = str(bar_date).strip()[:10]
+    try:
+        d = datetime.strptime(raw, "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return False
+    return (date.today() - d).days > max_lag_days
 
 
 async def _snapshot_symbol(symbol: str) -> Optional[MarketSnapshot]:
@@ -456,11 +486,13 @@ async def _snapshot_symbol(symbol: str) -> Optional[MarketSnapshot]:
     bid = 0.0
     ask = 0.0
     spread_bps = 0.0
+    quote_available = False
     try:
         q = await market_quote(symbol)
     except Exception:  # noqa: BLE001
         q = None
     if isinstance(q, dict):
+        quote_available = True
         try:
             price = float(q.get("price") or q.get("last") or close)
             bid = float(q.get("bid") or 0.0)
@@ -470,6 +502,44 @@ async def _snapshot_symbol(symbol: str) -> Optional[MarketSnapshot]:
         mid = (bid + ask) / 2.0 if bid > 0 and ask > 0 else price
         if bid > 0 and ask > 0 and mid > 0 and ask > bid:
             spread_bps = (ask - bid) / mid * 10_000.0
+
+    # 2026-06 — Market-data integrity check. The intraday truth that
+    # feeds pct_change / relative_volume / the pattern engine comes
+    # from the live quote + today's daily bar. If that truth is
+    # missing or stale, a candidate must NOT be waved through the
+    # opportunity floor as if it were a legitimately quiet stock —
+    # it must be classified ``market_data_degraded`` (fail closed for
+    # execution, but with a diagnostic receipt).
+    #
+    # Operator doctrine: pct≈0 + rvol<1 ALONE is NOT proof — a genuinely
+    # quiet stock looks exactly like that but still returns a live book.
+    # We require CORROBORATING evidence that the FEED itself is broken:
+    bar_date = str(today.get("date") or today.get("datetime") or "")
+    degraded_signals: list[str] = []
+    if not quote_available:
+        degraded_signals.append("quote_fetch_failed")
+    if not (bid > 0 and ask > 0):
+        degraded_signals.append("no_live_book")
+    if spread_bps <= 0:
+        degraded_signals.append("no_spread")
+    if volume <= 0:
+        degraded_signals.append("no_today_volume")
+    if _bar_is_stale(bar_date):
+        degraded_signals.append("stale_bar")
+    # Corroboration rule: a genuinely quiet-but-quoted stock still has a
+    # live book + spread + volume, so it clears every signal above. We
+    # only flag degradation when the FEED truth is absent/broken:
+    #   * quote fetch failed entirely, OR
+    #   * no live book AND no spread (we're flying on daily bars only), OR
+    #   * today's bar has zero volume (no real session data), OR
+    #   * the "today" bar is stale (provider failover to an old bar).
+    data_degraded = (
+        "quote_fetch_failed" in degraded_signals
+        or ("no_live_book" in degraded_signals and "no_spread" in degraded_signals)
+        or "no_today_volume" in degraded_signals
+        or "stale_bar" in degraded_signals
+    )
+    degraded_reason = ",".join(degraded_signals) if data_degraded else ""
 
     # Slice the last ~10 daily bars for the classical chart-pattern
     # detectors (double-bottom needs 5, inverse H&S needs 7). Keep
@@ -504,6 +574,10 @@ async def _snapshot_symbol(symbol: str) -> Optional[MarketSnapshot]:
         pct_change=pct_change,
         volume_acceleration=vol_accel,
         recent_bars=recent_bars,
+        data_degraded=data_degraded,
+        degraded_reason=degraded_reason,
+        quote_available=quote_available,
+        bar_date=bar_date,
     )
 
 
@@ -1443,12 +1517,51 @@ async def run_alpha_day_trader_tick(
         universe_symbols = await _candidate_universe(db, cap=_max_symbols_per_tick())
         snapshots = []
         max_per_tick = _max_symbols_per_tick()
+        symbols_scanned = 0
+        degraded_count = 0
         for sym in universe_symbols[:max_per_tick]:  # env-tunable cap
+            symbols_scanned += 1
             snap = await _snapshot_symbol(sym)
-            if snap is not None:
-                snapshots.append(snap)
+            if snap is None:
+                # Provider pool exhausted / too few bars — no truth at
+                # all. Account for it explicitly so no candidate ever
+                # silently disappears from the funnel.
+                degraded_count += 1
+                await _record_observation(
+                    db, f"pretick:{sym}:{time.time_ns()}", "market_data_degraded", {
+                        "symbol": sym, "stage": "snapshot",
+                        "reason": "snapshot_unavailable",
+                    })
+                continue
+            if snap.data_degraded:
+                # Built a snapshot but the intraday truth is stale/broken.
+                # Fail closed (never trades) with a full diagnostic receipt
+                # instead of masquerading as a low_vol_no_news candidate.
+                degraded_count += 1
+                await _record_observation(
+                    db, f"pretick:{sym}:{time.time_ns()}", "market_data_degraded", {
+                        "symbol": sym, "stage": "snapshot",
+                        "reason": snap.degraded_reason or "degraded",
+                        "price": snap.price,
+                        "pct_change": round(float(snap.pct_change), 3),
+                        "relative_volume": round(float(snap.relative_volume), 3),
+                        "spread_bps": snap.spread_bps,
+                        "quote_available": snap.quote_available,
+                        "bar_date": snap.bar_date,
+                    })
+                continue
+            snapshots.append(snap)
+        await _bump_counter(db, "symbols_scanned", symbols_scanned)
         await _bump_counter(db, "candidates_seen", len(snapshots))
+        if degraded_count:
+            await _bump_counter(db, "market_data_degraded", degraded_count)
         ranked = scanner.rank(snapshots, top_n=_max_active_setups())
+        # Candidates that built fine but ranked below the per-tick
+        # detection cap. This is normally the LARGEST bucket — surface
+        # it so "candidates → setups" reconciles instead of vanishing.
+        rank_culled = max(0, len(snapshots) - len(ranked))
+        if rank_culled:
+            await _bump_counter(db, "rank_culled", rank_culled)
         min_score = _min_opportunity_score()
 
         # 2026-09-03 — write top-10 (by opportunity score, before
@@ -1528,6 +1641,7 @@ async def run_alpha_day_trader_tick(
         pretick_id = f"pretick:{snap.symbol}:{time.time_ns()}"
 
         if opp_score < family_floor:
+            await _bump_counter(db, "opportunity_score_rejected", 1)
             await _record_observation(db, pretick_id, "opportunity_score_rejected", {
                 "symbol": snap.symbol,
                 "stage": "pre_pattern",
@@ -1589,6 +1703,7 @@ async def run_alpha_day_trader_tick(
                     pass
                 if wave_mode == "DANGER_PAUSE":
                     await _bump_counter(db, "wave_danger_vetoes", 1)
+                    await _bump_counter(db, "wave_danger_pause", 1)
                     logger.info(
                         "[alpha_daytrader] symbol=%s VETO — wave DANGER_PAUSE (danger=%.2f)",
                         snap.symbol, wave_obs.scores.danger,
@@ -1616,6 +1731,7 @@ async def run_alpha_day_trader_tick(
             # see it before this observation was added. We dump the
             # snap features the pattern engine uses so the operator
             # can eyeball whether the sensitivity gates are too tight.
+            await _bump_counter(db, "no_pattern_match", 1)
             await _record_observation(db, pretick_id, "no_pattern_match", {
                 "symbol": snap.symbol,
                 "stage": "pattern_engine",
@@ -1663,6 +1779,21 @@ async def run_alpha_day_trader_tick(
         setup = _setup_from_doc(doc)
         snap = await _snapshot_symbol(setup.symbol)
         if snap is None:
+            continue
+        if snap.data_degraded:
+            # Fail closed for execution: never trigger a trade on a
+            # stale/degraded quote. Leave a receipt so the block is
+            # visible, then wait for a healthy tick.
+            await _bump_counter(db, "market_data_degraded", 1)
+            await _record_observation(db, setup.setup_id, "market_data_degraded", {
+                "symbol": setup.symbol,
+                "stage": "trigger",
+                "reason": snap.degraded_reason or "degraded",
+                "price": snap.price,
+                "quote_available": snap.quote_available,
+                "spread_bps": snap.spread_bps,
+                "bar_date": snap.bar_date,
+            })
             continue
         if not watcher.triggered(setup, snap):
             if setup.state == SetupState.INVALIDATED:
@@ -2017,6 +2148,36 @@ async def get_counters(db: Any, *, session_date: Optional[str] = None) -> dict:
         "trigger_to_intent": _ratio("intents_created", "triggers"),
         "intent_to_broker": _ratio("broker_submitted", "intents_created"),
         "broker_to_fill": _ratio("filled", "broker_submitted"),
+    }
+    # 2026-06 — Why-Not-Trade funnel reconciliation. Every scanned
+    # symbol must be accounted for: no candidate silently disappears.
+    #   symbols_scanned = candidates_seen + market_data_degraded
+    #   candidates_seen = rank_culled + opportunity_score_rejected
+    #                     + wave_danger_pause + no_pattern_match
+    #                     + setups_created (+ unaccounted, ideally 0)
+    def _n(key: str) -> int:
+        try:
+            return int(doc.get(key) or 0)
+        except (TypeError, ValueError):
+            return 0
+    seen = _n("candidates_seen")
+    culled = _n("rank_culled")
+    opp_rej = _n("opportunity_score_rejected")
+    wave = _n("wave_danger_pause")
+    nopat = _n("no_pattern_match")
+    setups = _n("setups_created")
+    accounted = culled + opp_rej + wave + nopat + setups
+    doc["funnel"] = {
+        "symbols_scanned": _n("symbols_scanned"),
+        "candidates_seen": seen,
+        "market_data_degraded": _n("market_data_degraded"),
+        "rank_culled": culled,
+        "opportunity_score_rejected": opp_rej,
+        "wave_danger_pause": wave,
+        "no_pattern_match": nopat,
+        "setups_created": setups,
+        "candidates_accounted": accounted,
+        "candidates_unaccounted": max(0, seen - accounted),
     }
     return doc
 

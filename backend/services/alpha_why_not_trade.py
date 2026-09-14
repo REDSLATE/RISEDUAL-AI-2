@@ -40,6 +40,13 @@ logger = logging.getLogger(__name__)
 # ``description`` is surfaced to the UI so an operator scanning the
 # rollup understands what the gate does without reading the code.
 REJECTION_GATES: dict[str, dict[str, str]] = {
+    "market_data_degraded": {
+        "description": "Market-data feed was stale, partial, or "
+                       "provider-degraded (no live book / no spread / "
+                       "no volume / stale bar). Candidate was failed "
+                       "closed with a diagnostic receipt so bad data "
+                       "never masquerades as a low-volume setup.",
+    },
     "opportunity_score_rejected": {
         "description": "Candidate opportunity score fell below the "
                        "minimum floor — never reached the pattern engine.",

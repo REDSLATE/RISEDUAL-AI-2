@@ -5,6 +5,7 @@ import OperatorWatchlistCard from './OperatorWatchlistCard';
 import WavePanelCard from './WavePanelCard';
 import ConnectMoomooCard from './ConnectMoomooCard';
 import RejectionTaxonomyCard from './RejectionTaxonomyCard';
+import WhyNotTradeCard from './WhyNotTradeCard';
 
 const API = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -950,6 +951,7 @@ export default function AlphaDayTraderPanel() {
         <h3 className="text-sm font-medium text-zinc-300 mb-2">Today lifecycle</h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <Cell label="Candidates" value={counters?.candidates_seen} />
+          <Cell label="Data Degraded" value={counters?.market_data_degraded} hint="Feed stale/broken — failed closed" />
           <Cell label="Setups" value={counters?.setups_created} />
           <Cell label="Armed" value={counters?.setups_armed} />
           <Cell label="Triggers" value={counters?.triggers} />
@@ -957,6 +959,8 @@ export default function AlphaDayTraderPanel() {
           <Cell label="Broker" value={counters?.broker_submitted} />
         </div>
       </div>
+
+      <WhyNotTradeCard funnel={counters?.funnel} />
 
       <div>
         <h3 className="text-sm font-medium text-zinc-300 mb-2">Conversion ratios</h3>
