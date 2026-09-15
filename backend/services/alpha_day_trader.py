@@ -408,7 +408,12 @@ async def _snapshot_symbol(symbol: str) -> Optional[MarketSnapshot]:
     wired we can switch this without any downstream signature change.
     """
     try:
-        from services.market_data_pool import market_daily, market_quote
+        from services.market_data_pool import (
+            market_daily,
+            market_quote,
+            latest_verified_bar_date as _latest_verified_bar_date,
+            invalidate_daily_cache as _invalidate_daily_cache,
+        )
     except Exception:  # noqa: BLE001
         return None
 
@@ -543,6 +548,20 @@ async def _snapshot_symbol(symbol: str) -> Optional[MarketSnapshot]:
         or "no_today_volume" in degraded_signals
         or "stale_bar" in degraded_signals
     )
+
+    # internal_snapshot_stale (2026-06): the cache-first ``market_daily``
+    # served an older latest bar than we've already verified live for
+    # this symbol — i.e. Alpha itself introduced the staleness. Fail
+    # closed BEFORE scoring and invalidate the daily cache so the next
+    # fetch self-heals. This is labelled distinctly from a source-side
+    # stale bar so the operator can tell "Alpha's cache" from "the feed".
+    hwm = _latest_verified_bar_date(symbol)
+    if hwm and bar_date and str(bar_date)[:10] < hwm:
+        data_degraded = True
+        if "internal_snapshot_stale" not in degraded_signals:
+            degraded_signals.append("internal_snapshot_stale")
+        await _invalidate_daily_cache(symbol)
+
     degraded_reason = ",".join(degraded_signals) if data_degraded else ""
 
     # Slice the last ~10 daily bars for the classical chart-pattern

@@ -40,7 +40,7 @@ witnesses against the broker on live quotes.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Any
 import logging
 import os
 import time
@@ -120,6 +120,117 @@ EXECUTION_VENDOR_MAX_AGE_SECS: int = _env_int(
 DELAYED_QUOTE_PROVIDERS: frozenset[str] = frozenset({"alphavantage"})
 
 
+# ─────────────────────────────────────────────
+#  ADAPTIVE, SOURCE-RELATIVE FRESHNESS (2026-06)
+# ─────────────────────────────────────────────
+# The flat ``EXECUTION_FRESHNESS_SECS`` treats every broker + session
+# the same. That's wrong: a broker's normal quote lag differs by feed
+# (REST vs push) and a quote is naturally OLD overnight (no trades).
+# When enabled, the gate sizes its tolerance to the broker's MEASURED
+# p95 lag and the current session, and gates on the broker's OWN tick
+# timestamp (real staleness) rather than our receive time.
+#
+# SAFETY: defaults OFF. While off, behaviour is byte-for-byte the
+# legacy gate (fetched_at age vs 5s). Measurement (profile recording)
+# runs regardless — it never affects a decision.
+ADAPTIVE_FRESHNESS_ENABLED: bool = os.environ.get(
+    "EXECUTION_ADAPTIVE_FRESHNESS", "0",
+).strip().lower() in ("1", "true", "yes", "on")
+
+# Absolute floor for CORE/RTH even when the measured p95 is tiny.
+EXECUTION_FRESHNESS_MIN_SECS: int = _env_int("EXECUTION_QUOTE_FRESHNESS_MIN_SECS", 2)
+
+# Wide age BACKSTOPS for sessions where quotes are legitimately old
+# (no trades happening). In these sessions age is not the primary
+# gate — spread + drift + session context do the work — so the age
+# ceiling is deliberately loose. CRYPTO stays tight (24/7 venue).
+_SESSION_AGE_CEILING: dict[str, float] = {
+    "CORE": 0.0,          # 0 => use adaptive max(min, p95*2)
+    "PREMARKET": _env_int("EXECUTION_FRESH_PREMARKET_SECS", 120),
+    "AFTER_HOURS": _env_int("EXECUTION_FRESH_AFTERHOURS_SECS", 120),
+    "OVERNIGHT": _env_int("EXECUTION_FRESH_OVERNIGHT_SECS", 600),
+    "CRYPTO": _env_int("EXECUTION_FRESH_CRYPTO_SECS", 3),
+}
+
+
+def execution_session(symbol: Optional[str] = None) -> str:
+    """Current session bucket for freshness policy: CORE / PREMARKET /
+    AFTER_HOURS / OVERNIGHT (equities) or CRYPTO. Maps the NYSE session
+    phase from :mod:`services.alpha_session_state`."""
+    try:
+        from services.alpha_session_state import get_session_state  # noqa: PLC0415
+        phase = get_session_state().get("phase")
+    except Exception:  # noqa: BLE001
+        return "CORE"
+    return {
+        "regular": "CORE",
+        "pre_market": "PREMARKET",
+        "after_hours": "AFTER_HOURS",
+        "closed_overnight": "OVERNIGHT",
+        "closed_weekend": "OVERNIGHT",
+        "closed_holiday": "OVERNIGHT",
+    }.get(phase, "CORE")
+
+
+def _age_from_timestamp(ts: Any) -> Optional[float]:
+    """Age in seconds from a broker tick timestamp that may be epoch
+    seconds, epoch millis, or an ISO-8601 string."""
+    if ts is None:
+        return None
+    now = time.time()
+    try:
+        v = float(ts)
+        if v > 1e12:
+            v /= 1000.0
+        if v > 1e9:
+            return max(0.0, now - v)
+    except (TypeError, ValueError):
+        pass
+    try:
+        from datetime import datetime as _dt, timezone as _tz  # noqa: PLC0415
+        s = str(ts).replace("Z", "+00:00")
+        dt = _dt.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_tz.utc)
+        return max(0.0, now - dt.timestamp())
+    except (TypeError, ValueError):
+        return None
+
+
+def _broker_tick_age(quote: Optional[dict]) -> Optional[float]:
+    """TRUE staleness of a broker quote: age from the broker's own
+    last-tick timestamp when present (Public.com ships ISO
+    ``timestamp``), else ``fetched_at`` (MooMoo already stamps
+    ``fetched_at`` with its wire time)."""
+    if not isinstance(quote, dict):
+        return None
+    age = _age_from_timestamp(quote.get("timestamp"))
+    if age is not None:
+        return age
+    return _quote_age_seconds(quote)
+
+
+def compute_freshness_limit(broker: str, session: str) -> float:
+    """Source- and session-relative freshness ceiling (seconds).
+
+    ``max(configured_minimum, broker_p95_lag * 2, session_floor)`` for
+    CORE; a wide session backstop for pre/after/overnight; legacy 5s
+    when the adaptive flag is off.
+    """
+    if not ADAPTIVE_FRESHNESS_ENABLED:
+        return float(EXECUTION_FRESHNESS_SECS)
+    session = (session or "CORE").upper()
+    if session in ("PREMARKET", "AFTER_HOURS", "OVERNIGHT", "CRYPTO"):
+        return float(_SESSION_AGE_CEILING.get(session, EXECUTION_FRESHNESS_SECS))
+    # CORE / RTH — adapt to the broker's measured behaviour.
+    from services import broker_freshness_profile as _bfp  # noqa: PLC0415
+    p95 = _bfp.p95_if_trusted(broker, session)
+    limit = float(EXECUTION_FRESHNESS_MIN_SECS)
+    if p95 is not None:
+        limit = max(limit, p95 * 2.0)
+    return limit
+
+
 def get_provider_chain(decision_type: str) -> list[str]:
     """Return the ordered provider category chain for a decision type.
 
@@ -175,6 +286,12 @@ class ExecutionQuote:
     data_conflict: bool = False
     execution_allowed: bool = False
     reason: Optional[str] = None
+    # 2026-06 adaptive-freshness diagnostics.
+    session: Optional[str] = None
+    broker_route: Optional[str] = None
+    broker_tick_age_seconds: Optional[float] = None
+    freshness_limit_secs: Optional[float] = None
+    adaptive_freshness: bool = False
     raw: dict = field(default_factory=dict)
 
 
@@ -246,6 +363,25 @@ async def fetch_execution_quote(symbol: str) -> ExecutionQuote:
     result.broker_price = broker_price
     result.broker_age_seconds = broker_age
 
+    # ── Source-relative freshness: session + broker route + TRUE tick
+    # age (from the broker's own timestamp). Measurement always runs;
+    # it only DECIDES when the adaptive flag is on.
+    session = execution_session(symbol_u)
+    broker_route = None
+    if isinstance(broker_q, dict):
+        broker_route = broker_q.get("provider_name") or broker_q.get("source")
+    tick_age = _broker_tick_age(broker_q)
+    result.session = session
+    result.broker_route = broker_route
+    result.broker_tick_age_seconds = tick_age
+    result.adaptive_freshness = ADAPTIVE_FRESHNESS_ENABLED
+    if tick_age is not None and broker_route:
+        try:
+            from services import broker_freshness_profile as _bfp  # noqa: PLC0415
+            _bfp.record(broker_route, session, tick_age)
+        except Exception:  # noqa: BLE001
+            pass
+
     # ── Vendor: independent witness + coverage fallback
     try:
         vendor_q = await fetch_vendor_quote(symbol_u)
@@ -293,13 +429,28 @@ async def fetch_execution_quote(symbol: str) -> ExecutionQuote:
         result.price = broker_price
         result.source = "broker"
         result.age_seconds = broker_age
-        broker_fresh = broker_age is not None and broker_age <= EXECUTION_FRESHNESS_SECS
+        # Adaptive path gates on the broker's TRUE tick age against a
+        # source/session-relative limit; legacy path is byte-for-byte
+        # the old fetched_at-vs-5s check.
+        if ADAPTIVE_FRESHNESS_ENABLED:
+            limit = compute_freshness_limit(broker_route or "public", session)
+            gate_age = tick_age if tick_age is not None else broker_age
+            result.freshness_limit_secs = limit
+            broker_fresh = gate_age is not None and gate_age <= limit
+            stale_reason = (
+                f"broker_quote_stale (tick_age={gate_age}s > {limit}s, "
+                f"session={session}, route={broker_route})"
+            )
+        else:
+            limit = float(EXECUTION_FRESHNESS_SECS)
+            result.freshness_limit_secs = limit
+            broker_fresh = broker_age is not None and broker_age <= EXECUTION_FRESHNESS_SECS
+            stale_reason = (
+                f"broker_quote_stale (age={broker_age}s > {EXECUTION_FRESHNESS_SECS}s)"
+            )
         if not broker_fresh:
             result.execution_allowed = False
-            result.reason = (
-                f"broker_quote_stale (age={broker_age}s > "
-                f"{EXECUTION_FRESHNESS_SECS}s)"
-            )
+            result.reason = stale_reason
         elif result.data_conflict:
             result.execution_allowed = False
             result.reason = (
@@ -343,8 +494,12 @@ __all__ = [
     "EXECUTION_FRESHNESS_SECS",
     "EXECUTION_MAX_DRIFT_BPS",
     "EXECUTION_VENDOR_MAX_AGE_SECS",
+    "ADAPTIVE_FRESHNESS_ENABLED",
+    "EXECUTION_FRESHNESS_MIN_SECS",
     "ExecutionQuote",
     "compute_disagreement_bps",
+    "compute_freshness_limit",
+    "execution_session",
     "fetch_execution_quote",
     "get_provider_chain",
 ]

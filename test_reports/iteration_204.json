@@ -1,0 +1,28 @@
+{
+  "summary": "Stage-1 (measurement plumbing) + Stage-2 (adaptive gate, FLAG-OFF by default) verified. Ran all 8 requested regression suites (test_provider_policy, test_adaptive_freshness, test_market_daily_ordering, test_alpha_day_trader, test_alpha_day_trader_phase_c, test_alpha_funnel, test_alpha_family_floor, test_alpha_why_not_trade) + added tests/test_adaptive_freshness_stage2.py (7 new tests) covering the behaviours not directly asserted in the pre-existing suite: (a) fetch_execution_quote with ADAPTIVE_FRESHNESS_ENABLED=False is byte-for-byte legacy AND populates the new diagnostic fields (session/broker_route/broker_tick_age_seconds/freshness_limit_secs=5/adaptive_freshness=False) AND records a broker-tick-age sample into broker_freshness_profile; (b) with flag ON, gate uses broker's TRUE tick timestamp (30s old) not fetched_at (fresh) so a CORE quote fails the 2s floor; (c) alpha_day_trader._snapshot_symbol sets data_degraded=True with 'internal_snapshot_stale' in degraded_reason AND calls invalidate_daily_cache when built snapshot bar_date is older than latest_verified_bar_date, and is NOT flagged when bar_date equals/newer than HWM; (d) _record_daily_hwm only moves forward (older date does not overwrite). Total: 109/109 pytest pass. Live-verified both new admin endpoints via preview URL with admin@risedual.ai credentials: (1) GET /api/admin/alpha-daytrader/broker-freshness-profile -> 401 without token; with token returns exactly {adaptive_enabled:false, legacy_freshness_secs:5, core_min_secs:2, current_session:'OVERNIGHT', profiles:[], computed_limits_secs:{public:{...5.0...},moomoo:{...5.0...}}}; (2) GET /api/admin/alpha-daytrader/data-provenance?symbols=AAPL,SPY -> 401 without token; with token 200 returning {probed_at, session:'OVERNIGHT', note, route_health:[{broker:'public', broker_data_limited:false, symbols_probed:2, missing_book:0, stale_vs_p95:0, p95_used:null, reason:'route healthy'}], rows:[{symbol,probed_at,quote,quote_cache,daily,snapshot,verdict} x2]}. Flag-off legacy safety and adaptive-gate correctness both verified. NO trades placed; POST /tick avoided per operator guidance.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_adaptive_freshness_stage2.py",
+    "/app/backend/tests/test_adaptive_freshness.py",
+    "/app/backend/tests/test_market_daily_ordering.py",
+    "/app/test_reports/pytest/iter204.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "provider_policy.compute_freshness_limit: for non-CORE sessions, if a session name is unrecognized (default branch), it falls back to EXECUTION_FRESHNESS_SECS (5s). Acceptable, but consider explicit logging so a caller passing an unexpected session token becomes visible.",
+    "provider_policy.fetch_execution_quote records broker-tick-age samples even when the flag is OFF — desirable for warm-up before flipping the flag on, but a very stale historical run could pollute the p95 for the first few hours after flip. Consider a 'session key' rollover on process start (already effectively true because samples are in-memory) or a manual reset endpoint.",
+    "alpha_day_trader.py is 2238 lines (grew from 2219). Split recommendation from iter_203 still applies — snapshot builder, pattern engine, symbol lock, hot store, summarize are natural module boundaries.",
+    "internal_snapshot_stale comparison uses lexical str compare on bar_date (str(bar_date)[:10] < hwm). Safe for ISO-8601 YYYY-MM-DD but fragile if a provider ever returns a MM/DD/YYYY. _record_daily_hwm reads only 'date'/'datetime' fields, so mismatched date formats would silently skip HWM tracking (safer default) — acceptable but worth a warning log."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_adaptive_freshness_stage2.py (new)"
+  ],
+  "success_rate": {"backend": "100% (109/109 across 9 suites)", "frontend": "not tested (scope: backend only)"},
+  "test_credentials": "admin@risedual.ai / RiseDual2026! — verified against POST /api/auth/login on preview URL, Bearer token from response.access_token used for both admin endpoints.",
+  "seed_data_creation": "None. All tests use monkeypatch of market_data_pool.fetch_broker_quote/fetch_vendor_quote/market_daily/market_quote/latest_verified_bar_date/invalidate_daily_cache and alpha_session_state.get_session_state.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Stage 2 is verified flag-OFF safe (legacy 5s in force) and computes limits correctly when flipped ON. The adaptive gate uses broker's ISO 'timestamp' when present (real staleness) and falls back to 'fetched_at' — key test in test_adaptive_freshness_stage2.py::test_adaptive_on_uses_tick_age_not_fetched_at. New file test_adaptive_freshness_stage2.py should be included in the standard regression suite going forward. Live preview: EXECUTION_ADAPTIVE_FRESHNESS env is NOT set, so current_session='OVERNIGHT' and every computed_limits_secs entry is 5.0 (legacy). When operator flips EXECUTION_ADAPTIVE_FRESHNESS=1, expect PREMARKET->120, AFTER_HOURS->120, OVERNIGHT->600, CRYPTO->3, CORE->max(2, p95*2). Do NOT call POST /api/admin/alpha-daytrader/tick (slow).",
+  "rca of the issue": "N/A — no bug found. All acceptance criteria in the review request verified either via added unit/integration tests or via live curl against the preview backend."
+}

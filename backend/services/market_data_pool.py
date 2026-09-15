@@ -11,7 +11,7 @@ import os
 import logging
 import asyncio
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 from typing import Any, Optional
 
 import requests
@@ -621,6 +621,40 @@ def _normalize_daily(bars: Optional[list[dict]]) -> Optional[list[dict]]:
     return [b for _, b in keyed]
 
 
+# Per-symbol high-water-mark of the newest VERIFIED (live-fetched)
+# daily bar date. Used to detect when Alpha's own cache serves an
+# older bar than we've already seen (``internal_snapshot_stale``).
+_daily_hwm: dict[str, str] = {}
+
+
+def _record_daily_hwm(symbol: str, latest_bar: dict) -> None:
+    d = str((latest_bar or {}).get("date") or (latest_bar or {}).get("datetime") or "")[:10]
+    if not d:
+        return
+    prev = _daily_hwm.get(symbol.upper())
+    if prev is None or d > prev:  # ISO dates compare chronologically
+        _daily_hwm[symbol.upper()] = d
+
+
+def latest_verified_bar_date(symbol: str) -> Optional[str]:
+    """Newest daily-bar date verified from a LIVE fetch for ``symbol``,
+    or ``None`` if never fetched fresh this process."""
+    return _daily_hwm.get(symbol.upper())
+
+
+async def invalidate_daily_cache(symbol: str) -> None:
+    """Drop cached daily bars for ``symbol`` so the next fetch is live.
+    Used to self-heal an ``internal_snapshot_stale`` detection."""
+    if _db is None:
+        return
+    try:
+        await _db.price_cache.delete_many(
+            {"key": {"$regex": f"^pool_daily_{symbol.upper()}_"}})
+    except Exception:  # noqa: BLE001
+        pass
+
+
+
 async def market_daily(symbol: str, outputsize: str = "compact") -> Optional[list[dict]]:
     """Get daily OHLCV history with pool failover + MongoDB cache.
 
@@ -648,6 +682,14 @@ async def market_daily(symbol: str, outputsize: str = "compact") -> Optional[lis
 
         result = _normalize_daily(await market_pool.execute(_dispatch_daily_task))
 
+        # High-water-mark: remember the newest daily bar date we've
+        # VERIFIED live for this symbol. A cache read that returns an
+        # older latest bar than this is proof Alpha itself introduced
+        # staleness (see ``latest_verified_bar_date`` /
+        # ``internal_snapshot_stale``). Only fresh fetches bump it.
+        if result:
+            _record_daily_hwm(symbol, result[-1])
+
         if result and _db is not None:
             await _db.price_cache.update_one(
                 {"key": cache_key},
@@ -663,6 +705,183 @@ async def market_daily(symbol: str, outputsize: str = "compact") -> Optional[lis
     except Exception as e:
         logger.error(f"Market daily pool exhausted for {symbol}: {e}")
         return None
+
+
+# ─────────────────────────────────────────────
+#  DATA PROVENANCE PROBE (diagnostic, read-only)
+# ─────────────────────────────────────────────
+#
+# 2026-06 — Localises WHERE market data becomes stale in the chain:
+#   broker/provider  →  pool cache  →  _snapshot_symbol  →  freshness gate
+# It does NOT change Alpha's freshness tolerance — the verdict text
+# uses its own heuristic purely for human triage; the real gate
+# (_bar_is_stale > 4d, quote_fetch_failed, no_today_volume) is
+# untouched. For each symbol it fetches the LIVE source (bypassing
+# cache) so we can compare the wire truth against what Alpha's cache
+# and snapshot actually produce.
+
+def _age_seconds(ts: Any) -> Optional[float]:
+    """Best-effort age in seconds for a provider timestamp that may be
+    epoch seconds, epoch millis, or an ISO-8601 string."""
+    if ts is None:
+        return None
+    now = time.time()
+    try:
+        v = float(ts)
+        if v > 1e12:      # milliseconds
+            v /= 1000.0
+        if v > 1e9:       # plausible epoch seconds
+            return round(max(0.0, now - v), 1)
+    except (TypeError, ValueError):
+        pass
+    try:
+        s = str(ts).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return round(max(0.0, now - dt.timestamp()), 1)
+    except (TypeError, ValueError):
+        return None
+
+
+def _bar_age_days(bar_date: str) -> Optional[int]:
+    if not bar_date:
+        return None
+    try:
+        return (date.today() - datetime.strptime(str(bar_date)[:10], "%Y-%m-%d").date()).days
+    except (TypeError, ValueError):
+        return None
+
+
+def _provenance_verdict(out: dict) -> str:
+    q = out.get("quote", {})
+    d = out.get("daily", {})
+    snap = out.get("snapshot", {})
+    if q.get("error"):
+        return f"SOURCE — no live quote from any provider ({q['error']})"
+    if d.get("error"):
+        return f"SOURCE — no daily bars from any provider ({d['error']})"
+    bqa = q.get("broker_quote_age_s")
+    if bqa is not None and bqa > 900:
+        return (f"SOURCE — broker quote is {int(bqa)}s old at the wire "
+                f"(provider={q.get('provider')}); the FEED is stale, not Alpha")
+    if (q.get("last") or 0) > 0 and not q.get("has_book"):
+        return ("ENDPOINT — last price present but NO bid/ask; the quote feed "
+                "lacks a live book (wrong endpoint/subscription)")
+    bar_age = d.get("bar_age_days")
+    if bar_age is not None and bar_age > 4:
+        return (f"BAR PROVIDER — latest daily bar is {bar_age}d old "
+                f"(provider={d.get('provider')}); quote may be fine but the "
+                f"bar source/timeframe is stale")
+    if snap.get("built") and snap.get("data_degraded"):
+        return ("ALPHA HYDRATION — live sources look fresh but the snapshot is "
+                "degraded; caching/pairing INSIDE Alpha is the culprit")
+    if snap.get("built") and not snap.get("data_degraded"):
+        return "HEALTHY — fresh quote + fresh bar → clean snapshot, candidate should flow"
+    return "INCONCLUSIVE — snapshot did not build; check provider errors above"
+
+
+async def _first_live_quote(symbol: str) -> tuple[Optional[dict], Optional[str]]:
+    err = None
+    if not market_pool.available:
+        return None, "market pool unavailable (no provider credentials)"
+    for p in market_pool.get_healthy_providers():
+        try:
+            return await _dispatch_quote(p, symbol), None
+        except Exception as e:  # noqa: BLE001
+            err = f"{p.name}: {str(e)[:80]}"
+    return None, err
+
+
+async def _first_live_daily(symbol: str) -> tuple[Optional[list[dict]], Optional[str], Optional[str]]:
+    err = None
+    if not market_pool.available:
+        return None, None, "market pool unavailable (no provider credentials)"
+    for p in market_pool.get_healthy_providers():
+        try:
+            raw = await _dispatch_daily(p, symbol, "compact")
+            return _normalize_daily(raw), p.name, None
+        except Exception as e:  # noqa: BLE001
+            err = f"{p.name}: {str(e)[:80]}"
+    return None, None, err
+
+
+async def probe_provenance(symbol: str) -> dict:
+    """Side-by-side provenance for one symbol so we can tell whether
+    stale data ORIGINATES at the provider or becomes stale INSIDE Alpha.
+    Read-only; bypasses cache for the LIVE columns."""
+    symbol = symbol.upper()
+    now = time.time()
+    out: dict[str, Any] = {"symbol": symbol, "probed_at": datetime.now(timezone.utc).isoformat()}
+
+    # 1) LIVE quote (wire truth) — provider, broker tick time, receive time, book.
+    live_q, q_err = await _first_live_quote(symbol)
+    if live_q:
+        bid = float(live_q.get("bid") or 0.0)
+        ask = float(live_q.get("ask") or 0.0)
+        fetched = live_q.get("fetched_at")
+        out["quote"] = {
+            "provider": live_q.get("provider_name"),
+            "broker_timestamp": live_q.get("timestamp"),
+            "broker_quote_age_s": _age_seconds(live_q.get("timestamp")),
+            "received_at_age_s": round(now - float(fetched), 1) if fetched else None,
+            "bid": bid, "ask": ask,
+            "last": live_q.get("last"), "price": live_q.get("price"),
+            "has_book": bid > 0 and ask > 0,
+        }
+    else:
+        out["quote"] = {"error": q_err or "no provider returned a quote"}
+
+    # 2) What Alpha's 5-min quote cache would actually serve.
+    if _db is not None:
+        cq = await _db.price_cache.find_one({"key": f"pool_quote_{symbol}"}, {"_id": 0})
+        if cq and cq.get("data"):
+            data = cq["data"]
+            cfetched = data.get("fetched_at")
+            out["quote_cache"] = {
+                "present": True,
+                "would_be_served": bool(cq.get("expires_at", "") > datetime.now(timezone.utc).isoformat()),
+                "cache_age_s": round(now - float(cfetched), 1) if cfetched else None,
+                "price": data.get("price"),
+            }
+        else:
+            out["quote_cache"] = {"present": False}
+
+    # 3) LIVE daily bars — provider, latest bar date/age, ordering sanity.
+    live_bars, d_provider, d_err = await _first_live_daily(symbol)
+    if live_bars:
+        latest = str(live_bars[-1].get("date") or live_bars[-1].get("datetime") or "")
+        dates = [str(b.get("date") or b.get("datetime") or "") for b in live_bars]
+        out["daily"] = {
+            "provider": d_provider,
+            "n_bars": len(live_bars),
+            "latest_bar_date": latest,
+            "bar_age_days": _bar_age_days(latest),
+            "ascending": dates == sorted(dates),
+        }
+    else:
+        out["daily"] = {"error": d_err or "no provider returned daily bars"}
+
+    # 4) What _snapshot_symbol ACTUALLY builds (Alpha's real, cache-first view).
+    from services.alpha_day_trader import _snapshot_symbol
+    snap = await _snapshot_symbol(symbol)
+    if snap is None:
+        out["snapshot"] = {"built": False}
+    else:
+        out["snapshot"] = {
+            "built": True,
+            "bar_date": snap.bar_date,
+            "price": snap.price,
+            "pct_change": round(float(snap.pct_change), 3),
+            "relative_volume": round(float(snap.relative_volume), 3),
+            "spread_bps": round(float(snap.spread_bps), 1),
+            "quote_available": snap.quote_available,
+            "data_degraded": snap.data_degraded,
+            "degraded_reason": snap.degraded_reason,
+        }
+
+    out["verdict"] = _provenance_verdict(out)
+    return out
 
 
 # ─────────────────────────────────────────────

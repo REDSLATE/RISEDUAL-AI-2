@@ -1,5 +1,29 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-06 (Source-relative ADAPTIVE freshness + data provenance — Stage 1 + Stage 2, flag-OFF)
+
+### Context
+The Why-Not-Trade card proved Monday's failure was a DATA problem. The operator's directive: freshness must be **source- and session-relative** (a per-broker capability metric), not a universal hardcoded "quote < 5s" rule. "Fresh enough to decide" ≠ "fresh enough to route." Also: don't conclude the broker is slow — localize WHERE staleness enters (provider vs Alpha's own cache/hydration).
+
+### Shipped (Stage 1 measurement + Stage 2 adaptive gate, feature-flagged OFF by default)
+- **Data provenance probe** — `market_data_pool.probe_provenance()` + `GET /api/admin/alpha-daytrader/data-provenance?symbols=...`: side-by-side LIVE broker quote (provider, broker tick time, receive time, bid/ask/book) vs Alpha's 5-min cache vs the snapshot `_snapshot_symbol` actually builds, with a plain-English `verdict` (SOURCE / ENDPOINT / BAR-PROVIDER / ALPHA-HYDRATION / HEALTHY) + route-wide `broker_data_limited`.
+- **Per-(broker, session) lag profile** — `services/broker_freshness_profile.py`: rolling 500-sample p50/p95/p99, `trusted` only at ≥30 samples, `route_key` normalization, `assess_route_health` (route-wide `broker_data_limited`: missing_book OR age>5×p95 across most probed symbols → block entries, allow exits). `GET /broker-freshness-profile` exposes it.
+- **Adaptive gate** in `provider_policy`: `compute_freshness_limit = max(configured_minimum(2s CORE), broker_p95×2, session_floor)`; session ceilings PREMARKET/AFTER_HOURS=120s, OVERNIGHT=600s, CRYPTO=3s. Gates on the broker's **true tick timestamp** (real staleness), records every execution quote's tick age into the profile. **Feature-flagged `EXECUTION_ADAPTIVE_FRESHNESS` (default OFF)** — while OFF, behavior is byte-for-byte the legacy 5s gate; measurement still runs.
+- **internal_snapshot_stale** — `_snapshot_symbol` fails closed (+ invalidates daily cache to self-heal) when the cache-served bar is older than the newest LIVE-verified bar (`market_data_pool` high-water-mark). This is the AAPL smoking gun (cache served 09-11 while live had 09-14), labeled distinctly from a source-side stale bar.
+
+### To enable Stage 2 in production (operator action, after samples accumulate)
+Set `EXECUTION_ADAPTIVE_FRESHNESS=1`. Watch `GET /broker-freshness-profile` until each route/session shows `trusted:true` (≥30 samples), then flip it.
+
+### Tests
+Testing agent iteration 204: **109/109 backend pass, zero issues** (flag-off legacy safety, adaptive-on tick-timestamp gating, internal_snapshot_stale, broker_data_limited, both endpoints live w/ auth). New: `tests/test_adaptive_freshness.py`, `tests/test_adaptive_freshness_stage2.py`.
+
+### NOT changed
+No trading thresholds/floors/execution behavior while the flag is OFF. Stage 3 (RoadGuard comparing each trade against the profile of the route that will EXECUTE it) is partially covered since `fetch_execution_quote` already uses the executing broker's profile; full multi-route wiring remains.
+
+⚠️ Preview-verified. Save to GitHub to redeploy to production.
+
+---
+
 ## Latest Update — 2026-06 (ROOT CAUSE FOUND & FIXED — broker daily bars were newest-first)
 
 ### 🎯 THE root cause of Monday's "16,138 candidates → 0 setups"

@@ -16,9 +16,10 @@ Endpoints
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from pydantic import BaseModel
 
 from services.auth_helpers import get_current_user
 
@@ -149,6 +150,92 @@ async def why_not_trade(
         since_seconds=since_seconds,
         sample_per_gate=sample_per_gate,
     )
+
+
+@router.get("/data-provenance")
+async def data_provenance(
+    request: Request,
+    symbols: str = Query("AAPL,QQQ,SPY,NVDA,TSLA,AMD"),
+):
+    """Diagnostic: WHERE does market data become stale?
+
+    For each liquid symbol, fetches the LIVE source (bypassing cache)
+    and lays it side-by-side with Alpha's 5-min quote cache and the
+    snapshot ``_snapshot_symbol`` actually builds — so we can tell
+    whether staleness ORIGINATES at the provider/feed or is introduced
+    INSIDE Alpha (caching / pairing a fresh quote with an old bar /
+    an endpoint with no live book). Read-only; does NOT change any
+    freshness tolerance. Each row carries a plain-English ``verdict``.
+    """
+    await _require_admin(request)
+    from services.market_data_pool import probe_provenance
+    from services import broker_freshness_profile as bfp
+    from services.provider_policy import execution_session
+    syms = [s.strip().upper() for s in symbols.split(",") if s.strip()][:12]
+    rows = []
+    for s in syms:
+        try:
+            rows.append(await probe_provenance(s))
+        except Exception as exc:  # noqa: BLE001
+            rows.append({"symbol": s, "error": str(exc)[:200]})
+    # Route-wide broker_data_limited: group live quote observations by
+    # execution route and ask the profile whether the whole route looks
+    # degraded (distinct from one symbol being stale).
+    session = execution_session()
+    by_route: dict[str, list[dict]] = {}
+    for r in rows:
+        q = r.get("quote") or {}
+        if q.get("error"):
+            continue
+        route = bfp.route_key(q.get("provider"))
+        by_route.setdefault(route, []).append({
+            "age_seconds": q.get("broker_quote_age_s"),
+            "has_book": bool(q.get("has_book")),
+        })
+    route_health = [
+        bfp.assess_route_health(route, session, obs)
+        for route, obs in by_route.items()
+    ]
+    return {
+        "probed_at": datetime.now(timezone.utc).isoformat(),
+        "session": session,
+        "note": "LIVE columns bypass cache; snapshot is Alpha's real cache-first view. "
+                "Verdict is triage-only and does not alter Alpha's freshness gate.",
+        "route_health": route_health,
+        "rows": rows,
+    }
+
+
+@router.get("/broker-freshness-profile")
+async def broker_freshness_profile(request: Request):
+    """Per-(broker route, session) measured quote-lag profile
+    (p50/p95/p99) that drives the adaptive execution-freshness gate,
+    plus the freshness limit each session would currently apply.
+    Read-only measurement plumbing — enabling the gate is a separate
+    env flag (EXECUTION_ADAPTIVE_FRESHNESS)."""
+    await _require_admin(request)
+    from services import broker_freshness_profile as bfp
+    from services import provider_policy as pp
+    profiles = bfp.all_profiles()
+    current = pp.execution_session()
+    # Show the limit each session would enforce for the routes we've
+    # measured (falls back to the default route names when empty).
+    routes = sorted({p["broker"] for p in profiles}) or ["public", "moomoo"]
+    sessions = ["CORE", "PREMARKET", "AFTER_HOURS", "OVERNIGHT", "CRYPTO"]
+    limits = {
+        route: {sess: pp.compute_freshness_limit(route, sess) for sess in sessions}
+        for route in routes
+    }
+    return {
+        "adaptive_enabled": pp.ADAPTIVE_FRESHNESS_ENABLED,
+        "legacy_freshness_secs": pp.EXECUTION_FRESHNESS_SECS,
+        "core_min_secs": pp.EXECUTION_FRESHNESS_MIN_SECS,
+        "current_session": current,
+        "profiles": profiles,
+        "computed_limits_secs": limits,
+        "note": "Limits shown are what WOULD apply; adaptive gate is "
+                + ("ON" if pp.ADAPTIVE_FRESHNESS_ENABLED else "OFF (legacy 5s in force)"),
+    }
 
 
 @router.get("/broker-circuit")
@@ -434,8 +521,6 @@ async def wave_observations(
 # ─────────────────────────────────────────────
 #  Trade Discernment Layer — same-session postmortem
 # ─────────────────────────────────────────────
-
-from pydantic import BaseModel
 
 
 class DiscernmentPostmortemRequest(BaseModel):
