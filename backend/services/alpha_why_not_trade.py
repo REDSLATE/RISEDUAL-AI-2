@@ -62,6 +62,18 @@ REJECTION_GATES: dict[str, dict[str, str]] = {
                        "setup shape (sensitivity too tight, or "
                        "features don't fit any of the ~15 patterns).",
     },
+    "setup_existing": {
+        "description": "A valid pattern was detected but it deduped to "
+                       "an ALREADY-ACTIVE setup for that symbol/type/"
+                       "price (WATCHING/ARMED/TRIGGERED). No NEW setup "
+                       "is created. If this dominates while setups_created "
+                       "stays 0, active setups are piling up unresolved.",
+    },
+    "candidate_error": {
+        "description": "Candidate cleared every gate but setup creation "
+                       "itself raised — stamped instead of escaping "
+                       "accounting or crashing the tick. Check logs.",
+    },
     "invalidated": {
         "description": "Setup shape broke before it could trigger "
                        "(e.g. price crossed the invalidation level).",

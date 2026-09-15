@@ -27,6 +27,10 @@ const GATES = [
     help: 'Per-symbol Wave Intelligence flagged DANGER_PAUSE.' },
   { key: 'no_pattern_match', gate: 'no_pattern_match', label: 'No Pattern', tone: 'protect',
     help: 'Cleared floor + wave but no setup shape matched.' },
+  { key: 'setup_existing', gate: 'setup_existing', label: 'Existing Setup', tone: 'neutral',
+    help: 'Valid pattern but deduped to an already-active setup. High + 0 setups = active setups piling up unresolved.' },
+  { key: 'candidate_error', gate: 'candidate_error', label: 'Error', tone: 'infra',
+    help: 'Cleared every gate but setup creation raised — check logs.' },
   { key: 'setups_created', gate: null, label: 'Setups', tone: 'good',
     help: 'Candidate became a tracked setup.' },
 ];

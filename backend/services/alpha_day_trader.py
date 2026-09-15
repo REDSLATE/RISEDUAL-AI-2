@@ -1650,6 +1650,7 @@ async def run_alpha_day_trader_tick(
 
         # ── discovery + pattern detection ──
         new_setups = 0
+    _ranked_handled = 0  # lifecycle terminal tally (see invariant below)
     for snap, opp_score in ranked:
         # Selective floor by candidate family. See ``_family_floor``
         # for the rules — the Why-Not-Trade diagnostic proved a
@@ -1664,6 +1665,7 @@ async def run_alpha_day_trader_tick(
         pretick_id = f"pretick:{snap.symbol}:{time.time_ns()}"
 
         if opp_score < family_floor:
+            _ranked_handled += 1
             await _bump_counter(db, "opportunity_score_rejected", 1)
             await _record_observation(db, pretick_id, "opportunity_score_rejected", {
                 "symbol": snap.symbol,
@@ -1725,6 +1727,7 @@ async def run_alpha_day_trader_tick(
                 except Exception:  # noqa: BLE001
                     pass
                 if wave_mode == "DANGER_PAUSE":
+                    _ranked_handled += 1
                     await _bump_counter(db, "wave_danger_vetoes", 1)
                     await _bump_counter(db, "wave_danger_pause", 1)
                     logger.info(
@@ -1743,17 +1746,33 @@ async def run_alpha_day_trader_tick(
             logger.debug("[alpha_daytrader] wave eval failed for %s: %s",
                          snap.symbol, exc)
 
-        candidate = patterns.detect(
-            snap,
-            slow_regime=tick_slow_regime,
-            fast_regime=tick_fast_regime,
-        )
+        try:
+            candidate = patterns.detect(
+                snap,
+                slow_regime=tick_slow_regime,
+                fast_regime=tick_fast_regime,
+            )
+        except Exception as exc:  # noqa: BLE001
+            _ranked_handled += 1
+            await _bump_counter(db, "candidate_error", 1)
+            await _record_observation(db, pretick_id, "candidate_error", {
+                "symbol": snap.symbol,
+                "stage": "pattern_engine",
+                "reason": "pattern_detect_raised",
+                "error": str(exc)[:160],
+            })
+            logger.warning(
+                "[alpha_daytrader] pattern detect failed for %s: %s",
+                snap.symbol, exc, exc_info=True,
+            )
+            continue
         if candidate is None:
             # The pattern engine returned no setup — this is the
             # single biggest silent reject in Alpha and we couldn't
             # see it before this observation was added. We dump the
             # snap features the pattern engine uses so the operator
             # can eyeball whether the sensitivity gates are too tight.
+            _ranked_handled += 1
             await _bump_counter(db, "no_pattern_match", 1)
             await _record_observation(db, pretick_id, "no_pattern_match", {
                 "symbol": snap.symbol,
@@ -1769,8 +1788,27 @@ async def run_alpha_day_trader_tick(
                 "fast_regime": tick_fast_regime,
             })
             continue
-        setup, is_new = await _get_or_create_setup(db, candidate)
+        try:
+            setup, is_new = await _get_or_create_setup(db, candidate)
+        except Exception as exc:  # noqa: BLE001
+            # Terminal: candidate cleared every gate but setup
+            # creation itself raised. Stamp it rather than letting it
+            # escape accounting or crash the tick.
+            _ranked_handled += 1
+            await _bump_counter(db, "candidate_error", 1)
+            await _record_observation(db, pretick_id, "candidate_error", {
+                "symbol": snap.symbol,
+                "stage": "setup_create",
+                "reason": "get_or_create_setup_raised",
+                "error": str(exc)[:160],
+            })
+            logger.warning(
+                "[alpha_daytrader] setup create failed for %s: %s",
+                snap.symbol, exc, exc_info=True,
+            )
+            continue
         if is_new:
+            _ranked_handled += 1
             new_setups += 1
             await _bump_counter(db, "setups_created", 1)
             if setup.state == SetupState.ARMED:
@@ -1785,6 +1823,38 @@ async def run_alpha_day_trader_tick(
                 "invalidation_price": setup.invalidation_price,
                 "detected_ns": time.time_ns(),
             })
+        else:
+            # TERMINAL ACCOUNTING (2026-06): a valid pattern was
+            # detected but it maps to an ALREADY-ACTIVE setup for this
+            # symbol (dedup). Before this branch existed the candidate
+            # left the loop WITHOUT stamping any terminal reason — the
+            # exact source of the operator's "unaccounted candidates"
+            # (and why setups_created read 0 even though the pattern
+            # engine was firing: every detection deduped to an existing
+            # setup). Now it's a first-class terminal outcome.
+            _ranked_handled += 1
+            await _bump_counter(db, "setup_existing", 1)
+            await _record_observation(db, setup.setup_id, "setup_existing", {
+                "symbol": setup.symbol,
+                "stage": "dedup",
+                "reason": "existing_active_setup",
+                "state": setup.state.value,
+            })
+
+    # ── Lifecycle invariant: every ranked candidate must end in
+    # exactly one terminal state. If the tally doesn't balance we have
+    # a NEW accounting hole — log the escaped symbols instead of hiding
+    # them, per the operator's terminal-accounting design.
+    if not is_streaming:
+        _escaped = len(ranked) - _ranked_handled
+        if _escaped != 0:
+            _escaped_syms = [s.symbol for s, _ in ranked][: max(0, _escaped) + 20]
+            logger.warning(
+                "[alpha_daytrader] LIFECYCLE ACCOUNTING HOLE: ranked=%d "
+                "terminals=%d escaped=%d symbols=%s",
+                len(ranked), _ranked_handled, _escaped, _escaped_syms,
+            )
+            await _bump_counter(db, "lifecycle_escaped", _escaped)
 
     # ── trigger loop on all ACTIVE setups ──
     triggered_intents = 0
@@ -2189,7 +2259,9 @@ async def get_counters(db: Any, *, session_date: Optional[str] = None) -> dict:
     wave = _n("wave_danger_pause")
     nopat = _n("no_pattern_match")
     setups = _n("setups_created")
-    accounted = culled + opp_rej + wave + nopat + setups
+    existing = _n("setup_existing")
+    errors = _n("candidate_error")
+    accounted = culled + opp_rej + wave + nopat + setups + existing + errors
     doc["funnel"] = {
         "symbols_scanned": _n("symbols_scanned"),
         "candidates_seen": seen,
@@ -2199,8 +2271,11 @@ async def get_counters(db: Any, *, session_date: Optional[str] = None) -> dict:
         "wave_danger_pause": wave,
         "no_pattern_match": nopat,
         "setups_created": setups,
+        "setup_existing": existing,
+        "candidate_error": errors,
         "candidates_accounted": accounted,
         "candidates_unaccounted": max(0, seen - accounted),
+        "lifecycle_escaped": _n("lifecycle_escaped"),
     }
     return doc
 

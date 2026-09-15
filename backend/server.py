@@ -2,6 +2,7 @@
 
 Thin orchestrator: connects MongoDB, registers route modules, handles startup/shutdown.
 """
+# ruff: noqa: E402  (server entry-point uses intentional lazy/mid-file imports)
 from fastapi import FastAPI, APIRouter
 from fastapi.responses import FileResponse
 from dotenv import load_dotenv

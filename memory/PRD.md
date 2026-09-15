@@ -1,5 +1,29 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-06 (Lifecycle accounting hole CLOSED — the "unaccounted candidates" root cause)
+
+### Operator finding (production)
+Funnel showed 15,900 scanned → 11,576 candidates → 8,816 rank_culled + 4,324 degraded + **2,760 unaccounted**, with **0 setups**. The 2,760 candidates exited the per-candidate loop without stamping any terminal reason — a lifecycle-accounting hole between candidate and setup.
+
+### Root cause
+In the scan loop, `setup, is_new = _get_or_create_setup(...)` only counted when `is_new=True`. When a valid detected pattern **deduped to an already-active setup** (`is_new=False`, matching `dedup_key`=symbol+type+reference_price in WATCHING/ARMED/TRIGGERED), the `if is_new:` block was skipped and **nothing** was stamped. Those were the "unaccounted" — and it ALSO explains 0 NEW setups: the pattern engine WAS firing, but every detection mapped to an existing active setup.
+
+### Fix (targeted terminal accounting — no thresholds/floors/broker touched)
+- New terminal `setup_existing` (the `is_new=False` dedup path) — bumped + observed.
+- Per-candidate guards `candidate_error` around BOTH `patterns.detect()` and `_get_or_create_setup()` so a raise stamps a terminal instead of aborting the loop / escaping accounting.
+- End-of-scan **lifecycle invariant**: `len(ranked) == _ranked_handled`; on mismatch logs `LIFECYCLE ACCOUNTING HOLE` with escaped symbols + bumps `lifecycle_escaped`. Verified **0 on every completed tick**.
+- Funnel + why-not-trade gates + Why-Not-Trade card now include `setup_existing` / `candidate_error` / `lifecycle_escaped`.
+
+### What this reveals next (for the operator to decide — NOT changed unilaterally)
+If production shows `setup_existing` dominating with `setups_created=0`, it means a population of **stale active setups is blocking all new ones via dedup** (they never resolve/expire). The next targeted fix would be active-setup expiry/lifecycle — strategy-adjacent, needs go-ahead. On preview, setups DO form (23 today), so preview is not dedup-blocked. `rank_culled` being high is the by-design top-N-per-tick cap (rank-before-execute), and the invariant confirms culled candidates are accounted, not lost.
+
+### Tests
+69 backend tests pass (funnel, day_trader, phase_c, why_not_trade, adaptive_freshness, market_daily_ordering). Live preview ticks confirm `setup_existing` increments and `lifecycle_escaped=0`. Server tick wrappers upgraded from silent debug to WARNING + traceback so a crashing production tick is visible.
+
+⚠️ Preview-verified. Save to GitHub to redeploy to production.
+
+---
+
 ## Latest Update — 2026-06 (Source-relative ADAPTIVE freshness + data provenance — Stage 1 + Stage 2, flag-OFF)
 
 ### Context
