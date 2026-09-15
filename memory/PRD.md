@@ -1,5 +1,29 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-06 (ROOT CAUSE FOUND & FIXED — broker daily bars were newest-first)
+
+### 🎯 THE root cause of Monday's "16,138 candidates → 0 setups"
+The live Why-Not-Trade card (shipped in the previous update) reported **100% `Data Degraded`, 0 reached the floor** on PRODUCTION — proving it was a DATA problem, not policy. Investigation of the broker feed found:
+- **Public.com (the primary market-data provider / execution broker) returns daily bars NEWEST-first.** `broker_service.PublicTradingService.get_daily_bars` explicitly does `rows.sort(key=date, reverse=True)` ("newest-first to match the other providers"). Alpha Vantage (`reverse=True`) and Polygon (`sort=desc`) do the same.
+- **Every consumer assumes ASCENDING** (`bars[-1]` = today): `alpha_day_trader._snapshot_symbol`, `public_equity_live_executor` move-calc (bars[-1]/bars[-2]), `market_regime`, `fast_intraday_regime`.
+- Net effect: Alpha read the **OLDEST** bar (e.g. 2026-04-22, ~5 months stale) as "today" → `pct_change` computed from stale closes ≈ noise → every candidate fell into the strict `low_vol_no_news` floor → 0 setups. The classical pattern engine (double_bottom/H&S) was also analysing months-old geometry (explains the inflated historical setup counts that never executed).
+
+### ✅ Fix (single source of truth)
+`services/market_data_pool.py` → new `_normalize_daily()` guarantees **ascending-by-date** output from `market_daily()` on BOTH the fresh-fetch and cache-read paths, for ALL providers. `bars[-1]` is now always the most recent session regardless of which broker/backup served it. ISO `YYYY-MM-DD` dates sort chronologically; bars missing a date are left untouched (no scramble).
+
+**Broker data locked in:** Public.com is already the priority-1 provider (`pool_config.get_market_data_provider_pool`); its quote carries live `bid`/`ask` (healthy book), so production quotes are not false-flagged by the integrity guard. Alpha now trades on the same feed where its orders fill.
+
+### Verified
+- Live feed after fix: AAPL/MSFT/SPY `bars[-1]=2026-09-14` (latest), real `pct_change` (0.244 / 1.973 / -0.446), `degraded=False`. Before: `bar_date=2026-04-22`, all degraded.
+- New regression `tests/test_market_daily_ordering.py` + affected-consumer suites: **90 tests pass** (market-daily ordering, day trader, phase_c, funnel, family floor, extreme-move validator, round-trip proof, polygon). Backend healthy.
+
+### Next
+- Watch the Why-Not-Trade card on the next live session: candidates should now flow PAST Data Degraded into the floor/pattern buckets and produce setups. If `Below Floor` then dominates on the healthy feed, tune the family floor (separate evidence-backed step). Do NOT touch execution until Intents > 0.
+
+⚠️ Preview-verified against the live feed. Save to GitHub to redeploy to production.
+
+---
+
 ## Latest Update — 2026-06 (P0 zero-setup debug — Why-Not-Trade observability + market-data integrity)
 
 ### 🎯 Operator finding

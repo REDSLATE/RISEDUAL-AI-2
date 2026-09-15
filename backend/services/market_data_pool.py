@@ -591,8 +591,37 @@ async def market_quote(symbol: str) -> Optional[dict]:
         return None
 
 
+def _normalize_daily(bars: Optional[list[dict]]) -> Optional[list[dict]]:
+    """Guarantee ASCENDING-by-date order (oldest first, newest last).
+
+    2026-06 root cause: providers disagree on ordering — Alpha Vantage
+    (``sorted(..., reverse=True)``) and Polygon (``sort=desc``) return
+    NEWEST-first, while every consumer of ``market_daily``
+    (alpha_day_trader, public_equity_live_executor move-calc,
+    market_regime, fast_intraday_regime) assumes ``bars[-1]`` is the
+    most recent session. When a newest-first provider served the bars,
+    those systems silently read the OLDEST bar as "today" — computing
+    pct_change from months-old closes and starving the funnel. This is
+    the single source of truth that fixes it for all callers.
+    """
+    if not bars or not isinstance(bars, list):
+        return bars
+    keyed = []
+    for b in bars:
+        d = b.get("date") or b.get("datetime") or b.get("timestamp")
+        if d is None:
+            return bars  # missing a date on some bar — don't risk reordering
+        keyed.append((str(d), b))
+    keyed.sort(key=lambda kv: kv[0])  # ISO date strings sort chronologically
+    return [b for _, b in keyed]
+
+
 async def market_daily(symbol: str, outputsize: str = "compact") -> Optional[list[dict]]:
-    """Get daily OHLCV history with pool failover + MongoDB cache."""
+    """Get daily OHLCV history with pool failover + MongoDB cache.
+
+    Output is ALWAYS normalised to ascending-by-date so ``bars[-1]`` is
+    the most recent session regardless of which provider served it.
+    """
     cache_key = f"pool_daily_{symbol.upper()}_{outputsize}"
 
     if _db is not None:
@@ -601,7 +630,9 @@ async def market_daily(symbol: str, outputsize: str = "compact") -> Optional[lis
             {"_id": 0}
         )
         if cached and cached.get("data"):
-            return cached["data"]
+            # Normalise on read too — pre-fix cache entries may still be
+            # newest-first until their 30-min TTL expires.
+            return _normalize_daily(cached["data"])
 
     if not market_pool.available:
         return None
@@ -610,7 +641,7 @@ async def market_daily(symbol: str, outputsize: str = "compact") -> Optional[lis
         async def _dispatch_daily_task(provider: ProviderEntry) -> list[dict]:
             return await _dispatch_daily(provider, symbol, outputsize)
 
-        result = await market_pool.execute(_dispatch_daily_task)
+        result = _normalize_daily(await market_pool.execute(_dispatch_daily_task))
 
         if result and _db is not None:
             await _db.price_cache.update_one(
