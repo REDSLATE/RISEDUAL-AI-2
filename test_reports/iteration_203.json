@@ -1,0 +1,26 @@
+{
+  "summary": "P0 verified: market_data_pool._normalize_daily() is the single choke point that guarantees ascending-by-date bars for every provider on BOTH cache-read and fresh-fetch paths. Ran the requested 9 pytest suites + added 10 new targeted integration tests covering (a) _normalize_daily unit contract, (b) fresh-fetch normalization by monkeypatching market_pool.execute to return descending bars, (c) cache-read normalization by seeding _db.price_cache with descending 'data', (d) downstream alpha_day_trader._snapshot_symbol correctly reads bars[-1] as today + computes pct_change from the two most recent closes, (e) integrity guard does NOT false-flag price-only quotes but DOES degrade on quote_fetch_failed / stale_bar / no_today_volume. Total 110/110 tests pass. Admin counters endpoint returns 200 with full 'funnel' block; live session already shows setups_created=6 (was 0 pre-fix), confirming production impact.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_market_daily_ordering.py",
+    "/app/backend/tests/test_market_daily_normalization_integration.py",
+    "/app/test_reports/pytest/iter203.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "services/alpha_day_trader.py is 2219 lines; consider splitting (snapshot builder, pattern engine, symbol lock, hot store, summarize) into modules for maintainability.",
+    "_normalize_daily returns the ORIGINAL list unchanged when any bar is missing a 'date' field — safe fallback and documented, but consider a warning log so silent provider drift becomes visible.",
+    "Cache TTL for price_cache is 30 min; because the normalizer also runs on cache-read, pre-fix descending entries are healed on next fetch — good. No action needed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_market_daily_normalization_integration.py (new)"
+  ],
+  "success_rate": {"backend": "100% (110/110)", "frontend": "not tested (scope: backend only)"},
+  "test_credentials": "admin@risedual.ai / RiseDual2026! — verified against POST /api/auth/login, Bearer token from response.access_token.",
+  "seed_data_creation": "None. Integration tests use monkeypatch + mocked db (no persisted writes).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The ordering-normalization P0 is locked by tests/test_market_daily_ordering.py (unit) + tests/test_market_daily_normalization_integration.py (cache-read path, fresh-fetch path via market_pool.execute monkeypatch, and downstream _snapshot_symbol behavior). Note: monkeypatching market_pool.available requires patching the property on the class (property lambda), not the instance. Live counters endpoint on preview confirms setups_created > 0 in current session (was 0 pre-fix). Do NOT call POST /api/admin/alpha-daytrader/tick — slow, times out on preview per prior agent guidance.",
+  "rca of the issue": "Providers (Public.com broker, Alpha Vantage, Polygon) all return daily OHLCV NEWEST-first, but every consumer (alpha_day_trader._snapshot_symbol, public_equity_live_executor, market_regime, fast_intraday_regime) reads bars[-1] as today's session. Result: OLDEST bar (months stale) was treated as today, pct_change computed from stale closes, all candidates collapsed into the low-vol opportunity floor => 0 setups from 16,138 candidates. Fix: single normalization point _normalize_daily() in services/market_data_pool.py::market_daily() sorts by date ISO string ascending on both cache-read (line 635) and fresh-fetch (line 644) paths. Verified: (1) unit contract on _normalize_daily, (2) fresh-fetch path via monkeypatch of market_pool.execute returning descending list, (3) cache-read path by seeding _db.price_cache with descending data, (4) _snapshot_symbol picks newest bar_date and computes correct pct_change, (5) integrity guard still catches degraded feeds without false-flagging healthy price-only quotes. Live admin counters show setups_created=6 in current session."
+}

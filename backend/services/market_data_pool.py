@@ -610,6 +610,11 @@ def _normalize_daily(bars: Optional[list[dict]]) -> Optional[list[dict]]:
     for b in bars:
         d = b.get("date") or b.get("datetime") or b.get("timestamp")
         if d is None:
+            logger.warning(
+                "market_daily: bar missing date field — leaving order untouched "
+                "(possible provider drift); sample keys=%s",
+                list(b.keys()),
+            )
             return bars  # missing a date on some bar — don't risk reordering
         keyed.append((str(d), b))
     keyed.sort(key=lambda kv: kv[0])  # ISO date strings sort chronologically
