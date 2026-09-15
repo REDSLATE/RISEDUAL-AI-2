@@ -526,16 +526,20 @@ async def _snapshot_symbol(symbol: str) -> Optional[MarketSnapshot]:
         degraded_signals.append("no_today_volume")
     if _bar_is_stale(bar_date):
         degraded_signals.append("stale_bar")
-    # Corroboration rule: a genuinely quiet-but-quoted stock still has a
-    # live book + spread + volume, so it clears every signal above. We
-    # only flag degradation when the FEED truth is absent/broken:
-    #   * quote fetch failed entirely, OR
-    #   * no live book AND no spread (we're flying on daily bars only), OR
+    # Corroboration rule (deliberately conservative — the operator's
+    # explicit warning: never false-flag a valid-but-quiet or
+    # price-only feed). Only signals that unambiguously mean the FEED
+    # is broken trigger the block:
+    #   * quote fetch failed entirely (no quote object at all), OR
     #   * today's bar has zero volume (no real session data), OR
     #   * the "today" bar is stale (provider failover to an old bar).
+    # NOTE: "no live book" / "no spread" are recorded on the receipt
+    # for diagnostics but do NOT trigger degradation on their own — a
+    # perfectly healthy provider can return price-only quotes (no
+    # bid/ask), and Alpha has always traded such names (spread_bps=0).
+    # Blocking those would starve the funnel worse than before.
     data_degraded = (
         "quote_fetch_failed" in degraded_signals
-        or ("no_live_book" in degraded_signals and "no_spread" in degraded_signals)
         or "no_today_volume" in degraded_signals
         or "stale_bar" in degraded_signals
     )
