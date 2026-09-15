@@ -1606,7 +1606,7 @@ async def _run_alpha_day_trader():
         from services.alpha_day_trader import run_alpha_day_trader_tick
         await run_alpha_day_trader_tick(db)
     except Exception as e:  # noqa: BLE001
-        logger.debug(f"Alpha Day Trader tick error: {e}")
+        logger.warning("Alpha Day Trader tick error: %s", e, exc_info=True)
 
 
 async def _run_alpha_top10_stream():
@@ -1618,7 +1618,7 @@ async def _run_alpha_top10_stream():
         from services.alpha_top10_stream import run_alpha_top10_stream_tick
         await run_alpha_top10_stream_tick(db)
     except Exception as e:  # noqa: BLE001
-        logger.debug(f"Alpha top-10 stream tick error: {e}")
+        logger.warning("Alpha top-10 stream tick error: %s", e, exc_info=True)
 
 
 async def _run_alpha_breakeven():
