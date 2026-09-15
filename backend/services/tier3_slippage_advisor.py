@@ -152,7 +152,7 @@ def _stable_segment_key(axis: str, value: str) -> str:
     """Hashed segment ID — lets the dedup layer handle both
     standard axes (``method_in:ask_fill``) and combinations."""
     raw = f"{axis}:{value}"
-    return hashlib.md5(raw.encode("utf-8")).hexdigest()[:12]
+    return hashlib.md5(raw.encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
 
 
 async def analyze_slippage_segments(

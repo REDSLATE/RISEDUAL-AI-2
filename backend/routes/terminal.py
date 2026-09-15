@@ -189,4 +189,4 @@ def _hash_actions(actions: list) -> str:
         f"{round(float(a.get('priority_score') or 0.0), 2)}"
         for a in actions
     )
-    return hashlib.md5(key.encode("utf-8")).hexdigest()
+    return hashlib.md5(key.encode("utf-8"), usedforsecurity=False).hexdigest()

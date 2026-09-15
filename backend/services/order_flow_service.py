@@ -73,10 +73,10 @@ async def _fetch_binance_depth(ticker: str, limit: int = 500) -> dict:
             price_params: dict[str, Any] = {"symbol": symbol}
             depth_resp, price_resp = await asyncio.gather(
                 asyncio.to_thread(
-                    lambda url=ep["depth"]: requests.get(url, params=depth_params, timeout=10)  # type: ignore[misc]
+                    lambda url=ep["depth"], p=depth_params: requests.get(url, params=p, timeout=10)  # type: ignore[misc]
                 ),
                 asyncio.to_thread(
-                    lambda url=ep["price"]: requests.get(url, params=price_params, timeout=5)  # type: ignore[misc]
+                    lambda url=ep["price"], p=price_params: requests.get(url, params=p, timeout=5)  # type: ignore[misc]
                 ),
             )
             d = depth_resp.json()
