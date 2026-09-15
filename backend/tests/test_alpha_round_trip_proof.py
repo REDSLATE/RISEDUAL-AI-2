@@ -244,6 +244,8 @@ async def test_alpha_long_round_trip_proof():
     }
 
     # ── Stage 1-3: OPEN intent → row + broker_order_id + fill price ──
+    # Broker holds nothing yet at open time (broker-authoritative dup gate).
+    client.get_positions.return_value = []
     with patch(
         "services.public_equity_live_executor._fetch_mark_price",
         new=AsyncMock(return_value=200.0),
@@ -293,6 +295,10 @@ async def test_alpha_long_round_trip_proof():
     assert row["peak_price"] == 210.0, "Stage 4 failed: peak not recorded"
 
     # ── Stage 5-6: SELL_TO_CLOSE intent → row closes with exit order id
+    # Broker now reports the AAPL long (position exists at close time).
+    client.get_positions.return_value = [
+        {"symbol": "AAPL", "qty": 0.125, "side": "long"},
+    ]
     with patch(
         "services.public_equity_live_executor._fetch_mark_price",
         new=AsyncMock(return_value=210.0),

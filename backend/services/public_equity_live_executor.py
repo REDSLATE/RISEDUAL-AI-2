@@ -147,6 +147,36 @@ def _fixed_notional_usd() -> float:
     return v
 
 
+def _alloc_pct() -> float:
+    """Max fraction of account EQUITY to allocate to one position.
+
+    Account-aware sizing (2026-09): the fixed ``PUBLIC_LIVE_NOTIONAL_USD``
+    is a CEILING, not a requirement. The per-trade size is the smallest of
+    {ceiling, equity × alloc_pct, affordable buying power}. Default 20%.
+    Override with ``PUBLIC_LIVE_ALLOC_PCT`` (0..1).
+    """
+    raw = (os.environ.get("PUBLIC_LIVE_ALLOC_PCT") or "").strip()
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        return 0.20
+    if v <= 0:
+        return 0.20
+    return min(v, 1.0)
+
+
+def _cash_reserve_usd() -> float:
+    """Cash buffer kept unspent so orders don't clip against fees/drift.
+
+    Override with ``PUBLIC_LIVE_CASH_RESERVE_USD`` (default $5).
+    """
+    raw = (os.environ.get("PUBLIC_LIVE_CASH_RESERVE_USD") or "").strip()
+    try:
+        return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        return 5.0
+
+
 def _allowed_symbols() -> Optional[set[str]]:
     """Optional symbol allowlist. ``PUBLIC_LIVE_SYMBOLS=AAPL,MSFT,NVDA``
     restricts live execution to that comma-separated list. Unset →
@@ -1176,28 +1206,58 @@ async def maybe_route_live(
     except Exception as _council_exc:  # noqa: BLE001
         logger.debug("[public-live] council consult failed (non-fatal): %s", _council_exc)
 
-    try:
-        client_pre = _public_client(secret_key, account_id)
-        if client_pre is not None:
-            acct = client_pre.get_account()
+    # 2026-09 — Account-aware sizing (operator design). Broker is
+    # authoritative for money: read live equity + buying power and size
+    # the order to the SMALLEST of {desired ceiling, % of equity,
+    # affordable buying power}. ``PUBLIC_LIVE_NOTIONAL_USD`` is now a
+    # CEILING, not a requirement — a small/fluctuating account keeps
+    # trading fractionally instead of hard-rejecting. Only OPENS are
+    # resized; closes must always run (an exit needs no buying power).
+    client_pre = _public_client(secret_key, account_id)
+    if intent_kind in ("open_long", "open_short"):
+        try:
+            acct = client_pre.get_account() if client_pre is not None else None
             if acct is not None:
-                bp = float(acct.get("buying_power") or 0.0)
-                if bp < notional:
+                buying_power = float(acct.get("buying_power") or 0.0)
+                equity = float(acct.get("equity") or buying_power or 0.0)
+                reserve = _cash_reserve_usd()
+                spendable_bp = max(0.0, buying_power - reserve)
+                alloc_pct = _alloc_pct()
+                account_sized_target = (
+                    equity * alloc_pct if equity > 0 else notional
+                )
+                affordable = min(notional, account_sized_target, spendable_bp)
+                if affordable < 1.0:
                     logger.warning(
-                        "[public-live] symbol=%s SKIPPED — buying_power $%.2f "
-                        "< notional $%.2f", symbol, bp, notional,
+                        "[public-live] symbol=%s SKIPPED — account too small "
+                        "for min trade: equity=$%.2f bp=$%.2f spendable=$%.2f "
+                        "target=$%.2f", symbol, equity, buying_power,
+                        spendable_bp, account_sized_target,
                     )
-                    await _log_skip(db, symbol=symbol,
-                                    reason="insufficient_buying_power",
-                                    intent=intent,
-                                    detail={"buying_power": bp,
-                                            "notional_required": notional})
+                    await _log_skip(
+                        db, symbol=symbol, reason="below_minimum_trade_size",
+                        intent=intent,
+                        detail={"equity": round(equity, 2),
+                                "buying_power": round(buying_power, 2),
+                                "spendable_bp": round(spendable_bp, 2),
+                                "account_sized_target": round(account_sized_target, 2),
+                                "ceiling": round(notional, 2),
+                                "min_required": 1.0},
+                    )
                     return None
-    except Exception as exc:  # noqa: BLE001
-        logger.debug(
-            "[public-live] pre-trade account check failed (non-fatal): %s",
-            exc,
-        )
+                if affordable < notional - 1e-9:
+                    logger.info(
+                        "[public-live] symbol=%s account-aware sizing: "
+                        "$%.2f → $%.2f (equity=$%.2f bp=$%.2f alloc=%.0f%% "
+                        "reserve=$%.2f)", symbol, notional, affordable,
+                        equity, buying_power, alloc_pct * 100.0, reserve,
+                    )
+                notional = affordable
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "[public-live] account-aware sizing failed (non-fatal): %s",
+                exc,
+            )
 
     # Idempotency / direction-aware position check.
     # For OPEN_LONG: refuse to open a duplicate live row.
@@ -1237,29 +1297,50 @@ async def maybe_route_live(
             logger.warning("[public-live] idempotency check failed: %s", exc)
 
     if intent_kind == "open_long":
-        # For an open_long, ANY existing open row on this symbol (long
-        # or short) blocks — never stack exposure atop an existing
-        # position, and never open a long while a short is out.
-        try:
-            _any_open = await db.equity_live_trades.find_one(
-                {"symbol": symbol, "status": "open", "broker_id": "public"},
-                {"_id": 1, "direction": 1},
-            ) if db is not None else None
-        except Exception:  # noqa: BLE001
-            _any_open = None
-        if _any_open is not None:
+        # 2026-09 — Broker-authoritative duplicate-position gate.
+        # The broker is the truth about current holdings; Alpha's local
+        # ledger is only an audit record. Ask Public whether the symbol
+        # is actually held. If it IS → real duplicate, block. If it is
+        # NOT but a stale ``open`` ledger row exists → reconcile it
+        # (mark closed / broker_reconciled_missing, preserved) and let
+        # execution continue. If the broker CANNOT answer → fail closed
+        # (never open a blind position on an unknown holdings state).
+        from services.alpha_position_reconciler import reconcile_symbol
+        _pos_client = (
+            client_pre if client_pre is not None
+            else _public_client(secret_key, account_id)
+        )
+        _recon = await reconcile_symbol(db, _pos_client, symbol)
+        if not _recon.get("ok"):
+            logger.warning(
+                "[public-live] symbol=%s SKIPPED — broker holdings unknown "
+                "(positions lookup failed); refusing to open blind", symbol,
+            )
+            await _log_skip(
+                db, symbol=symbol, reason="broker_position_unknown",
+                intent=intent,
+                detail={"intent_kind": intent_kind,
+                        "note": "broker positions lookup failed — fail closed"},
+            )
+            return None
+        if _recon.get("held"):
             logger.info(
-                "[public-live] symbol=%s already has open live row (%s) — "
-                "skip dupe/reverse",
-                symbol, _any_open.get("direction"),
+                "[public-live] symbol=%s already held at broker (qty=%.6f) — "
+                "skip duplicate", symbol, float(_recon.get("qty") or 0.0),
             )
             await _log_skip(
                 db, symbol=symbol, reason="dup_open_row", intent=intent,
                 detail={"intent_kind": intent_kind,
-                        "existing_row_id": str(_any_open.get("_id") or ""),
-                        "existing_direction": _any_open.get("direction")},
+                        "broker_qty": _recon.get("qty"),
+                        "source": "broker_authoritative"},
             )
             return None
+        if _recon.get("reconciled"):
+            logger.info(
+                "[public-live] symbol=%s cleared %d phantom open ledger "
+                "row(s) — broker holds none, proceeding", symbol,
+                int(_recon.get("reconciled") or 0),
+            )
 
     if intent_kind in ("close_long", "close_short"):
         # Idempotency: close_in_flight guard.
@@ -1405,11 +1486,15 @@ async def maybe_route_live(
             notional_usd=short_notional, mark_price=mark,
         )
     else:
-        # OPEN_LONG sizing — math.ceil to 4 dp ensures
-        # qty * mark > notional (clears Public.com's $1.00 minimum
-        # even after fractional rounding).
+        # OPEN_LONG sizing — account-aware ``notional`` (already clamped
+        # to the smallest of ceiling / equity-% / affordable BP above).
+        # math.floor to 4 dp so we never spend MORE than affordable, with
+        # a $1.00 bump only when flooring would dip under Public.com's
+        # minimum order amount.
         import math
-        qty = math.ceil((notional / mark) * 10000.0) / 10000.0
+        qty = math.floor((notional / mark) * 10000.0) / 10000.0
+        if qty * mark < 1.0:
+            qty = math.ceil((1.0 / mark) * 10000.0) / 10000.0
     if qty <= 0:
         logger.warning(
             "[public-live] symbol=%s SKIPPED — computed qty %.6f ≤ 0",

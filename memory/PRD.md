@@ -1,5 +1,33 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-09-15 (REGRESSION FIXED — "total bust": broker-authoritative positions + account-aware sizing)
+
+### Root cause (regression bisect, not a redesign)
+Live trades flowed through ~09-03/09-10 then stopped. Setups + intents were STILL being generated daily (09-15: 39 setups / 24 intents) — the break was purely **intent → broker**, where `broker_submitted` went to 0 after 09-10. Two stacked regressions:
+
+1. **Ledger drifted from broker truth → `dup_open_row` self-lockout (primary).** The open_long duplicate gate trusted Alpha's local `equity_live_trades` ledger, never the broker. The exit/reconcile path had stopped writing closes, so **19 phantom `open` rows** (some since June) permanently blocked re-entry on SPY/AAPL/MSFT/NVDA/TSLA/GOOGL/META/AMZN/JPM/AVGO/etc. Read-only broker probe confirmed: of 21 "open" ledger rows, only **2 were real** (QQQ, CYPH); broker actually held CYPH/VRPX/PPCB/POET/III/QQQ. This is also the "wasn't recording/showing trades" symptom.
+2. **`PUBLIC_LIVE_NOTIONAL_USD=350` on a $173 account (secondary).** Pre-trade check `if bp < notional: reject("insufficient_buying_power")` — account has equity $193.74 / BP $173.02, so every intent that wasn't already `dup_open_row`-blocked died at buying-power (24 rejects 09-14, 21 09-15). Every historical fill was $1 notional.
+
+### Fix (operator design — broker = truth for money/positions; Alpha = truth for strategy/history)
+- **New `services/alpha_position_reconciler.py`** — `reconcile_symbol` / `reconcile_all` / `reconcile_open_positions_with_broker`. Phantom `open` rows the broker no longer holds are marked `status=closed, close_reason="broker_reconciled_missing"` (timestamped, **preserved not deleted** — audit/edge history intact).
+- **Broker-authoritative dup gate** (`public_equity_live_executor.py` open_long): ask Public for the live position. Held → real `dup_open_row` block. Not held → reconcile any stale row and PROCEED. Broker unreachable → **fail closed** (`broker_position_unknown`, never opens blind).
+- **Account-aware sizing** — `PUBLIC_LIVE_NOTIONAL_USD` is now a CEILING, not a requirement: `notional = min(ceiling, equity×PUBLIC_LIVE_ALLOC_PCT[def 0.20], buying_power − PUBLIC_LIVE_CASH_RESERVE_USD[def $5])`; reject only if `< $1.00` (`below_minimum_trade_size`). Fractional `math.floor` to 4 dp with a $1-min bump. Opens only — closes always run.
+- **Reconcile runs in 3 places**: startup (server.py, force=True, WARNING+exc_info on failure), periodic (alpha_day_trader tick tail, 300s throttle), and immediately before each buy veto.
+
+### Verified
+- Startup sweep already cleared **19 phantom rows**; only QQQ+CYPH (real) remain open. New movers pass; held blocks; broker-down fails closed; BP-below-target sizes down (BP $63 → $58, 0.232 sh); tiny acct → below_minimum; big acct → $350 ceiling.
+- Tests: `tests/test_alpha_position_reconciler.py` (5, new) + executor/exits/silent-gaps/round-trip (42) + broker/router/short/reconciler suites (149) all green. `test_alpha_round_trip_proof` fixture updated so broker holds nothing at open, AAPL at close (accurate under broker-authoritative flow).
+
+### Still on the table (NOT done — flagged, no unrequested work)
+- **Why the exit/reconcile path stopped writing closes in the first place** (the deeper bug behind phantom accumulation). Periodic+startup reconcile now self-heals it, but the exit writer itself should be traced.
+- Account genuinely holds only ~$194 — if operator expected more cash, that's broker-side.
+- `.env PUBLIC_LIVE_NOTIONAL_USD=350` left as the ceiling (correct under new sizing).
+
+⚠️ Preview-verified. Ledger reconcile already ran against the shared DB; the CODE fix reaches risedual.ai only after **Save to GitHub → redeploy**. Prod runs a labeled build (`GIT_SHA=alpha-r1`); confirm via owner-auth `GET /api/admin/runtime/stamp` after redeploy.
+
+---
+
+
 ## Latest Update — 2026-06 (Lifecycle accounting hole CLOSED — the "unaccounted candidates" root cause)
 
 ### Operator finding (production)

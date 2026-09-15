@@ -767,6 +767,21 @@ async def startup_event():
             logger.info("[alpha_broker_watchdog] reconcilers registered (public, moomoo)")
         except Exception as e:  # noqa: BLE001
             logger.debug("[alpha_broker_watchdog] reconciler registration skipped: %s", e)
+
+        # Broker-authoritative position reconcile at startup — clear any
+        # phantom ``open`` ledger rows the broker no longer holds so a
+        # stale row can't lock Alpha out of re-entering a symbol.
+        try:
+            from services import alpha_position_reconciler
+            _rc = await alpha_position_reconciler.reconcile_open_positions_with_broker(
+                db, force=True,
+            )
+            logger.info("[position-reconciler] startup sweep: %s", _rc)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "[position-reconciler] startup sweep FAILED: %s", e,
+                exc_info=True,
+            )
     except Exception as e:
         logger.warning(f"Scheduler startup failed (non-critical): {e}")
         # Surface this to the Health panel so the operator can read

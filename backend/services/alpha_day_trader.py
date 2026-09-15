@@ -2207,6 +2207,15 @@ async def run_alpha_day_trader_tick(
     except Exception as exc:  # noqa: BLE001
         logger.debug("[alpha_daytrader] orphan reaper skipped: %s", exc)
 
+    # Broker-authoritative position reconcile (throttled). Clears phantom
+    # ``open`` ledger rows the broker no longer holds so a stale row can't
+    # lock Alpha out of re-entering a symbol via dup_open_row.
+    try:
+        from services import alpha_position_reconciler
+        await alpha_position_reconciler.reconcile_open_positions_with_broker(db)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[alpha_daytrader] position reconcile skipped: %s", exc)
+
     return summary
 
 
