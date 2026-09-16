@@ -6,6 +6,8 @@ traded + blocked + failed.
 """
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from services.alpha_core_v2.config import Config
@@ -256,3 +258,55 @@ async def test_engine_exception_still_terminal_no_vanish():
     res = await eng.run_cycle(live=True)
     assert res.balanced
     assert res.failed >= 1
+
+
+@pytest.mark.asyncio
+async def test_two_simultaneous_same_symbol_single_submission():
+    """RACE GATE (pre-live): two identical SPY candidates arriving nearly
+    simultaneously must yield AT MOST ONE broker submission — even when the
+    broker never reports the position (worst case: both read held=False)."""
+    submissions = []
+
+    def submit_fn(sym, qty):
+        submissions.append((sym, qty))
+        # accepted, NOT yet a position — the exact race window.
+        return OrderResult(ok=True, order_id=f"OID-{len(submissions)}",
+                           status="accepted", filled_qty=0.0, requested_qty=qty)
+
+    b = FakeBroker(equity=1000.0, buying_power=1000.0, positions=[],
+                   submit_result=submit_fn)
+    eng = _engine(b)  # single shared engine (same process, two workers)
+    acct = b.get_account()
+    r1, r2 = await asyncio.gather(
+        eng._process("cyc", _cand("AAA"), acct, live=True),
+        eng._process("cyc", _cand("AAA"), acct, live=True),
+    )
+    assert len(submissions) == 1, f"expected 1 submission, got {len(submissions)}"
+    outcomes = {r1.outcome, r2.outcome}
+    assert Outcome.TRADED in outcomes
+    assert Outcome.BLOCKED in outcomes
+    blocked = r1 if r1.outcome is Outcome.BLOCKED else r2
+    assert blocked.reason == "concurrent_duplicate"
+
+
+@pytest.mark.asyncio
+async def test_many_simultaneous_same_symbol_single_submission():
+    """Stress the lock/idempotency key with 8 concurrent identical candidates."""
+    submissions = []
+
+    def submit_fn(sym, qty):
+        submissions.append((sym, qty))
+        return OrderResult(ok=True, order_id=f"OID-{len(submissions)}",
+                           status="filled", filled_qty=qty, fill_price=250.0,
+                           requested_qty=qty)
+
+    b = FakeBroker(equity=1000.0, buying_power=1000.0, positions=[],
+                   submit_result=submit_fn)
+    eng = _engine(b)
+    acct = b.get_account()
+    results = await asyncio.gather(*[
+        eng._process("cyc", _cand("AAA"), acct, live=True) for _ in range(8)
+    ])
+    assert len(submissions) == 1
+    assert sum(1 for r in results if r.outcome is Outcome.TRADED) == 1
+    assert sum(1 for r in results if r.outcome is Outcome.BLOCKED) == 7

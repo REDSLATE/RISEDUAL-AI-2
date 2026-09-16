@@ -1,5 +1,22 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-09-16 (Core v2 M1 FROZEN: concurrency/idempotency gate + pre-live validation)
+
+Per operator: froze Milestone 1 (no new strategy/diagnostic/broker/UI features). Added the one required pre-live test and validated production-readiness in preview.
+
+### Race/idempotency gate (the one thing added before live)
+- **Per-symbol `asyncio.Lock` + in-flight idempotency key** wrap the position-check→size→submit critical section in `engine.py`. The lock alone can't stop a double-submit (both workers can read `held=False` before either fills); the in-flight key blocks the second submit until the broker reflects the position (cleared on reconcile confirm/rejection).
+- Tests: two simultaneous identical candidates → **exactly 1 submission** (1 TRADED, 1 BLOCKED `concurrent_duplicate`); 8 simultaneous → 1 TRADED / 7 BLOCKED. **15/15 v2 tests green.**
+
+### Pre-live validation (preview, real Public account, execution OFF)
+Flag OFF ✓ · broker reachable ✓ · account $193.76/$173.02 ✓ · positions (6 real: PPCB/CYPH/VRPX/POET/QQQ/III) ✓ · full pipeline runs but never submits (`core_v2_disabled`) ✓ · sizing provenance on receipt (`desired→risk_cap→BP→reserve→affordable→final→qty`) ✓ · reconcile ✓ · invariant balanced ✓. Account already holds 6 ≥ max-5 → live entries correctly BLOCK at RISK (honest).
+
+### Deploy gate (operator-driven, NOT done by agent)
+1. Save to GitHub → redeploy. 2. Confirm prod runs the v2 build: `GET /api/admin/alpha-v2/health` returns 200 (404 = old build still live) + owner-auth `GET /api/admin/runtime/stamp` git_sha. 3. On prod, validate /health broker+account+position access and `POST /reconcile`. 4. Keep `ALPHA_CORE_V2=0` until all pass. 5. THEN arm canary: `ALPHA_CORE_V2=1` + one small `POST /run-cycle?live=true` during RTH. Judge by lifecycle correctness (candidate→…→receipt→reconcile), NOT P&L. M2 = discernment, and v2 EXIT/close logic (not in M1).
+
+---
+
+
 ## Latest Update — 2026-09-16 (Alpha Core v2 — Milestone 1: lean broker-authoritative engine, flag-gated OFF)
 
 ### Decision
