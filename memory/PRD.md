@@ -1,5 +1,36 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-09-16 (Alpha Core v2 — Milestone 1: lean broker-authoritative engine, flag-gated OFF)
+
+### Decision
+After root-causing the "total bust" as architectural debt (stale ledger + fixed sizing + veto sprawl), operator chose a controlled rebuild: **freeze Legacy, build a lean Core v2 beside it**, prove it against the known failure cases, then canary. Legacy keeps trading in production untouched.
+
+### Milestone 1 objective (met)
+> Core v2 independently discovers an opportunity, decides, dynamically sizes from the ACTUAL Public account, submits fractionally, confirms the broker result, reconciles, and accounts for every candidate exactly once — with **no dependency on Legacy's runtime state**.
+
+### Shipped — `services/alpha_core_v2/` (new, isolated package)
+- **Flag-gated OFF** — `ALPHA_CORE_V2=0` default. Own env namespace (`ALPHA_V2_*`), own SQLite store, own discovery. Does NOT touch Legacy's tick loop, ledger, env, or execution.
+- **Broker = authority; Alpha SQLite = history.** Positions/account/orders/fills always come from Public. `receipts.py` NEVER answers "is a position live" — that guardrail prevents rebuilding the stale-ledger failure.
+- **Lifecycle** FIND→DECIDE→RANK→RISK→ACCOUNT→POSITION→SIZE→ORDER→CONFIRM→RECONCILE (`engine.py`). Own minimal discovery (`discovery.py`: universe→snapshot→simple reclaim/strength pattern→rank) via the shared market-data pool, not Legacy's scanner.
+- **Strict terminal contract**: every candidate ends as exactly one of **TRADED | BLOCKED | FAILED**. **RESIZED is NOT terminal** — it's an execution transformation recorded on the receipt. Invariant `candidates_in == traded+blocked+failed` enforced in `run_cycle` (logs ACCOUNTING VIOLATION) and tested.
+- **First-class sizing provenance** (`sizing.py` → `SizePlan`): desired_notional / risk_capped_notional / buying_power / buying_power_reserve / affordable_notional / final_notional / quantity / resize_reason. `notional = min(desired ceiling, equity×alloc_pct, buying_power−reserve)`; fractional `floor` with $1-min bump. `PUBLIC`-style hard-reject only when `< $1`.
+- **Public-only broker port** (`broker.py` `BrokerPort` Protocol + `PublicBroker`). MooMoo pluggable later; NOT wired in M1. Pre-ORDER broker position check is also the **double-submission guard** (if Legacy holds it, broker reports held → v2 BLOCKS duplicate). Broker-unreachable → **FAIL CLOSED** (`broker_position_unknown`, never opens blind).
+- **4 minimal endpoints** (`routes/admin_alpha_v2.py`, owner-only): `GET /health`, `GET /receipts`, `POST /run-cycle?live=` (live refused unless `ALPHA_CORE_V2=1`), `POST /reconcile` (restart-safe). No dashboards/panels per directive.
+
+### Explicitly EXCLUDED from M1 (operator list)
+Dashboards, Why-Not-Trade, funnel, provenance/freshness panels, watchdog frameworks, Mongo event streams, HMM/regime + Edge Engine work, shorts, options, MooMoo execution, multi-broker routing, new strategy/pattern work.
+
+### Tests — 13/13 green (`tests/test_alpha_core_v2.py`), full failure corpus
+phantom-local-open/broker-flat (reconciles+trades), genuine broker position (dup block), broker-position lookup unavailable (fail closed), BP-below-desired (resize+trade w/ provenance), BP-below-$1 (below_minimum block), fractional rounding (never exceeds affordable), unusable quote, rejected order (FAILED), accepted+delayed fill (TRADED pending → reconcile finalizes), partial fill (remaining visible), flag-off (full pipeline, never submits), mixed-cycle accounting invariant, engine-exception still terminal. Backend healthy, routes 711→715, `/health` 401 unauth (mounted). No regressions.
+
+### Next (per operator): DON'T add features — canary
+Arm `ALPHA_CORE_V2=1`, run a deliberately small `POST /run-cycle?live=true` during RTH, verify entry→fill→position→exit→reconcile on real Public receipts, then retire Legacy. NOTE: exit path is not in M1 scope (entries + reconcile only) — closing logic is the immediate M2 item before a full round-trip canary.
+
+⚠️ Preview-verified. Save to GitHub to redeploy. Legacy remains the production engine until v2 canary passes.
+
+---
+
+
 ## Latest Update — 2026-09-15 (REGRESSION FIXED — "total bust": broker-authoritative positions + account-aware sizing)
 
 ### Root cause (regression bisect, not a redesign)
