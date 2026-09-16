@@ -7,12 +7,15 @@ traded + blocked + failed.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 import pytest
 
 from services.alpha_core_v2.config import Config
 from services.alpha_core_v2.contracts import (
-    AccountState, Candidate, OrderResult, Outcome, PositionState, Snapshot,
+    AccountState, Candidate, ExecutionQuote, OrderResult, Outcome,
+    PositionState, Snapshot,
 )
 from services.alpha_core_v2.engine import CoreV2Engine
 from services.alpha_core_v2.receipts import ReceiptStore
@@ -22,7 +25,8 @@ from services.alpha_core_v2.receipts import ReceiptStore
 class FakeBroker:
     def __init__(self, *, equity=1000.0, buying_power=1000.0, account_ok=True,
                  positions=None, positions_raise=False, submit_result=None,
-                 order_result=None):
+                 order_result=None, exec_price=250.0, quote_age_s=0.0,
+                 quote_none=False):
         self._equity = equity
         self._bp = buying_power
         self._account_ok = account_ok
@@ -30,6 +34,9 @@ class FakeBroker:
         self._positions_raise = positions_raise
         self._submit_result = submit_result
         self._order_result = order_result
+        self._exec_price = exec_price
+        self._quote_age_s = quote_age_s
+        self._quote_none = quote_none
         self.submitted = []
 
     def get_account(self):
@@ -41,6 +48,13 @@ class FakeBroker:
         if self._positions_raise:
             raise RuntimeError("positions endpoint 503")
         return list(self._positions)
+
+    def get_execution_quote(self, symbol):
+        if self._quote_none:
+            return None
+        ts = datetime.now(timezone.utc) - timedelta(seconds=self._quote_age_s)
+        return ExecutionQuote(symbol=symbol, price=Decimal(str(self._exec_price)),
+                              timestamp=ts, source="fake")
 
     def submit(self, symbol, qty, side="buy"):
         self.submitted.append((symbol, qty, side))
@@ -64,7 +78,7 @@ def _cfg(**over):
     base = dict(
         enabled=True, universe=["AAA"], desired_notional=350.0, alloc_pct=0.20,
         cash_reserve=5.0, min_trade=1.0, confidence_floor=0.55, max_positions=5,
-        db_path=":memory:",
+        quote_max_age_s=15.0, db_path=":memory:",
     )
     base.update(over)
     return Config(**base)
@@ -90,16 +104,14 @@ def _filled(symbol, qty):
 async def test_phantom_local_open_broker_flat_proceeds_and_trades():
     b = FakeBroker(positions=[], submit_result=_filled)  # broker flat
     eng = _engine(b)
-    # Seed a phantom "open" receipt so the store believes AAA is open.
     from services.alpha_core_v2.contracts import Receipt, Stage
     import time
     eng.store.save(Receipt("r0", "c0", "AAA", time.time_ns(), Outcome.TRADED,
-                            Stage.RECONCILE, position_status="open", order_id="old"))
+                            Stage.CONFIRM, position_status="open", order_id="old"))
     r = await eng._process("c1", _cand(), b.get_account(), live=True)
     assert r.outcome is Outcome.TRADED
-    assert r.reconciled_phantom is True          # store phantom cleared
-    assert "AAA" not in eng.store.open_position_symbols() or r.position_status == "open"
-    assert b.submitted, "should have submitted after clearing phantom"
+    assert r.reconciled_phantom is True
+    assert b.submitted
 
 
 @pytest.mark.asyncio
@@ -120,14 +132,34 @@ async def test_broker_position_lookup_unavailable_fails_closed():
     r = await eng._process("c1", _cand(), b.get_account(), live=True)
     assert r.outcome is Outcome.FAILED
     assert r.reason.startswith("broker_position_unknown")
-    assert not b.submitted, "must NOT open blind when holdings unknown"
+    assert not b.submitted
+
+
+@pytest.mark.asyncio
+async def test_execution_quote_unavailable_fails():
+    b = FakeBroker(positions=[], quote_none=True, submit_result=_filled)
+    eng = _engine(b)
+    r = await eng._process("c1", _cand(), b.get_account(), live=True)
+    assert r.outcome is Outcome.FAILED
+    assert r.reason == "execution_quote_unavailable"
+    assert not b.submitted
+
+
+@pytest.mark.asyncio
+async def test_stale_execution_quote_blocks():
+    b = FakeBroker(positions=[], quote_age_s=3600.0, submit_result=_filled)
+    eng = _engine(b)
+    r = await eng._process("c1", _cand(), b.get_account(), live=True)
+    assert r.outcome is Outcome.BLOCKED
+    assert r.reason.startswith("stale_execution_quote")
+    assert not b.submitted
 
 
 @pytest.mark.asyncio
 async def test_bp_below_desired_resizes_then_trades():
-    # equity 1000 -> 20% target = 200; bp only 173 -> spendable 168 binds.
+    # equity 1000 -> 20% target = 200; bp 173 -> spendable 168 binds.
     b = FakeBroker(equity=1000.0, buying_power=173.0, positions=[],
-                   submit_result=_filled)
+                   exec_price=250.0, submit_result=_filled)
     eng = _engine(b)
     r = await eng._process("c1", _cand(), b.get_account(), live=True)
     assert r.outcome is Outcome.TRADED
@@ -137,7 +169,10 @@ async def test_bp_below_desired_resizes_then_trades():
     assert s["affordable_notional"] == 168.0
     assert s["resized"] is True
     assert s["resize_reason"] == "buying_power"
-    assert 0 < s["final_notional"] <= 168.0 + 250.0 / 10000.0
+    assert r.order_acknowledged is True
+    assert r.position_reconciled is False       # fact #2 deferred
+    assert r.execution_price == 250.0
+    assert r.execution_quote_source == "fake"
 
 
 @pytest.mark.asyncio
@@ -151,24 +186,16 @@ async def test_bp_below_one_dollar_blocks_below_minimum():
 
 
 @pytest.mark.asyncio
-async def test_fractional_rounding_floors_not_over_affordable():
+async def test_size_recalculated_from_execution_mark_floors_affordable():
+    # Discovery mark 250, but the FRESH execution quote is 333 → sizing must
+    # use 333 (risk cap 200 binds) and floor so cost never exceeds affordable.
     b = FakeBroker(equity=1000.0, buying_power=1000.0, positions=[],
-                   submit_result=_filled)
-    # desired 350 -> risk cap 200 binds; mark 333 -> 200/333 = 0.6006 -> 0.6006
-    eng = _engine(b, cfg=_cfg(desired_notional=350.0), snaps=[Snapshot("AAA", 333.0)])
-    r = await eng._process("c1", _cand(mark=333.0), b.get_account(), live=True)
+                   exec_price=333.0, submit_result=_filled)
+    eng = _engine(b, snaps=[Snapshot("AAA", 250.0)])
+    r = await eng._process("c1", _cand(mark=250.0), b.get_account(), live=True)
     assert r.outcome is Outcome.TRADED
-    assert r.sizing["quantity"] * 333.0 <= 200.0 + 1e-6  # never exceeds affordable
-
-
-@pytest.mark.asyncio
-async def test_unusable_quote_blocks():
-    b = FakeBroker(positions=[], submit_result=_filled)
-    eng = _engine(b)
-    r = await eng._process("c1", _cand(mark=0.0), b.get_account(), live=True)
-    assert r.outcome is Outcome.BLOCKED
-    assert r.reason == "below_minimum_trade_size"  # mark<=0 -> qty 0 -> blocked
-    assert not b.submitted
+    assert r.execution_price == 333.0            # execution mark, not discovery
+    assert r.sizing["quantity"] * 333.0 <= 200.0 + 1e-6
 
 
 @pytest.mark.asyncio
@@ -189,15 +216,19 @@ async def test_accepted_order_delayed_fill_then_reconciles():
     b = FakeBroker(positions=[], submit_result=lambda s, q: accepted)
     eng = _engine(b)
     r = await eng._process("c1", _cand(), b.get_account(), live=True)
-    assert r.outcome is Outcome.TRADED        # accepted = traded (pending fill)
-    assert r.broker_confirmed is False
+    assert r.outcome is Outcome.TRADED
+    assert r.order_acknowledged is True          # fact #1: order ACK'd
+    assert r.position_reconciled is False        # fact #2: not yet verified
     assert r.position_status == "pending"
-    # Restart-safe reconcile: broker later reports the fill.
+    # Restart-safe reconcile: broker later reports the fill AND the position.
     b._order_result = OrderResult(ok=True, order_id="OID-9", status="filled",
                                   filled_qty=0.1, fill_price=250.0)
     b._positions = [PositionState("AAA", 0.1, "long")]
     out = await eng.reconcile_outstanding()
     assert out["ok"] and out["finalized"] == 1
+    saved = eng.store.recent(1)[0]
+    assert saved["position_reconciled"] is True
+    assert saved["reconciled_position_qty"] == 0.1
 
 
 @pytest.mark.asyncio
@@ -208,8 +239,8 @@ async def test_partial_fill_is_traded_with_remaining_visible():
     eng = _engine(b)
     r = await eng._process("c1", _cand(), b.get_account(), live=True)
     assert r.outcome is Outcome.TRADED
-    assert r.filled_qty == 0.05
-    assert r.requested_qty > r.filled_qty      # remaining is explicit
+    assert r.broker_reported_fill_qty == 0.05
+    assert r.requested_qty > r.broker_reported_fill_qty
 
 
 @pytest.mark.asyncio
@@ -219,36 +250,31 @@ async def test_flag_off_runs_full_pipeline_but_never_submits():
     r = await eng._process("c1", _cand(), b.get_account(), live=False)
     assert r.outcome is Outcome.BLOCKED
     assert r.reason == "core_v2_disabled"
-    assert r.sizing["quantity"] > 0           # sizing still computed + recorded
+    assert r.sizing["quantity"] > 0
+    assert r.execution_price == 250.0            # quote still fetched + recorded
     assert not b.submitted
 
 
 @pytest.mark.asyncio
 async def test_accounting_invariant_mixed_cycle():
-    # 3 candidates: one trades, one duplicate-blocks, one below-confidence.
     snaps = [
         Snapshot("AAA", 250.0, prev_close=245.0, pct_change=2.0, rvol=2.0),
         Snapshot("BBB", 100.0, prev_close=98.0, pct_change=2.0, rvol=2.0),
         Snapshot("CCC", 50.0, prev_close=49.9, pct_change=0.2, rvol=1.0),  # weak
     ]
     b = FakeBroker(equity=1000.0, buying_power=1000.0,
-                   positions=[PositionState("BBB", 0.3, "long")],  # BBB dup
+                   positions=[PositionState("BBB", 0.3, "long")],
                    submit_result=_filled)
     cfg = _cfg(universe=["AAA", "BBB", "CCC"])
     eng = CoreV2Engine(b, ReceiptStore(":memory:"), cfg, source=FakeSource(snaps))
     res = await eng.run_cycle(live=True)
-    assert res.candidates_in >= 2
-    assert res.balanced, (res.candidates_in, res.traded, res.blocked, res.failed)
-    assert res.candidates_in == res.traded + res.blocked + res.failed
+    assert res.candidates_in == 3
+    assert res.balanced
+    assert res.traded == 1 and res.blocked == 2 and res.failed == 0
 
 
 @pytest.mark.asyncio
 async def test_engine_exception_still_terminal_no_vanish():
-    class Boom(FakeBroker):
-        def get_positions(self):
-            raise KeyboardInterrupt  # not caught by _process's except
-    # Use a normal exception path instead: force account.ok True, positions ok,
-    # but submit raises an unexpected error type handled by run_cycle wrapper.
     class WeirdBroker(FakeBroker):
         def submit(self, symbol, qty, side="buy"):
             raise ValueError("kaboom")
@@ -262,36 +288,33 @@ async def test_engine_exception_still_terminal_no_vanish():
 
 @pytest.mark.asyncio
 async def test_two_simultaneous_same_symbol_single_submission():
-    """RACE GATE (pre-live): two identical SPY candidates arriving nearly
-    simultaneously must yield AT MOST ONE broker submission — even when the
-    broker never reports the position (worst case: both read held=False)."""
+    """RACE GATE: two identical candidates arriving nearly simultaneously must
+    yield AT MOST ONE broker submission — even if the broker never reports the
+    position (worst case: both read held=False)."""
     submissions = []
 
     def submit_fn(sym, qty):
         submissions.append((sym, qty))
-        # accepted, NOT yet a position — the exact race window.
         return OrderResult(ok=True, order_id=f"OID-{len(submissions)}",
                            status="accepted", filled_qty=0.0, requested_qty=qty)
 
     b = FakeBroker(equity=1000.0, buying_power=1000.0, positions=[],
                    submit_result=submit_fn)
-    eng = _engine(b)  # single shared engine (same process, two workers)
+    eng = _engine(b)
     acct = b.get_account()
     r1, r2 = await asyncio.gather(
         eng._process("cyc", _cand("AAA"), acct, live=True),
         eng._process("cyc", _cand("AAA"), acct, live=True),
     )
-    assert len(submissions) == 1, f"expected 1 submission, got {len(submissions)}"
+    assert len(submissions) == 1
     outcomes = {r1.outcome, r2.outcome}
-    assert Outcome.TRADED in outcomes
-    assert Outcome.BLOCKED in outcomes
+    assert Outcome.TRADED in outcomes and Outcome.BLOCKED in outcomes
     blocked = r1 if r1.outcome is Outcome.BLOCKED else r2
     assert blocked.reason == "concurrent_duplicate"
 
 
 @pytest.mark.asyncio
 async def test_many_simultaneous_same_symbol_single_submission():
-    """Stress the lock/idempotency key with 8 concurrent identical candidates."""
     submissions = []
 
     def submit_fn(sym, qty):

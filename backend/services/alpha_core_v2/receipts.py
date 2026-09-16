@@ -2,7 +2,8 @@
 
 Retains structured receipts / history ONLY. It NEVER answers "does a live
 position exist" — Public does. That is the guardrail against rebuilding the
-exact stale-ledger failure Legacy hit.
+exact stale-ledger failure Legacy hit. The store distinguishes two broker
+facts: order acknowledgement/fill vs. the subsequently reconciled position.
 """
 from __future__ import annotations
 
@@ -11,7 +12,6 @@ import logging
 import os
 import sqlite3
 import threading
-import time
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +30,17 @@ class ReceiptStore:
         with self._lock:
             self._conn.execute(
                 """CREATE TABLE IF NOT EXISTS receipts (
-                    receipt_id   TEXT PRIMARY KEY,
-                    cycle_id     TEXT,
-                    symbol       TEXT,
-                    created_ns   INTEGER,
-                    outcome      TEXT,
-                    order_id     TEXT,
-                    order_status TEXT,
-                    broker_confirmed INTEGER,
-                    position_status  TEXT,
-                    payload      TEXT
+                    receipt_id         TEXT PRIMARY KEY,
+                    cycle_id           TEXT,
+                    symbol             TEXT,
+                    created_ns         INTEGER,
+                    outcome            TEXT,
+                    order_id           TEXT,
+                    order_status       TEXT,
+                    order_acknowledged INTEGER,
+                    position_reconciled INTEGER,
+                    position_status    TEXT,
+                    payload            TEXT
                 )"""
             )
             self._conn.execute(
@@ -51,11 +52,12 @@ class ReceiptStore:
         d = receipt.to_dict()
         with self._lock:
             self._conn.execute(
-                "INSERT OR REPLACE INTO receipts VALUES (?,?,?,?,?,?,?,?,?,?)",
+                "INSERT OR REPLACE INTO receipts VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     d["receipt_id"], d["cycle_id"], d["symbol"], d["created_ns"],
                     d["outcome"], d.get("order_id"), d.get("order_status"),
-                    1 if d.get("broker_confirmed") else 0,
+                    1 if d.get("order_acknowledged") else 0,
+                    1 if d.get("position_reconciled") else 0,
                     d.get("position_status") or "",
                     json.dumps(d),
                 ),
@@ -79,11 +81,11 @@ class ReceiptStore:
         return {r["symbol"] for r in rows}
 
     def outstanding_orders(self) -> list[dict]:
-        """TRADED receipts whose fill isn't broker-confirmed yet."""
+        """TRADED receipts whose resulting POSITION isn't reconciled yet."""
         with self._lock:
             rows = self._conn.execute(
                 "SELECT payload FROM receipts WHERE outcome='TRADED' "
-                "AND broker_confirmed=0",
+                "AND position_reconciled=0",
             ).fetchall()
         return [json.loads(r["payload"]) for r in rows]
 
@@ -96,9 +98,9 @@ class ReceiptStore:
             self._conn.commit()
             return cur.rowcount or 0
 
-    def update_confirmation(self, receipt_id: str, *, broker_confirmed: bool,
-                            order_status: str, filled_qty: float,
-                            fill_price: float, position_status: str) -> None:
+    def update_reconciliation(self, receipt_id: str, *, position_reconciled: bool,
+                              reconciled_position_qty: float, order_status: str,
+                              position_status: str) -> None:
         with self._lock:
             row = self._conn.execute(
                 "SELECT payload FROM receipts WHERE receipt_id=?", (receipt_id,),
@@ -107,16 +109,15 @@ class ReceiptStore:
                 return
             d = json.loads(row["payload"])
             d.update({
-                "broker_confirmed": broker_confirmed,
+                "position_reconciled": position_reconciled,
+                "reconciled_position_qty": reconciled_position_qty,
                 "order_status": order_status,
-                "filled_qty": filled_qty,
-                "fill_price": fill_price,
                 "position_status": position_status,
             })
             self._conn.execute(
-                "UPDATE receipts SET broker_confirmed=?, order_status=?, "
+                "UPDATE receipts SET position_reconciled=?, order_status=?, "
                 "position_status=?, payload=? WHERE receipt_id=?",
-                (1 if broker_confirmed else 0, order_status, position_status,
+                (1 if position_reconciled else 0, order_status, position_status,
                  json.dumps(d), receipt_id),
             )
             self._conn.commit()

@@ -4,13 +4,15 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
+from decimal import Decimal
 from enum import Enum
 from typing import Any, Optional
 
 
 class Outcome(str, Enum):
     """The ONLY three terminal states a candidate may end in."""
-    TRADED = "TRADED"     # submitted AND accepted by the broker
+    TRADED = "TRADED"     # submitted AND acknowledged by the broker
     BLOCKED = "BLOCKED"   # Alpha chose not to submit (never reached broker)
     FAILED = "FAILED"     # submission attempted but errored / rejected
 
@@ -22,6 +24,7 @@ class Stage(str, Enum):
     RISK = "RISK"
     ACCOUNT = "ACCOUNT"
     POSITION = "POSITION"
+    QUOTE = "QUOTE"
     SIZE = "SIZE"
     ORDER = "ORDER"
     CONFIRM = "CONFIRM"
@@ -43,12 +46,30 @@ class Snapshot:
 @dataclass
 class Candidate:
     symbol: str
-    mark: float
+    mark: float          # DISCOVERY mark — answers "is this interesting?"
     score: float
     pattern: str
     confidence: float
     reason: str = ""
     meta: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ExecutionQuote:
+    """Small, purpose-built EXECUTION quote — answers "what price am I about
+    to buy at?" A different data contract from the discovery mark. Public is
+    the source of truth. No freshness subsystem: exists + positive + age."""
+    symbol: str
+    price: Decimal
+    timestamp: datetime
+    source: str
+
+    def age_seconds(self, now: Optional[datetime] = None) -> float:
+        now = now or datetime.now(timezone.utc)
+        ts = self.timestamp
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return max(0.0, (now - ts).total_seconds())
 
 
 @dataclass
@@ -111,7 +132,7 @@ class Receipt:
     pattern: str = ""
     score: float = 0.0
     confidence: float = 0.0
-    mark: float = 0.0
+    mark: float = 0.0                       # discovery mark
     # ACCOUNT (broker truth)
     equity: float = 0.0
     buying_power: float = 0.0
@@ -119,16 +140,23 @@ class Receipt:
     broker_held: Optional[bool] = None
     broker_qty: float = 0.0
     reconciled_phantom: bool = False
+    # QUOTE (broker truth, execution-time)
+    execution_price: float = 0.0
+    execution_quote_source: str = ""
+    execution_quote_age_s: float = 0.0
     # SIZE (provenance)
     sizing: dict = field(default_factory=dict)
-    # ORDER / CONFIRM (broker truth)
+    # ORDER (broker fact #1 — the order was acknowledged / filled)
     order_id: Optional[str] = None
     order_status: str = ""
     requested_qty: float = 0.0
-    filled_qty: float = 0.0
+    order_acknowledged: bool = False
+    broker_reported_fill_qty: float = 0.0
     fill_price: float = 0.0
-    broker_confirmed: bool = False
-    position_status: str = ""  # open | reconciled_flat | pending
+    # RECONCILE (broker fact #2 — the resulting account position, verified later)
+    position_reconciled: bool = False
+    reconciled_position_qty: float = 0.0
+    position_status: str = ""  # open | pending | reconciled_flat
 
     def to_dict(self) -> dict:
         d = asdict(self)

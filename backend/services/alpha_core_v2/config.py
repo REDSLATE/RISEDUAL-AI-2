@@ -42,6 +42,7 @@ class Config:
     min_trade: float             # broker minimum order amount
     confidence_floor: float
     max_positions: int
+    quote_max_age_s: float
     db_path: str
 
     @classmethod
@@ -61,6 +62,7 @@ class Config:
             min_trade=_f("ALPHA_V2_MIN_TRADE_USD", 1.0, 0.01),
             confidence_floor=_f("ALPHA_V2_CONFIDENCE_FLOOR", 0.55, 0.0, 1.0),
             max_positions=_i("ALPHA_V2_MAX_CONCURRENT_POSITIONS", 5),
+            quote_max_age_s=_f("ALPHA_V2_QUOTE_MAX_AGE_S", 15.0, 0.5),
             db_path=(os.environ.get("ALPHA_V2_DB") or "").strip()
             or os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
                 os.path.abspath(__file__)))), "data", "alpha_core_v2.sqlite"),

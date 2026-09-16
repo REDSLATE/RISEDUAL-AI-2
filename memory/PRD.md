@@ -1,5 +1,27 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-09-16 (Core v2 M1 hardening: fresh execution quote + explicit fill/position facts — FROZEN)
+
+Two execution-correctness items added before the freeze (not feature creep):
+
+### #4 — Fresh execution quote + re-size (Public = source of truth)
+- New `ExecutionQuote(symbol, price: Decimal, timestamp, source)` contract (small; NO freshness subsystem). `PublicBroker.get_execution_quote()` uses Public's native `get_quote()`.
+- Critical section reordered: lock → **idempotency** → position → risk → **QUOTE** → **re-SIZE from execution mark** → affordability invariant → submit. Quote unavailable → **FAILED `execution_quote_unavailable`**; too old (`> ALPHA_V2_QUOTE_MAX_AGE_S`, default 15s) → **BLOCKED `stale_execution_quote`**. Discovery mark answers "interesting?"; execution quote answers "what price am I buying at?" — distinct contracts.
+- Sizing is recomputed from the execution mark; affordability invariant enforced: `estimated_cost = qty×exec_price ≤ spendable_bp` (guards the $1-min bump; else BLOCK `notional_exceeds_buying_power`). Quote price/source/age recorded on every receipt from QUOTE on.
+
+### #5 — Fill vs position facts made explicit (kept deferred, as designed)
+- Removed ambiguous `broker_confirmed`. Receipt now carries two distinct broker facts: `order_acknowledged` + `broker_reported_fill_qty` (fact #1, at submit) and `position_reconciled` + `reconciled_position_qty` (fact #2, established later by `reconcile_outstanding`). Store column `position_reconciled`; `outstanding_orders` = TRADED & not-yet-reconciled.
+
+### Verified
+- 16/16 v2 tests (added `execution_quote_unavailable`→FAILED, `stale_execution_quote`→BLOCKED, size-from-execution-mark; delayed-fill asserts fact#1 True / fact#2 False → reconcile sets fact#2). Full regression 63/63 (v2 + reconciler + executor + round-trip + silent-gaps). Backend healthy, routes 715, v2 route 401 unauth.
+- Real-Public preview (execution OFF): exec quote AAPL $331.82 `source=public` age 869s (market closed) → correctly BLOCKED `stale_execution_quote`; discovery mark (999) ignored in favor of Public price. During RTH, liquid names quote sub-second.
+
+### FROZEN. Next info comes from a small real Public canary, not features.
+Canary note: if a thinly-traded name false-blocks on staleness during RTH (Public timestamp = last-trade time), tune `ALPHA_V2_QUOTE_MAX_AGE_S`. M1 gap remains: v2 EXIT/close (M2 prep) for a full round-trip.
+
+---
+
+
 ## Latest Update — 2026-09-16 (Core v2 M1 FROZEN: concurrency/idempotency gate + pre-live validation)
 
 Per operator: froze Milestone 1 (no new strategy/diagnostic/broker/UI features). Added the one required pre-live test and validated production-readiness in preview.

@@ -1,16 +1,18 @@
 """Alpha Core v2 — broker port + Public adapter.
 
-The broker is authoritative for money, positions, orders and fills. The port
-is a narrow protocol so MooMoo can plug in later (Milestone 2) without the
-engine changing. Milestone 1 ships Public only.
+The broker is authoritative for money, positions, orders, fills AND the
+execution-time quote. The port is a narrow protocol so MooMoo can plug in
+later without the engine changing. Milestone 1 ships Public only.
 """
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Any, Optional, Protocol
 
 from services.alpha_core_v2.contracts import (
-    AccountState, OrderResult, PositionState,
+    AccountState, ExecutionQuote, OrderResult, PositionState,
 )
 
 logger = logging.getLogger(__name__)
@@ -19,6 +21,7 @@ logger = logging.getLogger(__name__)
 class BrokerPort(Protocol):
     def get_account(self) -> AccountState: ...
     def get_positions(self) -> list[PositionState]: ...
+    def get_execution_quote(self, symbol: str) -> Optional[ExecutionQuote]: ...
     def submit(self, symbol: str, qty: float, side: str = "buy") -> OrderResult: ...
     def get_order(self, order_id: str) -> OrderResult: ...
 
@@ -40,6 +43,36 @@ def classify_status(raw_status: str) -> str:
     if s in _DEAD:
         return "rejected"
     return "unknown"
+
+
+def _parse_ts(raw: Any) -> datetime:
+    """Best-effort parse of a broker quote timestamp → aware datetime.
+
+    Falls back to 'now' (age ~0) when the broker gives nothing parseable —
+    a live POST quote is inherently near-real-time; we still record source.
+    """
+    if raw is None or raw == "":
+        return datetime.now(timezone.utc)
+    # epoch seconds / milliseconds
+    if isinstance(raw, (int, float)):
+        val = float(raw)
+        if val > 1e12:  # ms
+            val /= 1000.0
+        try:
+            return datetime.fromtimestamp(val, tz=timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            return datetime.now(timezone.utc)
+    s = str(raw).strip()
+    try:
+        if s.isdigit():
+            val = float(s)
+            if val > 1e12:
+                val /= 1000.0
+            return datetime.fromtimestamp(val, tz=timezone.utc)
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except (ValueError, OSError):
+        return datetime.now(timezone.utc)
 
 
 class PublicBroker:
@@ -71,8 +104,8 @@ class PublicBroker:
             return AccountState(0.0, 0.0, 0.0, ok=False, error=str(exc)[:160])
 
     def get_positions(self) -> list[PositionState]:
-        # Raises on failure — the engine treats an unknown holdings state
-        # as FAIL-CLOSED (never opens blind).
+        # Raises on failure — the engine treats an unknown holdings state as
+        # FAIL-CLOSED (never opens blind).
         raw = self._c.get_positions() or []
         out: list[PositionState] = []
         for p in raw:
@@ -83,6 +116,27 @@ class PublicBroker:
             side = (p.get("side") or "").lower() or ("long" if qty >= 0 else "short")
             out.append(PositionState(symbol=sym, qty=abs(qty), side=side))
         return out
+
+    def get_execution_quote(self, symbol: str) -> Optional[ExecutionQuote]:
+        """Fresh Public quote at execution time. None if missing/unusable."""
+        try:
+            q = self._c.get_quote(symbol)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[core-v2:public] get_quote %s failed: %s", symbol, exc)
+            return None
+        if not q:
+            return None
+        try:
+            price = Decimal(str(q.get("price") or q.get("last") or "0"))
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+        if price <= 0:
+            return None
+        return ExecutionQuote(
+            symbol=symbol.upper(), price=price,
+            timestamp=_parse_ts(q.get("timestamp")),
+            source=str(q.get("source") or "public"),
+        )
 
     def submit(self, symbol: str, qty: float, side: str = "buy") -> OrderResult:
         try:

@@ -1,12 +1,17 @@
 """Alpha Core v2 — the engine. One candidate → exactly one terminal outcome.
 
-Lifecycle: FIND → DECIDE → RANK → RISK → ACCOUNT → POSITION → SIZE → ORDER
-→ CONFIRM → RECONCILE.
+Lifecycle: FIND → DECIDE → RANK → RISK → ACCOUNT → [lock] IDEMPOTENCY →
+POSITION → RISK(positions) → QUOTE → SIZE → ORDER → [/lock] CONFIRM →
+RECEIPT → RECONCILE.
 
-Broker-authoritative throughout: positions, account and fills come from the
-broker, never from the SQLite store. The pre-ORDER position check is also the
-double-submission guard — if Legacy (or a prior v2 order) already opened the
-symbol, the broker reports it held and v2 BLOCKS as a duplicate.
+Broker-authoritative throughout: account, positions, the execution quote and
+fills all come from the broker, never from the SQLite store. The pre-ORDER
+position check + per-symbol lock + in-flight idempotency key together prevent
+double submission (incl. against Legacy, which the broker reports as held).
+
+Two broker facts are kept DISTINCT on the receipt:
+  * order_acknowledged / broker_reported_fill_qty  (the order ACK / fill)
+  * position_reconciled / reconciled_position_qty  (verified account position)
 """
 from __future__ import annotations
 
@@ -37,18 +42,16 @@ class CoreV2Engine:
         self.config = config
         self.source = source or MarketDataPoolSource()
         # Per-symbol execution lock + in-flight idempotency key. Together
-        # they guarantee that two candidates for the same symbol arriving
-        # nearly simultaneously produce AT MOST ONE broker submission — the
-        # lock alone can't, because both workers could read held=False
-        # before either order becomes a position.
+        # they guarantee two candidates for the same symbol arriving nearly
+        # simultaneously produce AT MOST ONE broker submission — the lock
+        # alone can't, because both workers could read held=False before
+        # either order becomes a position.
         self._symbol_locks: dict[str, asyncio.Lock] = {}
         self._inflight: dict[str, str] = {}
 
     def _symbol_lock(self, symbol: str) -> asyncio.Lock:
-        # dict.setdefault is atomic under a single-threaded event loop.
         return self._symbol_locks.setdefault(symbol, asyncio.Lock())
 
-    # ── one terminal per candidate ──────────────────────────────────
     def _receipt(self, cycle_id: str, cand: Candidate, outcome: Outcome,
                  stage: Stage, reason: str, **extra) -> Receipt:
         r = Receipt(
@@ -69,19 +72,18 @@ class CoreV2Engine:
             return self._receipt(cycle_id, cand, Outcome.BLOCKED, Stage.DECIDE,
                                   f"below_confidence_floor:{cand.confidence:.2f}<"
                                   f"{cfg.confidence_floor:.2f}")
-        # ACCOUNT — broker truth (fetched once per cycle).
+        # ACCOUNT — broker truth (fetched once per cycle, checked before lock).
         if not account.ok:
             return self._receipt(cycle_id, cand, Outcome.FAILED, Stage.ACCOUNT,
                                   f"account_unavailable:{account.error}")
 
-        # ── Critical section: position-check → size → submit is serialized
-        # per symbol and idempotency-guarded so simultaneous same-symbol
-        # candidates cannot double-submit. ──────────────────────────────
+        # ── Critical section: idempotency → position → risk → quote → size
+        # → submit, serialized per symbol. ──────────────────────────────
         async with self._symbol_lock(cand.symbol):
-            # Idempotency key: an outstanding successful submit this process
+            # IDEMPOTENCY — an outstanding successful submit this process
             # (broker may not yet report the position) blocks a second one.
             if cand.symbol in self._inflight:
-                return self._receipt(cycle_id, cand, Outcome.BLOCKED, Stage.POSITION,
+                return self._receipt(cycle_id, cand, Outcome.BLOCKED, Stage.ORDER,
                                      "concurrent_duplicate",
                                      order_id=self._inflight[cand.symbol])
 
@@ -94,12 +96,11 @@ class CoreV2Engine:
                                      broker_held=None)
             held = next((p for p in positions
                          if p.symbol == cand.symbol and p.qty > 0), None)
-            # Phantom reconcile: v2's store thinks it's open but broker is flat —
+            # Phantom reconcile: store thinks it's open but broker is flat —
             # correct the record, never let it block (SQLite is not authority).
             reconciled = False
             if held is None and cand.symbol in self.store.open_position_symbols():
-                n = self.store.mark_reconciled_flat(cand.symbol)
-                reconciled = n > 0
+                reconciled = self.store.mark_reconciled_flat(cand.symbol) > 0
                 if reconciled:
                     logger.info("[core-v2] %s phantom store row reconciled (broker flat)",
                                 cand.symbol)
@@ -114,52 +115,79 @@ class CoreV2Engine:
                                      f"max_positions:{len(positions)}>={cfg.max_positions}",
                                      broker_held=False, reconciled_phantom=reconciled)
 
-            # SIZE — account-aware, provenance recorded.
+            # QUOTE — fresh execution price from the broker (source of truth).
+            # Discovery mark answered "interesting?"; this answers "what price
+            # am I about to buy at?" — a different data contract.
+            quote = self.broker.get_execution_quote(cand.symbol)
+            if quote is None:
+                return self._receipt(cycle_id, cand, Outcome.FAILED, Stage.QUOTE,
+                                     "execution_quote_unavailable", broker_held=False,
+                                     reconciled_phantom=reconciled)
+            age = quote.age_seconds()
+            exec_price = float(quote.price)
+            qmeta = dict(execution_price=exec_price,
+                         execution_quote_source=quote.source,
+                         execution_quote_age_s=round(age, 3),
+                         broker_held=False, reconciled_phantom=reconciled,
+                         equity=account.equity, buying_power=account.buying_power)
+            if age > cfg.quote_max_age_s:
+                return self._receipt(cycle_id, cand, Outcome.BLOCKED, Stage.QUOTE,
+                                     f"stale_execution_quote:{age:.1f}s>"
+                                     f"{cfg.quote_max_age_s:.1f}s", **qmeta)
+
+            # SIZE — recalculated from the EXECUTION mark, not the discovery mark.
             plan = plan_size(
                 desired_notional=cfg.desired_notional, equity=account.equity,
                 buying_power=account.buying_power, alloc_pct=cfg.alloc_pct,
-                cash_reserve=cfg.cash_reserve, mark=cand.mark, min_trade=cfg.min_trade,
+                cash_reserve=cfg.cash_reserve, mark=exec_price, min_trade=cfg.min_trade,
             )
             if plan.quantity <= 0:
                 return self._receipt(cycle_id, cand, Outcome.BLOCKED, Stage.SIZE,
-                                     "below_minimum_trade_size", broker_held=False,
-                                     equity=account.equity, buying_power=account.buying_power,
-                                     reconciled_phantom=reconciled, sizing=plan.to_dict())
+                                     "below_minimum_trade_size", sizing=plan.to_dict(),
+                                     **qmeta)
 
-            # Flag-gated: below the canary flag we run the FULL pipeline and
+            # Affordability invariant: estimated submission cost must never
+            # exceed spendable buying power (guards the $1-min bump edge).
+            spendable_bp = max(0.0, account.buying_power - cfg.cash_reserve)
+            estimated_cost = plan.quantity * exec_price
+            if estimated_cost > spendable_bp + 1e-6:
+                return self._receipt(cycle_id, cand, Outcome.BLOCKED, Stage.SIZE,
+                                     f"notional_exceeds_buying_power:"
+                                     f"{estimated_cost:.2f}>{spendable_bp:.2f}",
+                                     sizing=plan.to_dict(), **qmeta)
+
+            # Flag-gated: below the canary flag run the FULL pipeline and
             # record exactly what we WOULD trade, but never submit.
             if not live:
                 return self._receipt(cycle_id, cand, Outcome.BLOCKED, Stage.ORDER,
-                                     "core_v2_disabled", broker_held=False,
-                                     equity=account.equity, buying_power=account.buying_power,
-                                     reconciled_phantom=reconciled, sizing=plan.to_dict(),
-                                     requested_qty=plan.quantity)
+                                     "core_v2_disabled", sizing=plan.to_dict(),
+                                     requested_qty=plan.quantity, **qmeta)
 
-            # ORDER — submit fractional. Reserve the idempotency key BEFORE
-            # releasing the lock so a racing sibling cannot also submit.
+            # ORDER — submit fractional. Reserve the idempotency key on success
+            # BEFORE releasing the lock so a racing sibling cannot also submit.
             result = self.broker.submit(cand.symbol, plan.quantity, "buy")
             if not result.ok:
                 return self._receipt(cycle_id, cand, Outcome.FAILED, Stage.ORDER,
-                                     result.error or "order_failed", broker_held=False,
-                                     equity=account.equity, buying_power=account.buying_power,
-                                     reconciled_phantom=reconciled, sizing=plan.to_dict(),
-                                     requested_qty=plan.quantity,
-                                     order_id=result.order_id, order_status=result.status)
+                                     result.error or "order_failed",
+                                     sizing=plan.to_dict(), requested_qty=plan.quantity,
+                                     order_id=result.order_id,
+                                     order_status=result.status, **qmeta)
             self._inflight[cand.symbol] = result.order_id or "pending"
 
-        # CONFIRM + RECONCILE — broker result is truth (outside the lock).
-        filled = result.status in ("filled", "partially_filled")
-        broker_confirmed = filled and result.filled_qty > 0
-        position_status = "open" if filled else "pending"
+        # CONFIRM — broker fact #1 (order ACK / fill). Position reconciliation
+        # (fact #2) is deferred to reconcile_outstanding(), by design.
         return self._receipt(
-            cycle_id, cand, Outcome.TRADED, Stage.RECONCILE,
-            "filled" if filled else "accepted_pending_fill",
+            cycle_id, cand, Outcome.TRADED, Stage.CONFIRM,
+            "filled" if result.status in ("filled", "partially_filled")
+            else "accepted_pending_fill",
             broker_held=False, equity=account.equity,
             buying_power=account.buying_power, reconciled_phantom=reconciled,
-            sizing=plan.to_dict(), requested_qty=plan.quantity,
-            order_id=result.order_id, order_status=result.status,
-            filled_qty=result.filled_qty, fill_price=result.fill_price,
-            broker_confirmed=broker_confirmed, position_status=position_status,
+            execution_price=exec_price, execution_quote_source=quote.source,
+            execution_quote_age_s=round(age, 3), sizing=plan.to_dict(),
+            requested_qty=plan.quantity, order_id=result.order_id,
+            order_status=result.status, order_acknowledged=True,
+            broker_reported_fill_qty=result.filled_qty, fill_price=result.fill_price,
+            position_reconciled=False, position_status="pending",
         )
 
     async def run_cycle(self, *, live: Optional[bool] = None) -> CycleResult:
@@ -177,7 +205,7 @@ class CoreV2Engine:
                 # a candidate can never vanish into an unaccounted state.
                 logger.warning("[core-v2] %s processing crashed: %s",
                                cand.symbol, exc, exc_info=True)
-                r = self._receipt(cycle_id, cand, Outcome.FAILED, Stage.RECONCILE,
+                r = self._receipt(cycle_id, cand, Outcome.FAILED, Stage.CONFIRM,
                                   f"engine_exception:{str(exc)[:120]}")
             receipts.append(r)
         result = CycleResult(
@@ -199,11 +227,12 @@ class CoreV2Engine:
         return result
 
     async def reconcile_outstanding(self) -> dict:
-        """Restart-safe: finalize TRADED receipts whose fill wasn't confirmed
-        by re-asking the broker for the order + current positions."""
+        """Restart-safe: establish the resulting POSITION (broker fact #2) for
+        TRADED receipts whose position isn't reconciled, by re-asking the broker
+        for the order + current holdings."""
         pending = self.store.outstanding_orders()
         try:
-            held = {p.symbol for p in self.broker.get_positions()}
+            held = {p.symbol: p.qty for p in self.broker.get_positions()}
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "reason": f"positions_unavailable:{str(exc)[:120]}"}
         finalized = 0
@@ -212,21 +241,22 @@ class CoreV2Engine:
             if not oid:
                 continue
             res = self.broker.get_order(oid)
+            sym = d["symbol"]
             if res.status in ("filled", "partially_filled") and res.filled_qty > 0:
-                self.store.update_confirmation(
-                    d["receipt_id"], broker_confirmed=True, order_status=res.status,
-                    filled_qty=res.filled_qty, fill_price=res.fill_price,
-                    position_status="open" if d["symbol"] in held else "reconciled_flat",
+                pos_qty = held.get(sym, 0.0)
+                self.store.update_reconciliation(
+                    d["receipt_id"], position_reconciled=True,
+                    reconciled_position_qty=pos_qty, order_status=res.status,
+                    position_status="open" if pos_qty > 0 else "reconciled_flat",
                 )
-                # Broker now reflects the position — its authoritative dup
-                # check takes over; release the in-flight idempotency key.
-                self._inflight.pop(d["symbol"], None)
+                self._inflight.pop(sym, None)
                 finalized += 1
             elif res.status == "rejected":
-                self.store.update_confirmation(
-                    d["receipt_id"], broker_confirmed=False, order_status="rejected",
-                    filled_qty=0.0, fill_price=0.0, position_status="reconciled_flat",
+                self.store.update_reconciliation(
+                    d["receipt_id"], position_reconciled=True,
+                    reconciled_position_qty=0.0, order_status="rejected",
+                    position_status="reconciled_flat",
                 )
-                self._inflight.pop(d["symbol"], None)
+                self._inflight.pop(sym, None)
                 finalized += 1
         return {"ok": True, "pending": len(pending), "finalized": finalized}
