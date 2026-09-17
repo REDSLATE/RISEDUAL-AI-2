@@ -128,6 +128,7 @@ class Receipt:
     outcome: Outcome
     stage_reached: Stage
     reason: str = ""
+    action: str = "open"                   # open | close
     # DECIDE
     pattern: str = ""
     score: float = 0.0

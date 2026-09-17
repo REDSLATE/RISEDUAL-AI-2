@@ -1,5 +1,22 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-09-17 (Safety interlock + v2 EXIT path — built & tested)
+
+### 1. Legacy↔v2 safety interlock
+- `public_equity_live_executor._live_exec_enabled()` now returns **False whenever `ALPHA_CORE_V2=1`**. Arming v2 forces Legacy's broker-submit gate off → the two engines can never submit to the same account at once. v2 becomes sole submitter the moment it's armed. Tested (`test_interlock_v2_armed_disables_legacy`).
+
+### 2. v2 EXIT / close path (M2 prep)
+- `CoreV2Engine.close_position(symbol)` — broker-authoritative: sells the qty **Public actually reports** (never the ledger's belief). One terminal per call: TRADED (close submitted) | BLOCKED (`already_flat` / `close_in_flight`) | FAILED (broker error). Per-symbol lock + `_closing` in-flight guard prevents double-sell. `close_all_positions()` flattens everything.
+- `reconcile_outstanding()` extended to finalize close receipts (broker flat → `position_reconciled`, `position_status=reconciled_flat`, clears `_closing`). Receipt gains `action` field (open|close).
+- Endpoints (owner-only, require `ALPHA_CORE_V2=1`): `POST /api/admin/alpha-v2/close?symbol=`, `POST /close-all`.
+
+### Verified
+- v2 suite 21 tests (added interlock + 4 close-path: sell-broker-qty→reconcile, already_flat, broker-error→FAILED, double-close→close_in_flight). Full run with executor/silent-gaps: 52/52. Backend healthy, routes 717, close endpoints 401 unauth.
+- Note: this enables a full v2 round-trip (entry→fill→reconcile→exit→reconcile). Still preview-only until Save to GitHub → redeploy. On prod, arming `ALPHA_CORE_V2=1` now BOTH disables Legacy AND enables v2 (clean handoff).
+
+---
+
+
 ## Latest Update — 2026-09-16 (Operational: Legacy trading STOPPED, real losses triaged, v2 alloc → 3%)
 
 ### What happened (live, production)

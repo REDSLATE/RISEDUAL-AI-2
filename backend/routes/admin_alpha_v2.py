@@ -113,3 +113,42 @@ async def reconcile(request: Request) -> dict:
         raise HTTPException(status_code=503, detail="Public broker not connected")
     engine = CoreV2Engine(broker, _store(cfg), cfg)
     return await engine.reconcile_outstanding()
+
+
+@router.post("/close")
+async def close_position(request: Request, symbol: str = Query(...)) -> dict:
+    """Exit one position (broker-authoritative sell). Requires the canary
+    flag armed, same as live entries."""
+    await _require_owner(request)
+    cfg = _config()
+    if not cfg.enabled:
+        raise HTTPException(
+            status_code=409,
+            detail="close refused — set ALPHA_CORE_V2=1 to arm v2 execution",
+        )
+    from services.alpha_core_v2.broker import PublicBroker
+    from services.alpha_core_v2.engine import CoreV2Engine
+    broker = await PublicBroker.from_db(db)
+    if broker is None:
+        raise HTTPException(status_code=503, detail="Public broker not connected")
+    engine = CoreV2Engine(broker, _store(cfg), cfg)
+    r = await engine.close_position(symbol.upper())
+    return r.to_dict()
+
+
+@router.post("/close-all")
+async def close_all(request: Request) -> dict:
+    await _require_owner(request)
+    cfg = _config()
+    if not cfg.enabled:
+        raise HTTPException(
+            status_code=409,
+            detail="close refused — set ALPHA_CORE_V2=1 to arm v2 execution",
+        )
+    from services.alpha_core_v2.broker import PublicBroker
+    from services.alpha_core_v2.engine import CoreV2Engine
+    broker = await PublicBroker.from_db(db)
+    if broker is None:
+        raise HTTPException(status_code=503, detail="Public broker not connected")
+    engine = CoreV2Engine(broker, _store(cfg), cfg)
+    return await engine.close_all_positions()

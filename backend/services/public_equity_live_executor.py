@@ -121,7 +121,16 @@ def _live_exec_enabled() -> bool:
     ``backend/.env`` after redeploy + connect. Unset → every call
     to :func:`maybe_route_live` returns ``None`` without touching
     Public.com's API.
+
+    SAFETY INTERLOCK (2026-09): if Alpha Core v2 is armed
+    (``ALPHA_CORE_V2=1``), Legacy execution is FORCED OFF so the two
+    engines can never submit to the same broker account simultaneously.
+    v2 becomes the sole submitter the moment it is armed.
     """
+    if (os.environ.get("ALPHA_CORE_V2") or "").strip() in (
+        "1", "true", "True", "yes", "on",
+    ):
+        return False
     return (os.environ.get("RISEDUAL_PUBLIC_LIVE_EXEC") or "").strip() in (
         "1", "true", "True", "yes", "on",
     )

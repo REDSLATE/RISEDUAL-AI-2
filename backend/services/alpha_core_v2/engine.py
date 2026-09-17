@@ -48,6 +48,7 @@ class CoreV2Engine:
         # either order becomes a position.
         self._symbol_locks: dict[str, asyncio.Lock] = {}
         self._inflight: dict[str, str] = {}
+        self._closing: set[str] = set()
 
     def _symbol_lock(self, symbol: str) -> asyncio.Lock:
         return self._symbol_locks.setdefault(symbol, asyncio.Lock())
@@ -190,6 +191,68 @@ class CoreV2Engine:
             position_reconciled=False, position_status="pending",
         )
 
+    async def close_position(self, symbol: str, *, reason: str = "operator") -> Receipt:
+        """Exit a position — broker-authoritative. Sells the qty Public
+        actually reports (never what the ledger 'thinks'). One terminal per
+        call: TRADED (close submitted) | BLOCKED (nothing to close / in flight)
+        | FAILED (broker error)."""
+        symbol = (symbol or "").upper()
+        cid = new_id("close")
+        cand = Candidate(symbol=symbol, mark=0.0, score=0.0, pattern="",
+                         confidence=0.0, reason=reason)
+
+        async with self._symbol_lock(symbol):
+            if symbol in self._closing:
+                return self._receipt(cid, cand, Outcome.BLOCKED, Stage.ORDER,
+                                     "close_in_flight", action="close")
+            # Broker truth: what do we actually hold?
+            try:
+                positions = self.broker.get_positions()
+            except Exception as exc:  # noqa: BLE001
+                return self._receipt(cid, cand, Outcome.FAILED, Stage.POSITION,
+                                     f"broker_position_unknown:{str(exc)[:120]}",
+                                     action="close", broker_held=None)
+            held = next((p for p in positions
+                         if p.symbol == symbol and p.qty > 0), None)
+            if held is None:
+                # Nothing to sell — reconcile any stale 'open' store rows flat.
+                self.store.mark_reconciled_flat(symbol)
+                return self._receipt(cid, cand, Outcome.BLOCKED, Stage.POSITION,
+                                     "already_flat", action="close",
+                                     broker_held=False, position_status="reconciled_flat")
+            result = self.broker.submit(symbol, held.qty, "sell")
+            if not result.ok:
+                return self._receipt(cid, cand, Outcome.FAILED, Stage.ORDER,
+                                     result.error or "close_failed", action="close",
+                                     broker_held=True, broker_qty=held.qty,
+                                     requested_qty=held.qty, order_id=result.order_id,
+                                     order_status=result.status)
+            self._closing.add(symbol)
+
+        return self._receipt(
+            cid, cand, Outcome.TRADED, Stage.CONFIRM,
+            "close_filled" if result.status in ("filled", "partially_filled")
+            else "close_accepted_pending", action="close",
+            broker_held=True, broker_qty=held.qty, requested_qty=held.qty,
+            order_id=result.order_id, order_status=result.status,
+            order_acknowledged=True, broker_reported_fill_qty=result.filled_qty,
+            fill_price=result.fill_price, position_reconciled=False,
+            position_status="closing",
+        )
+
+    async def close_all_positions(self, *, reason: str = "operator") -> dict:
+        """Flatten every position the broker reports. Returns per-symbol outcomes."""
+        try:
+            positions = self.broker.get_positions()
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "reason": f"positions_unavailable:{str(exc)[:120]}"}
+        out = []
+        for p in positions:
+            r = await self.close_position(p.symbol, reason=reason)
+            out.append({"symbol": p.symbol, "outcome": r.outcome.value,
+                        "reason": r.reason})
+        return {"ok": True, "closed": out}
+
     async def run_cycle(self, *, live: Optional[bool] = None) -> CycleResult:
         cycle_id = new_id("cyc")
         if live is None:
@@ -250,6 +313,7 @@ class CoreV2Engine:
                     position_status="open" if pos_qty > 0 else "reconciled_flat",
                 )
                 self._inflight.pop(sym, None)
+                self._closing.discard(sym)
                 finalized += 1
             elif res.status == "rejected":
                 self.store.update_reconciliation(
@@ -258,5 +322,6 @@ class CoreV2Engine:
                     position_status="reconciled_flat",
                 )
                 self._inflight.pop(sym, None)
+                self._closing.discard(sym)
                 finalized += 1
         return {"ok": True, "pending": len(pending), "finalized": finalized}

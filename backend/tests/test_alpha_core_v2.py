@@ -333,3 +333,72 @@ async def test_many_simultaneous_same_symbol_single_submission():
     assert len(submissions) == 1
     assert sum(1 for r in results if r.outcome is Outcome.TRADED) == 1
     assert sum(1 for r in results if r.outcome is Outcome.BLOCKED) == 7
+
+
+def test_interlock_v2_armed_disables_legacy(monkeypatch):
+    """Safety interlock: Legacy's live-exec gate must be OFF whenever v2 is armed."""
+    from services.public_equity_live_executor import _live_exec_enabled
+    monkeypatch.setenv("RISEDUAL_PUBLIC_LIVE_EXEC", "1")
+    monkeypatch.delenv("ALPHA_CORE_V2", raising=False)
+    assert _live_exec_enabled() is True
+    monkeypatch.setenv("ALPHA_CORE_V2", "1")
+    assert _live_exec_enabled() is False   # v2 armed → Legacy forced off
+
+
+@pytest.mark.asyncio
+async def test_close_position_sells_broker_qty_then_reconciles():
+    def sell(s, q):
+        return OrderResult(ok=True, order_id="SELL-1", status="filled",
+                           filled_qty=q, fill_price=250.0, requested_qty=q)
+    b = FakeBroker(positions=[PositionState("AAA", 0.2, "long")], submit_result=sell)
+    eng = _engine(b)
+    r = await eng.close_position("AAA")
+    assert r.outcome is Outcome.TRADED and r.action == "close"
+    assert b.submitted[-1][0] == "AAA" and abs(b.submitted[-1][1] - 0.2) < 1e-9
+    assert b.submitted[-1][2] == "sell"     # broker-reported qty, sell side
+    assert "AAA" in eng._closing
+    # reconcile: broker now flat → position reconciled, guard cleared
+    b._order_result = OrderResult(ok=True, order_id="SELL-1", status="filled",
+                                  filled_qty=0.2, fill_price=250.0)
+    b._positions = []
+    out = await eng.reconcile_outstanding()
+    assert out["finalized"] == 1
+    assert "AAA" not in eng._closing
+    saved = eng.store.recent(1)[0]
+    assert saved["position_reconciled"] is True
+    assert saved["position_status"] == "reconciled_flat"
+
+
+@pytest.mark.asyncio
+async def test_close_when_flat_blocks_already_flat():
+    b = FakeBroker(positions=[])
+    eng = _engine(b)
+    r = await eng.close_position("AAA")
+    assert r.outcome is Outcome.BLOCKED and r.reason == "already_flat"
+    assert not b.submitted
+
+
+@pytest.mark.asyncio
+async def test_close_broker_error_fails():
+    b = FakeBroker(positions=[PositionState("AAA", 0.2, "long")],
+                   submit_result=lambda s, q: OrderResult(
+                       ok=False, status="rejected", error="broker_rejected",
+                       requested_qty=q))
+    eng = _engine(b)
+    r = await eng.close_position("AAA")
+    assert r.outcome is Outcome.FAILED and r.action == "close"
+
+
+@pytest.mark.asyncio
+async def test_double_close_blocked_in_flight():
+    def accepted(s, q):
+        return OrderResult(ok=True, order_id="SELL-9", status="accepted",
+                           filled_qty=0.0, requested_qty=q)
+    b = FakeBroker(positions=[PositionState("AAA", 0.2, "long")], submit_result=accepted)
+    eng = _engine(b)
+    r1, r2 = await asyncio.gather(eng.close_position("AAA"), eng.close_position("AAA"))
+    assert len(b.submitted) == 1
+    outs = {r1.outcome, r2.outcome}
+    assert Outcome.TRADED in outs and Outcome.BLOCKED in outs
+    blocked = r1 if r1.outcome is Outcome.BLOCKED else r2
+    assert blocked.reason == "close_in_flight"
