@@ -1,5 +1,26 @@
 # RISEDUAL AI — PRD
 
+## Latest Update — 2026-09-16 (Operational: Legacy trading STOPPED, real losses triaged, v2 alloc → 3%)
+
+### What happened (live, production)
+- v2 was deployed to prod, but **Legacy was still live-trading** (two engines: `alpha_daytrader` + `day_trade_scanner`) — "freeze" had meant code-freeze only; the first-session fix had *restored* Legacy trading. Both engines + this preview pod share the same Public account + Mongo.
+- Legacy took ~10 entries; **8 losers, all illiquid microcaps chased late** in a `choppy_meanrevert` regime. Worst: **RETO −88.89% (−$36.36)** and **MEDS −29%** (large-caps AMD/GOOGL/WMT/QQQ only noise-red). Root = **selection**, not execution: Legacy has no liquidity/quality universe filter. This is the Milestone-2 discernment gap.
+- The Legacy dashboards showed "0 setups / 0 executed / 0 trades" while orders filled — observability rot; trades were real in `equity_live_trades` + at the broker. Confirms why we don't trust/fix Legacy panels.
+
+### Actions taken
+- **Preview pod live trading DISABLED** (safety — it was submitting to the real account): `RISEDUAL_PUBLIC_LIVE_EXEC=0`, `RISEDUAL_ALPHA_DAYTRADER_EXECUTE=0`, `RISEDUAL_ALPHA_DAYTRADER_SCAN=0` in `/app/backend/.env` + restart. Verified `_live_exec_enabled()=False` (hard broker-submit gate closed). NOTE: daytrader SCAN/EXECUTE also have a **DB override** set via the UI ("Live Execution OVERRIDE") that outranks env — harmless now because the submit gate blocks downstream, but on **prod** the decisive levers are the UI **Live Execution toggle OFF** and/or `RISEDUAL_PUBLIC_LIVE_EXEC=0`.
+- **v2 per-name allocation lowered 20% → 3%** (`ALPHA_V2_ALLOC_PCT=0.03` in preview .env). On ~$258 equity = ~$7.74/name. Operator must set the same on prod.
+- Verified v2 functions against the **live** account (dry, execution off): 6 candidates → all BLOCKED, balanced=True; 5 below_confidence_floor, 1 fully-qualified blocked only by `max_positions` (account full: 12 ≥ cap 5). v2 surfaced ZERO penny stocks — its curated large-cap universe can't buy RETO/MEDS.
+
+### Still open / next
+- **Prod: stop Legacy** (UI Live Execution OFF + `RISEDUAL_PUBLIC_LIVE_EXEC=0`), set `ALPHA_V2_ALLOC_PCT=0.03`, arm `ALPHA_CORE_V2=1`.
+- **Manually close RETO/MEDS** on Public to stop the bleed (v2 has no exit path — M2).
+- **Canary blocker:** account holds 12 ≥ v2 max-5. Free slots (close junk) or raise `ALPHA_V2_MAX_CONCURRENT_POSITIONS` for the canary.
+- **Proposed (not yet built):** (a) safety interlock — Legacy refuses to submit when `ALPHA_CORE_V2=1`; (b) v2 EXIT/close path (M2 prep) for a full round-trip.
+
+---
+
+
 ## Latest Update — 2026-09-16 (Core v2 M1 hardening: fresh execution quote + explicit fill/position facts — FROZEN)
 
 Two execution-correctness items added before the freeze (not feature creep):
