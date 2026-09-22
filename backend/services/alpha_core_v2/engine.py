@@ -110,11 +110,12 @@ class CoreV2Engine:
                                      "duplicate_position", broker_held=True,
                                      broker_qty=held.qty, reconciled_phantom=reconciled)
 
-            # RISK — max concurrent positions (broker-truth count).
-            if len(positions) >= cfg.max_positions:
-                return self._receipt(cycle_id, cand, Outcome.BLOCKED, Stage.RISK,
-                                     f"max_positions:{len(positions)}>={cfg.max_positions}",
-                                     broker_held=False, reconciled_phantom=reconciled)
+            # NOTE (2026-06): there is NO position-count limit here by design.
+            # Alpha's portfolio rule is account-percentage sizing — existing
+            # positions constrain the next trade ONLY through remaining buying
+            # power (checked in SIZE below), never through a count of names.
+            # The former ALPHA_V2_MAX_CONCURRENT_POSITIONS gate was a regression
+            # from that model and has been removed.
 
             # QUOTE — fresh execution price from the broker (source of truth).
             # Discovery mark answered "interesting?"; this answers "what price
@@ -136,11 +137,13 @@ class CoreV2Engine:
                                      f"stale_execution_quote:{age:.1f}s>"
                                      f"{cfg.quote_max_age_s:.1f}s", **qmeta)
 
-            # SIZE — recalculated from the EXECUTION mark, not the discovery mark.
+            # SIZE — account-percentage: alloc_pct of AVAILABLE buying power,
+            # recalculated from the EXECUTION mark. Bounded by the absolute
+            # per-trade risk cap and affordability/reserve.
             plan = plan_size(
-                desired_notional=cfg.desired_notional, equity=account.equity,
                 buying_power=account.buying_power, alloc_pct=cfg.alloc_pct,
-                cash_reserve=cfg.cash_reserve, mark=exec_price, min_trade=cfg.min_trade,
+                per_trade_cap=cfg.desired_notional, cash_reserve=cfg.cash_reserve,
+                mark=exec_price, min_trade=cfg.min_trade,
             )
             if plan.quantity <= 0:
                 return self._receipt(cycle_id, cand, Outcome.BLOCKED, Stage.SIZE,

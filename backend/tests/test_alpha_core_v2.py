@@ -77,7 +77,7 @@ class FakeSource:
 def _cfg(**over):
     base = dict(
         enabled=True, universe=["AAA"], desired_notional=350.0, alloc_pct=0.20,
-        cash_reserve=5.0, min_trade=1.0, confidence_floor=0.55, max_positions=5,
+        cash_reserve=5.0, min_trade=1.0, confidence_floor=0.55,
         quote_max_age_s=15.0, db_path=":memory:",
     )
     base.update(over)
@@ -156,23 +156,40 @@ async def test_stale_execution_quote_blocks():
 
 
 @pytest.mark.asyncio
-async def test_bp_below_desired_resizes_then_trades():
-    # equity 1000 -> 20% target = 200; bp 173 -> spendable 168 binds.
+async def test_allocation_is_pct_of_available_buying_power():
+    # Account-percentage rule: allocate alloc_pct(20%) of AVAILABLE buying
+    # power (173), NOT of equity(1000) and NOT a fixed target. 173*0.20=34.6.
     b = FakeBroker(equity=1000.0, buying_power=173.0, positions=[],
                    exec_price=250.0, submit_result=_filled)
     eng = _engine(b)
     r = await eng._process("c1", _cand(), b.get_account(), live=True)
     assert r.outcome is Outcome.TRADED
     s = r.sizing
-    assert s["desired_notional"] == 350.0
-    assert s["risk_capped_notional"] == 200.0
-    assert s["affordable_notional"] == 168.0
-    assert s["resized"] is True
-    assert s["resize_reason"] == "buying_power"
+    assert s["spendable_balance"] == 173.0
+    assert s["allocation_pct"] == 0.20
+    assert s["allocation_notional"] == 34.6           # 3%-style base * buying power
+    assert s["risk_cap_notional"] == 350.0            # existing per-trade cap preserved
+    assert s["final_notional"] == 34.6                # allocation binds, cap does not
+    assert s["quantity"] == 0.1384                    # 34.6 / 250, floored to 4dp
+    assert s["remaining_buying_power"] == 138.4       # 173 - 34.6
+    assert s["resized"] is False                      # nothing bound below the allocation
     assert r.order_acknowledged is True
-    assert r.position_reconciled is False       # fact #2 deferred
+    assert r.position_reconciled is False             # fact #2 deferred
     assert r.execution_price == 250.0
     assert r.execution_quote_source == "fake"
+
+
+@pytest.mark.asyncio
+async def test_owning_positions_does_not_block_new_entry():
+    # 6 unrelated positions held, plenty of buying power → a fresh symbol must
+    # still trade. Existing positions constrain ONLY via buying power now.
+    held = [PositionState(f"H{i}", 0.1, "long") for i in range(6)]
+    b = FakeBroker(equity=5000.0, buying_power=5000.0, positions=held,
+                   exec_price=250.0, submit_result=_filled)
+    eng = _engine(b)
+    r = await eng._process("c1", _cand("AAA"), b.get_account(), live=True)
+    assert r.outcome is Outcome.TRADED
+    assert b.submitted
 
 
 @pytest.mark.asyncio

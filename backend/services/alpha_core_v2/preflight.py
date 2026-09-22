@@ -219,22 +219,19 @@ async def run_preflight(db: Any) -> dict:
         f"— arming after a READY verdict is the intended next step")
 
     add("sizing_config", "pass",
-        f"alloc_pct={cfg.alloc_pct} max_positions={cfg.max_positions} "
-        f"cash_reserve=${cfg.cash_reserve} min_trade=${cfg.min_trade} "
-        f"confidence_floor={cfg.confidence_floor} desired_notional=${cfg.desired_notional} "
+        f"alloc_pct={cfg.alloc_pct} (of AVAILABLE buying power) "
+        f"per_trade_risk_cap=${cfg.desired_notional} cash_reserve=${cfg.cash_reserve} "
+        f"min_trade=${cfg.min_trade} confidence_floor={cfg.confidence_floor} "
         f"quote_max_age_s={cfg.quote_max_age_s}",
-        alloc_pct=cfg.alloc_pct, max_positions=cfg.max_positions,
+        alloc_pct=cfg.alloc_pct, per_trade_risk_cap=cfg.desired_notional,
         cash_reserve=cfg.cash_reserve, min_trade=cfg.min_trade,
-        confidence_floor=cfg.confidence_floor, desired_notional=cfg.desired_notional)
+        confidence_floor=cfg.confidence_floor)
 
-    if positions is not None and len(positions) >= cfg.max_positions:
-        add("position_slot_capacity", "warn",
-            f"{len(positions)} held >= max_positions {cfg.max_positions}: V2 will "
-            f"BLOCK new entries (max_positions) until slots free — close positions "
-            f"or raise ALPHA_V2_MAX_CONCURRENT_POSITIONS. Not an arm blocker.")
-    elif positions is not None:
-        add("position_slot_capacity", "pass",
-            f"{len(positions)}/{cfg.max_positions} position slots used")
+    add("no_position_count_limit", "pass",
+        f"{len(positions or [])} position(s) held — this is NOT a limit. Alpha "
+        f"sizes account-percentage; existing positions constrain the next trade "
+        f"ONLY through remaining buying power. ALPHA_V2_MAX_CONCURRENT_POSITIONS "
+        f"has been removed from the entry decision path.")
 
     emit_raw = (os.environ.get("RISEDUAL_EMIT_INTENTS_TO_MC") or "").strip().lower()
     emit_off = emit_raw in _FALSEY
@@ -242,5 +239,59 @@ async def run_preflight(db: Any) -> dict:
         f"RISEDUAL_EMIT_INTENTS_TO_MC={emit_raw or '(unset)'} "
         f"standalone={os.environ.get('RISEDUAL_STANDALONE_MODE', '(unset)')} — "
         f"{'MC intent route SEVERED' if emit_off else 'still enabled; set to 0 to sever (and set it in the prod deploy panel)'}")
+
+    # ── ORDER-READY simulation (NO submit) — prove an otherwise-valid
+    # candidate can progress ACCOUNT → POSITION → SIZE → ORDER_READY using
+    # live account facts, placing no order. ────────────────────────────
+    from services.alpha_core_v2.sizing import plan_size
+    held_syms = {p.symbol for p in positions} if positions is not None else set()
+    probe = next((s for s in cfg.universe if s not in held_syms), None)
+    chain: dict = {"ACCOUNT": None, "POSITION": None, "SIZE": None, "ORDER_READY": None}
+    if not acct.ok:
+        add("order_ready_simulation", "fail", "ACCOUNT stage unavailable", chain=chain)
+    elif probe is None:
+        add("order_ready_simulation", "warn",
+            "every configured universe symbol is already held — cannot demo a "
+            "fresh entry (a duplicate-position/buying-power outcome, NOT a count cap)",
+            chain=chain)
+    else:
+        chain["ACCOUNT"] = (f"equity=${acct.equity:.2f} "
+                            f"buying_power=${acct.buying_power:.2f}")
+        chain["POSITION"] = f"{probe} not held → eligible (no count gate)"
+        pq = broker.get_execution_quote(probe)
+        if pq is None:
+            add("order_ready_simulation", "warn",
+                f"{probe}: no execution quote right now (market likely closed) — "
+                f"chain proven through POSITION; SIZE/ORDER_READY need a live quote",
+                chain=chain)
+        else:
+            px = float(pq.price)
+            plan = plan_size(
+                buying_power=acct.buying_power, alloc_pct=cfg.alloc_pct,
+                per_trade_cap=cfg.desired_notional, cash_reserve=cfg.cash_reserve,
+                mark=px, min_trade=cfg.min_trade,
+            )
+            chain["SIZE"] = plan.to_dict()
+            spendable_bp = max(0.0, acct.buying_power - cfg.cash_reserve)
+            est_cost = plan.quantity * px
+            if plan.quantity > 0 and est_cost <= spendable_bp + 1e-6:
+                chain["ORDER_READY"] = (
+                    f"WOULD submit BUY {plan.quantity} {probe} @ ${px:.4f} "
+                    f"= ${est_cost:.2f} — NO ORDER PLACED")
+                add("order_ready_simulation", "pass",
+                    f"{probe}: ACCOUNT → POSITION → SIZE → ORDER_READY. "
+                    f"{cfg.alloc_pct:.0%} of ${acct.buying_power:.2f} = "
+                    f"${plan.allocation_notional:.2f} → {plan.quantity} sh @ "
+                    f"${px:.4f} = ${plan.final_notional:.2f}; "
+                    f"remaining_buying_power=${plan.remaining_buying_power:.2f}. "
+                    f"NO ORDER SUBMITTED.",
+                    chain=chain)
+            else:
+                add("order_ready_simulation", "warn",
+                    f"{probe}: sized to {plan.quantity} sh "
+                    f"(${plan.final_notional:.2f}) — below broker minimum / "
+                    f"unaffordable at this balance. BLOCK below_minimum_trade_size "
+                    f"is the correct outcome (a capital constraint, not a count cap).",
+                    chain=chain)
 
     return verdict()

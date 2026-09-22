@@ -90,16 +90,23 @@ class PositionState:
 
 @dataclass
 class SizePlan:
-    """First-class sizing provenance — every step is explicit so
-    '$350 desired → $168 affordable → 0.xxxx shares' is never a mystery."""
-    desired_notional: float
-    risk_capped_notional: float
-    buying_power: float
-    buying_power_reserve: float
-    affordable_notional: float
-    final_notional: float
-    quantity: float
-    resize_reason: Optional[str] = None
+    """First-class sizing provenance — account-percentage semantics.
+
+    The portfolio rule is: allocate ``allocation_pct`` of the currently
+    available/spendable broker buying power to each new trade, bounded by
+    the absolute per-trade risk cap and by affordability/reserve. Every step
+    is explicit so '$229.28 spendable → 3% → $6.88 → 0.xxxx shares' is never
+    a mystery. Existing positions constrain Alpha ONLY through remaining
+    buying power — never through a position count."""
+    spendable_balance: float        # broker-authoritative available buying power
+    allocation_pct: float           # fraction of spendable per new trade (e.g. 0.03)
+    allocation_notional: float      # spendable_balance * allocation_pct
+    risk_cap_notional: float        # absolute per-trade ceiling (existing risk cap)
+    final_notional: float           # actual $ committed by the sized order
+    execution_price: float          # broker execution-time mark used to size
+    quantity: float                 # fractional shares
+    remaining_buying_power: float   # buying_power - final_notional (post-trade)
+    resize_reason: Optional[str] = None  # what bound below the 3% allocation
     resized: bool = False
 
     def to_dict(self) -> dict:

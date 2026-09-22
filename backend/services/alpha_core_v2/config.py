@@ -36,12 +36,11 @@ DEFAULT_UNIVERSE = [
 class Config:
     enabled: bool
     universe: list
-    desired_notional: float      # what the strategy wants (ceiling)
-    alloc_pct: float             # max fraction of equity per position
+    desired_notional: float      # absolute per-trade risk cap (ceiling)
+    alloc_pct: float             # fraction of AVAILABLE buying power per new trade
     cash_reserve: float          # cash kept unspent
     min_trade: float             # broker minimum order amount
     confidence_floor: float
-    max_positions: int
     quote_max_age_s: float
     db_path: str
 
@@ -61,7 +60,6 @@ class Config:
             cash_reserve=_f("ALPHA_V2_CASH_RESERVE_USD", 5.0, 0.0),
             min_trade=_f("ALPHA_V2_MIN_TRADE_USD", 1.0, 0.01),
             confidence_floor=_f("ALPHA_V2_CONFIDENCE_FLOOR", 0.55, 0.0, 1.0),
-            max_positions=_i("ALPHA_V2_MAX_CONCURRENT_POSITIONS", 5),
             quote_max_age_s=_f("ALPHA_V2_QUOTE_MAX_AGE_S", 15.0, 0.5),
             db_path=(os.environ.get("ALPHA_V2_DB") or "").strip()
             or os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(

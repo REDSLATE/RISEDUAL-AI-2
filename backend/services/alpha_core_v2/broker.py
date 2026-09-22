@@ -165,10 +165,13 @@ class PublicBroker:
 def _normalize_order(resp: dict, *, requested_qty: float) -> OrderResult:
     oid = resp.get("id") or resp.get("order_id") or resp.get("orderId")
     status = classify_status(resp.get("status") or resp.get("state") or "")
-    filled = float(resp.get("filled_qty") or resp.get("filledQty") or 0.0)
+    filled = float(
+        resp.get("filled_qty") or resp.get("filledQty")
+        or resp.get("filledQuantity") or 0.0
+    )
     price = float(
-        resp.get("fillPrice") or resp.get("fill_price")
-        or resp.get("avgPrice") or resp.get("price") or 0.0
+        resp.get("fillPrice") or resp.get("fill_price") or resp.get("avgPrice")
+        or resp.get("averagePrice") or resp.get("price") or 0.0
     )
     ok = status in ("filled", "partially_filled", "accepted") and bool(oid)
     return OrderResult(

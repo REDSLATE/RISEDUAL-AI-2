@@ -61,10 +61,12 @@ async def health(request: Request) -> dict:
         "enabled": cfg.enabled,
         "universe_size": len(cfg.universe),
         "sizing": {
-            "desired_notional": cfg.desired_notional,
+            "allocation_base": "available_buying_power",
             "alloc_pct": cfg.alloc_pct,
+            "per_trade_risk_cap": cfg.desired_notional,
             "cash_reserve": cfg.cash_reserve,
             "min_trade": cfg.min_trade,
+            "position_count_limit": None,
         },
         "broker_reachable": broker_ok,
         "account": account,

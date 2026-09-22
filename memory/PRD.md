@@ -6371,3 +6371,20 @@ Per operator spec: parallel with Public.com · US equities + options schema · l
 **Prod action still required (deploy panel, not code):** set `RISEDUAL_EMIT_INTENTS_TO_MC=0` in the production env. To arm v2: set `ALPHA_CORE_V2=1` (forces Legacy off) then `POST /api/admin/alpha-v2/run-cycle?live=true`.
 
 **Files:** NEW `backend/services/alpha_core_v2/preflight.py`; MOD `backend/sovereign/intent_bridge.py`, `backend/routes/admin_alpha_v2.py`, `backend/tests/conftest.py`, `backend/.env`, `backend/pyproject.toml` (black config).
+
+## 2026-06 — Core v2 account-percentage sizing restored (position-count limit removed)
+
+**Directive:** MAX_CONCURRENT_POSITIONS=5 was a regression, not a safety limit. Alpha's rule = allocate 3% of AVAILABLE buying power per new trade; owning positions constrains only via remaining buying power, never a count.
+
+**Done:**
+- REMOVED the `max_positions` gate from the v2 entry path (`engine.py` RISK stage) and the `max_positions`/`ALPHA_V2_MAX_CONCURRENT_POSITIONS` knob from `config.py`. Not replaced with any other count limit.
+- Rewrote `sizing.py::plan_size` to account-percentage semantics: allocation base = broker-authoritative available buying power × `alloc_pct` (0.03), bounded by the absolute per-trade risk cap (`desired_notional`/`ALPHA_V2_MAX_NOTIONAL_USD`) and affordability/reserve, then fractional-floored with broker-min bump. Preserved: broker-authoritative BP, 3% calc, per-trade cap, affordability/reserve, fractional sizing, min-order, duplicate/idempotency, quote freshness, all entry/safety gates.
+- Redesigned `SizePlan` to record on every candidate: `spendable_balance, allocation_pct, allocation_notional, risk_cap_notional, final_notional, execution_price, quantity, remaining_buying_power` (+ resize provenance). Stored in `receipt.sizing`.
+- Completed `PublicTradingService.get_order()` → `GET /trading/{accountId}/order/{orderId}` (docs-verified schema: orderId/status/filledQuantity/averagePrice). Broadened `_normalize_order` to read `filledQuantity`/`averagePrice`. Post-fill `reconcile_outstanding()` now finalizes cleanly.
+- Extended preflight with a no-submit ACCOUNT→POSITION→SIZE→ORDER_READY live simulation + `no_position_count_limit` check; `reconcile_order_status_api` now passes.
+
+**Live preflight (account 5LG34065):** READY_TO_ARM, 0 warnings, 0 blockers. Simulation: 3% of $229.28 = $6.88 → 0.0088 SPY @ ~$773 = ~$6.80, remaining_bp ~$222.47, NO ORDER PLACED. Matches the operator's $6.88 expectation.
+
+**Tests:** test_alpha_core_v2 rewritten for new sizing + added `test_owning_positions_does_not_block_new_entry`; 65+46 targeted tests green.
+
+**Files:** MOD `alpha_core_v2/{engine,sizing,contracts,config,broker,preflight}.py`, `services/broker_service.py` (get_order), `routes/admin_alpha_v2.py` (health label), `tests/test_alpha_core_v2.py`.

@@ -1183,6 +1183,36 @@ class PublicTradingService:
             })
             return []
 
+    def get_order(self, order_id: str) -> Optional[dict]:
+        """Fetch a single order's status (Public fact #2 for reconciliation).
+
+        ``GET /userapigateway/trading/{accountId}/order/{orderId}`` — the
+        documented status endpoint. Returns the raw order dict (carrying
+        ``orderId``, ``status``, ``filledQuantity``, ``averagePrice``) or
+        ``None`` on auth/HTTP failure or not-found. Read-only.
+        """
+        try:
+            headers = self._auth_headers()
+            if headers is None:
+                return None
+            r = requests.get(
+                f"{self.base_url}/trading/{self.account_id}/order/{order_id}",
+                headers=headers, timeout=10,
+            )
+            if r.status_code == 404:
+                return None
+            r.raise_for_status()
+            return r.json() if r.content else None
+        except Exception as e:
+            log_error(logger, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "context": "broker_public",
+                "method": "get_order",
+                "order_id": order_id,
+            })
+            return None
+
     def cancel_order(self, order_id: str) -> bool:
         try:
             headers = self._auth_headers()
