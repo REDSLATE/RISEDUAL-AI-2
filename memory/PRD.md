@@ -6388,3 +6388,10 @@ Per operator spec: parallel with Public.com · US equities + options schema · l
 **Tests:** test_alpha_core_v2 rewritten for new sizing + added `test_owning_positions_does_not_block_new_entry`; 65+46 targeted tests green.
 
 **Files:** MOD `alpha_core_v2/{engine,sizing,contracts,config,broker,preflight}.py`, `services/broker_service.py` (get_order), `routes/admin_alpha_v2.py` (health label), `tests/test_alpha_core_v2.py`.
+
+## 2026-06 — Operator armed Core v2 (flag set in codebase .env; live trigger HELD)
+- Account `5LG34065` confirmed by operator as the intended production Public account.
+- Set `ALPHA_CORE_V2=1` in `/app/backend/.env` (operator choice 2b). Preview health reports enabled:true; Legacy interlocked OFF; verified no scheduler/background task fires the v2 engine — `run_cycle` is manual-only via `/api/admin/alpha-v2/run-cycle`. Live canary trigger is HELD pending operator go.
+- Confirmed `load_dotenv` has no `override=True`, so prod deploy-panel secrets take precedence (operator sets `RISEDUAL_EMIT_INTENTS_TO_MC=0` there).
+- Platform guidance (support): committed .env reaches prod as fallback; recommended operator also add `ALPHA_CORE_V2=1` to deploy-panel Custom Keys for instant panel-level disarm of the live-trading flag.
+- Keep `RISEDUAL_PUBLIC_LIVE_EXEC=0` (Legacy off). No thresholds/allocation/freshness/chasing changes made.
