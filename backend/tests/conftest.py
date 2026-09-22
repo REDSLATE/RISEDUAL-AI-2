@@ -72,6 +72,19 @@ def _disable_standalone_mode_for_tests(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _enable_mc_emission_for_tests(monkeypatch):
+    """2026-06: ``RISEDUAL_EMIT_INTENTS_TO_MC=0`` was set in preview .env
+    to sever the stale Alpha→MC intent route (Alpha is standalone, MC is
+    offline). ``intent_bridge.emit_intent_from_consensus`` now honours this
+    flag as a master kill switch. The emission-behaviour tests
+    (test_intent_bridge, test_opinion_emission, etc.) were written to assert
+    the wire path fires, so restore the historical default (ON) here. Tests
+    that specifically assert the severed behaviour setenv it to "0" themselves.
+    """
+    monkeypatch.setenv("RISEDUAL_EMIT_INTENTS_TO_MC", "1")
+
+
+@pytest.fixture(autouse=True)
 def _reset_kill_switch():
     """Isolate the module-level `ai_core.kill_switch.kill_switch`
     singleton between tests.

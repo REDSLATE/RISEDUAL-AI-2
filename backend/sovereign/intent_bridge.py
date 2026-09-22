@@ -476,6 +476,22 @@ async def emit_intent_from_consensus(
     always populates the seven canonical keys; sentinel values fill
     in when the upstream quote provider is unavailable.
     """
+    # ── Alpha→MC master kill switch (2026-06) ────────────────────────
+    # Alpha is standalone; MC has been a dead dependency for months.
+    # RISEDUAL_EMIT_INTENTS_TO_MC is the single authoritative switch for
+    # the ENTIRE emission surface (remote MC POST *and* the mc2 local
+    # rewrite). Set to a falsey value → this chokepoint returns None and
+    # NOTHING downstream fires. Unset/truthy → historical behaviour is
+    # preserved verbatim, so the code path stays intact for revival.
+    _emit_flag = (os.environ.get("RISEDUAL_EMIT_INTENTS_TO_MC") or "").strip().lower()
+    if _emit_flag in ("0", "false", "no", "off"):
+        logger.info(
+            "[intent-bridge] emission disabled (RISEDUAL_EMIT_INTENTS_TO_MC=%s) "
+            "— Alpha standalone, MC route severed; skipping symbol=%s",
+            _emit_flag, receipt.get("symbol"),
+        )
+        return None
+
     # Build the emission kwargs first — non-directional verdicts
     # short-circuit the intent path but still fire an opinion so the
     # discussion layer sees Alpha's reasoning even on HOLD ticks.

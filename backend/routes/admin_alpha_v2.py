@@ -72,6 +72,21 @@ async def health(request: Request) -> dict:
     }
 
 
+@router.get("/preflight")
+async def preflight(request: Request) -> dict:
+    """READ-ONLY arm preflight against the live Public account.
+
+    Verifies the full Core v2 execution surface (auth, account, buying
+    power, positions, live quote + freshness, reconciliation, order-endpoint
+    availability, idempotency, hardware kill switch, all interlocks) WITHOUT
+    submitting any order. Returns ``READY_TO_ARM`` or explicit blocking
+    reasons.
+    """
+    await _require_owner(request)
+    from services.alpha_core_v2.preflight import run_preflight
+    return await run_preflight(db)
+
+
 @router.get("/receipts")
 async def receipts(request: Request, limit: int = Query(50, ge=1, le=500)) -> dict:
     await _require_owner(request)

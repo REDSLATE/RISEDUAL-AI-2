@@ -6354,3 +6354,20 @@ Per operator spec: parallel with Public.com · US equities + options schema · l
 - MOD `backend/services/alpha_day_trader.py` (L2 source resolver)
 - MOD `frontend/src/components/TradingBotPanel.jsx` (create form toggle + card badge + inline switcher)
 
+
+---
+
+## 2026-06 — Alpha standalone severance + Core v2 arm preflight
+
+**Architecture correction (operator directive):** Alpha is STANDALONE. MC has been disconnected ~3 months / offline ~2 months. MC is NOT an Alpha execution dependency. Only Core v2 is the intended direct-execution path. Legacy stays OFF. Never arm Legacy + v2 simultaneously (already enforced by `_live_exec_enabled()` interlock).
+
+**Done:**
+- SEVERED Alpha→MC intent route. Added a master kill switch at the single chokepoint `sovereign/intent_bridge.py::emit_intent_from_consensus` honouring `RISEDUAL_EMIT_INTENTS_TO_MC` (falsey ⇒ early `return None`, disables BOTH remote-MC POST and mc2 local rewrite). Historical code preserved. Set `RISEDUAL_EMIT_INTENTS_TO_MC=0` in backend/.env.
+- Added test fixture `_enable_mc_emission_for_tests` (tests/conftest.py) restoring wire-path default ON for emission-behaviour tests (mirrors the existing standalone-mode fixture). 150 targeted tests green.
+- Built READ-ONLY Core v2 arm preflight: `backend/services/alpha_core_v2/preflight.py` + `GET /api/admin/alpha-v2/preflight` (owner-gated). Verifies auth, account, buying power, positions, live quote+freshness, reconciliation (dry), order-endpoint availability (get_orders probe, NO submit), idempotency/dup guard, hardware kill switch, Legacy↔v2 mutual exclusion, sizing config, slot capacity, MC-route severed. Returns READY_TO_ARM | BLOCKED.
+
+**Preflight result (live account 5LG34065):** READY_TO_ARM. equity=$265.05, buying_power=$229.28, 5 positions (PPCB, WMT, POET, VRPX, MEDS). Warnings: (1) PublicTradingService has no `get_order()` → post-fill reconcile_outstanding can't finalize via order-status (duplicate safety UNAFFECTED — positions re-fetched broker-authoritatively each cycle); (2) 5/5 position slots full → v2 will BLOCK new entries until slots free or `ALPHA_V2_MAX_CONCURRENT_POSITIONS` raised. Operator must confirm 5LG34065 is the intended prod account.
+
+**Prod action still required (deploy panel, not code):** set `RISEDUAL_EMIT_INTENTS_TO_MC=0` in the production env. To arm v2: set `ALPHA_CORE_V2=1` (forces Legacy off) then `POST /api/admin/alpha-v2/run-cycle?live=true`.
+
+**Files:** NEW `backend/services/alpha_core_v2/preflight.py`; MOD `backend/sovereign/intent_bridge.py`, `backend/routes/admin_alpha_v2.py`, `backend/tests/conftest.py`, `backend/.env`, `backend/pyproject.toml` (black config).
