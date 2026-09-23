@@ -45,14 +45,15 @@ def classify_status(raw_status: str) -> str:
     return "unknown"
 
 
-def _parse_ts(raw: Any) -> datetime:
+def _parse_ts(raw: Any) -> Optional[datetime]:
     """Best-effort parse of a broker quote timestamp → aware datetime.
 
-    Falls back to 'now' (age ~0) when the broker gives nothing parseable —
-    a live POST quote is inherently near-real-time; we still record source.
+    Returns ``None`` when the broker gives nothing parseable — the caller
+    then treats freshness as UNKNOWN and BLOCKS, rather than silently
+    assuming a zero-age quote (which would no-op the freshness interlock).
     """
     if raw is None or raw == "":
-        return datetime.now(timezone.utc)
+        return None
     # epoch seconds / milliseconds
     if isinstance(raw, (int, float)):
         val = float(raw)
@@ -61,7 +62,7 @@ def _parse_ts(raw: Any) -> datetime:
         try:
             return datetime.fromtimestamp(val, tz=timezone.utc)
         except (OverflowError, OSError, ValueError):
-            return datetime.now(timezone.utc)
+            return None
     s = str(raw).strip()
     try:
         if s.isdigit():
@@ -72,7 +73,7 @@ def _parse_ts(raw: Any) -> datetime:
         dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
         return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
     except (ValueError, OSError):
-        return datetime.now(timezone.utc)
+        return None
 
 
 class PublicBroker:
@@ -165,6 +166,11 @@ class PublicBroker:
 def _normalize_order(resp: dict, *, requested_qty: float) -> OrderResult:
     oid = resp.get("id") or resp.get("order_id") or resp.get("orderId")
     status = classify_status(resp.get("status") or resp.get("state") or "")
+    # A broker order id means the order WAS accepted. If the status vocabulary
+    # is unrecognized but an id came back, treat it as accepted (lock + later
+    # reconcile) — NOT failed — so a sibling cycle can't resubmit it.
+    if status == "unknown" and oid:
+        status = "accepted"
     filled = float(
         resp.get("filled_qty") or resp.get("filledQty")
         or resp.get("filledQuantity") or 0.0

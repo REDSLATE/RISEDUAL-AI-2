@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Optional
+from typing import Optional
 
 
 class Outcome(str, Enum):
@@ -61,10 +61,14 @@ class ExecutionQuote:
     the source of truth. No freshness subsystem: exists + positive + age."""
     symbol: str
     price: Decimal
-    timestamp: datetime
+    timestamp: Optional[datetime]
     source: str
 
     def age_seconds(self, now: Optional[datetime] = None) -> float:
+        # No parseable timestamp ⇒ freshness UNKNOWN ⇒ infinite age ⇒ caller
+        # BLOCKS. Never assume a fresh quote we cannot actually date.
+        if self.timestamp is None:
+            return float("inf")
         now = now or datetime.now(timezone.utc)
         ts = self.timestamp
         if ts.tzinfo is None:

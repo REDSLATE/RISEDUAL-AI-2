@@ -127,12 +127,12 @@ def _live_exec_enabled() -> bool:
     engines can never submit to the same broker account simultaneously.
     v2 becomes the sole submitter the moment it is armed.
     """
-    if (os.environ.get("ALPHA_CORE_V2") or "").strip() in (
-        "1", "true", "True", "yes", "on",
+    if (os.environ.get("ALPHA_CORE_V2") or "").strip().lower() in (
+        "1", "true", "yes", "on",
     ):
         return False
-    return (os.environ.get("RISEDUAL_PUBLIC_LIVE_EXEC") or "").strip() in (
-        "1", "true", "True", "yes", "on",
+    return (os.environ.get("RISEDUAL_PUBLIC_LIVE_EXEC") or "").strip().lower() in (
+        "1", "true", "yes", "on",
     )
 
 

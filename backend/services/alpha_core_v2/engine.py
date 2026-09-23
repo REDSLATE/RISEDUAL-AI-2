@@ -128,11 +128,15 @@ class CoreV2Engine:
                                      reconciled_phantom=reconciled)
             age = quote.age_seconds()
             exec_price = float(quote.price)
+            age_known = age != float("inf")
             qmeta = dict(execution_price=exec_price,
                          execution_quote_source=quote.source,
-                         execution_quote_age_s=round(age, 3),
+                         execution_quote_age_s=(round(age, 3) if age_known else None),
                          broker_held=False, reconciled_phantom=reconciled,
                          equity=account.equity, buying_power=account.buying_power)
+            if not age_known:
+                return self._receipt(cycle_id, cand, Outcome.BLOCKED, Stage.QUOTE,
+                                     "stale_execution_quote:missing_timestamp", **qmeta)
             if age > cfg.quote_max_age_s:
                 return self._receipt(cycle_id, cand, Outcome.BLOCKED, Stage.QUOTE,
                                      f"stale_execution_quote:{age:.1f}s>"

@@ -263,6 +263,15 @@ def _derive_price_targets(
     return out
 
 
+def _mc_emission_disabled() -> bool:
+    """True when the Alpha→MC route is severed (RISEDUAL_EMIT_INTENTS_TO_MC
+    falsey). Master switch for the ENTIRE emission surface — intents AND
+    opinions — since MC is a dead dependency."""
+    return (os.environ.get("RISEDUAL_EMIT_INTENTS_TO_MC") or "").strip().lower() in (
+        "0", "false", "no", "off",
+    )
+
+
 def emit_intent_sync(
     client: MCClient,
     receipt: Mapping[str, Any],
@@ -276,6 +285,8 @@ def emit_intent_sync(
     without contacting MC. MC errors are re-raised so test code can
     assert on them; the async wrapper below swallows them.
     """
+    if _mc_emission_disabled():
+        return None
     kwargs = _build_emission_kwargs(receipt, qty=qty, notes=notes)
     if kwargs is None:
         return None
@@ -413,6 +424,8 @@ async def emit_opinion_from_consensus(
     code so unsetting the env var snaps back to the legacy flow.
     """
     payload = _build_opinion_payload(receipt, notes=notes, trace_id=trace_id)
+    if _mc_emission_disabled():
+        return None
     if payload is None:
         return None
 

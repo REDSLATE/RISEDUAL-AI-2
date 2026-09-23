@@ -6,6 +6,7 @@ no diagnostics frameworks.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -13,6 +14,12 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin/alpha-v2", tags=["admin-alpha-v2"])
+
+# Single-flight guard: a fresh engine is built per request, so the per-symbol
+# locks / in-flight map cannot guard across overlapping requests. Serialize
+# every order-submitting operation (live cycle + close) process-wide so two
+# concurrent calls can never submit duplicate live orders.
+_live_cycle_lock = asyncio.Lock()
 
 db: Any = None
 
@@ -111,12 +118,25 @@ async def run_cycle(request: Request,
         )
     from services.alpha_core_v2.broker import PublicBroker
     from services.alpha_core_v2.engine import CoreV2Engine
-    broker = await PublicBroker.from_db(db)
-    if broker is None:
-        raise HTTPException(status_code=503, detail="Public broker not connected")
-    engine = CoreV2Engine(broker, _store(cfg), cfg)
-    result = await engine.run_cycle(live=live)
-    return result.to_dict()
+
+    async def _run() -> dict:
+        broker = await PublicBroker.from_db(db)
+        if broker is None:
+            raise HTTPException(status_code=503, detail="Public broker not connected")
+        engine = CoreV2Engine(broker, _store(cfg), cfg)
+        result = await engine.run_cycle(live=live)
+        return result.to_dict()
+
+    if not live:
+        return await _run()
+    # Live cycles must be single-flight — never two overlapping submits.
+    if _live_cycle_lock.locked():
+        raise HTTPException(
+            status_code=409,
+            detail="a live v2 cycle is already running — retry shortly",
+        )
+    async with _live_cycle_lock:
+        return await _run()
 
 
 @router.post("/reconcile")
@@ -145,12 +165,18 @@ async def close_position(request: Request, symbol: str = Query(...)) -> dict:
         )
     from services.alpha_core_v2.broker import PublicBroker
     from services.alpha_core_v2.engine import CoreV2Engine
-    broker = await PublicBroker.from_db(db)
-    if broker is None:
-        raise HTTPException(status_code=503, detail="Public broker not connected")
-    engine = CoreV2Engine(broker, _store(cfg), cfg)
-    r = await engine.close_position(symbol.upper())
-    return r.to_dict()
+    if _live_cycle_lock.locked():
+        raise HTTPException(
+            status_code=409,
+            detail="a live v2 cycle is already running — retry shortly",
+        )
+    async with _live_cycle_lock:
+        broker = await PublicBroker.from_db(db)
+        if broker is None:
+            raise HTTPException(status_code=503, detail="Public broker not connected")
+        engine = CoreV2Engine(broker, _store(cfg), cfg)
+        r = await engine.close_position(symbol.upper())
+        return r.to_dict()
 
 
 @router.post("/close-all")

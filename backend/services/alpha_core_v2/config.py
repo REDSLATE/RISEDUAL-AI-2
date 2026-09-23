@@ -52,8 +52,8 @@ class Config:
             if uni_raw else list(DEFAULT_UNIVERSE)
         )
         return cls(
-            enabled=(os.environ.get("ALPHA_CORE_V2") or "0").strip()
-            in ("1", "true", "True", "yes", "on"),
+            enabled=(os.environ.get("ALPHA_CORE_V2") or "0").strip().lower()
+            in ("1", "true", "yes", "on"),
             universe=universe,
             desired_notional=_f("ALPHA_V2_MAX_NOTIONAL_USD", 25.0, 1.0, 100000.0),
             alloc_pct=_f("ALPHA_V2_ALLOC_PCT", 0.03, 0.0, 1.0),

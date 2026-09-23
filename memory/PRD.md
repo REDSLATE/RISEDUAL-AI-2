@@ -6409,3 +6409,17 @@ Per operator spec: parallel with Public.com · US equities + options schema · l
 - FIXED (LOW): `config.py` alloc_pct default 0.20 → 0.03 to match documented 3% intent (prod env already 0.03; removes footgun if env ever unset).
 - NOTED (LOW, not changed): dead stub `_resolve_connect_creds` in public_equity_live_executor.py (no callers) — left as-is to minimize churn.
 - Tests: 27 V2+creds tests pass; 62 emit/gate/runtime tests pass; preview preflight READY_TO_ARM, 0 warnings.
+
+## 2026-06 — Deploy-candidate code review: HIGH + 2 MEDIUM + 2 LOW fixed (pre-arming)
+Prod runtime stamp confirmed MC intent route SEVERED in prod: intent_emission {RISEDUAL_EMIT_INTENTS_TO_MC:"0", enabled:false}.
+
+Fixes (all tested, 77 targeted tests green, ruff clean on changed files):
+- HIGH (duplicate live orders): a fresh engine was built per request so per-symbol locks/in-flight couldn't guard concurrent `run-cycle?live=true` calls. Added module-level `_live_cycle_lock` (asyncio.Lock) in `routes/admin_alpha_v2.py` — live run-cycle AND close are now single-flight (409 if a live cycle is already running); dry runs unaffected.
+- MEDIUM (freshness bypass): `broker._parse_ts` returned now() on unparseable timestamps → age~0 → freshness gate no-op. Now returns None; `ExecutionQuote.timestamp` is Optional and `age_seconds()` returns inf when unknown; engine BLOCKS `stale_execution_quote:missing_timestamp`. Preflight handles inf (age_s=None, JSON-safe).
+- MEDIUM (accepted-but-unknown status recorded FAILED w/o lock): `_normalize_order` now treats an unrecognized status WITH an order id as `accepted` (locks + reconciles), preventing resubmission; no-id still FAILED; explicit rejected still FAILED.
+- LOW: arming truthiness lowercased in `config.py` + `_live_exec_enabled` (ALPHA_CORE_V2=TRUE now recognized).
+- LOW: MC kill switch extended to `emit_intent_sync` + `emit_opinion_from_consensus` (entire emission surface honors RISEDUAL_EMIT_INTENTS_TO_MC).
+
+New tests: `tests/test_alpha_core_v2_review_fixes.py` (parse_ts/None, inf-age, unknown-status→accepted, engine blocks missing-ts, lock is single-flight). Removed unused `Any` import in contracts.py.
+
+ACTION: these fixes are NOT yet in prod (came after last publish) → operator must RE-PUBLISH, then run prod `alpha-v2/health` + `alpha-v2/preflight` to confirm creds resolve + READY_TO_ARM. Live canary trigger still HELD.

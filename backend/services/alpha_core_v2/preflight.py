@@ -130,7 +130,11 @@ async def run_preflight(db: Any) -> dict:
             f"{probe_sym} price=${float(quote.price):.4f} source={quote.source}",
             symbol=probe_sym, price=float(quote.price), source=quote.source)
         age = quote.age_seconds()
-        if age <= cfg.quote_max_age_s:
+        if age == float("inf"):
+            add("quote_timestamp_freshness", "warn",
+                "execution quote had no parseable timestamp — the engine BLOCKS "
+                "missing-timestamp quotes by design (freshness unknown)", age_s=None)
+        elif age <= cfg.quote_max_age_s:
             add("quote_timestamp_freshness", "pass",
                 f"age={age:.1f}s <= max {cfg.quote_max_age_s:.1f}s", age_s=round(age, 2))
         else:

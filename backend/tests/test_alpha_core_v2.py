@@ -26,7 +26,7 @@ class FakeBroker:
     def __init__(self, *, equity=1000.0, buying_power=1000.0, account_ok=True,
                  positions=None, positions_raise=False, submit_result=None,
                  order_result=None, exec_price=250.0, quote_age_s=0.0,
-                 quote_none=False):
+                 quote_none=False, quote_no_ts=False):
         self._equity = equity
         self._bp = buying_power
         self._account_ok = account_ok
@@ -37,6 +37,7 @@ class FakeBroker:
         self._exec_price = exec_price
         self._quote_age_s = quote_age_s
         self._quote_none = quote_none
+        self._quote_no_ts = quote_no_ts
         self.submitted = []
 
     def get_account(self):
@@ -52,7 +53,8 @@ class FakeBroker:
     def get_execution_quote(self, symbol):
         if self._quote_none:
             return None
-        ts = datetime.now(timezone.utc) - timedelta(seconds=self._quote_age_s)
+        ts = None if self._quote_no_ts else (
+            datetime.now(timezone.utc) - timedelta(seconds=self._quote_age_s))
         return ExecutionQuote(symbol=symbol, price=Decimal(str(self._exec_price)),
                               timestamp=ts, source="fake")
 
