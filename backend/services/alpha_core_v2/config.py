@@ -56,7 +56,7 @@ class Config:
             in ("1", "true", "True", "yes", "on"),
             universe=universe,
             desired_notional=_f("ALPHA_V2_MAX_NOTIONAL_USD", 25.0, 1.0, 100000.0),
-            alloc_pct=_f("ALPHA_V2_ALLOC_PCT", 0.20, 0.0, 1.0),
+            alloc_pct=_f("ALPHA_V2_ALLOC_PCT", 0.03, 0.0, 1.0),
             cash_reserve=_f("ALPHA_V2_CASH_RESERVE_USD", 5.0, 0.0),
             min_trade=_f("ALPHA_V2_MIN_TRADE_USD", 1.0, 0.01),
             confidence_floor=_f("ALPHA_V2_CONFIDENCE_FLOOR", 0.55, 0.0, 1.0),

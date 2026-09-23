@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from dataclasses import replace
 from typing import Optional
 
 from services.alpha_core_v2.broker import BrokerPort
@@ -263,9 +264,16 @@ class CoreV2Engine:
         candidates = await discover(self.config, self.source)
         account = self.broker.get_account()
         receipts = []
+        # Running buying power: each accepted order this cycle commits capital
+        # that the broker won't reflect until settlement, so decrement locally.
+        # This makes "remaining capital is the constraint" hold ACROSS the cycle
+        # (each successive 3% allocation sizes against what's actually left) and
+        # prevents a cycle from over-committing now that there is no count cap.
+        remaining_bp = account.buying_power if account.ok else 0.0
         for cand in candidates:
             try:
-                r = await self._process(cycle_id, cand, account, live=live)
+                cycle_account = replace(account, buying_power=max(0.0, remaining_bp))
+                r = await self._process(cycle_id, cand, cycle_account, live=live)
             except Exception as exc:  # noqa: BLE001
                 # Even an unexpected crash yields a terminal FAILED receipt —
                 # a candidate can never vanish into an unaccounted state.
@@ -274,6 +282,9 @@ class CoreV2Engine:
                 r = self._receipt(cycle_id, cand, Outcome.FAILED, Stage.CONFIRM,
                                   f"engine_exception:{str(exc)[:120]}")
             receipts.append(r)
+            if r.outcome is Outcome.TRADED:
+                spent = float((r.sizing or {}).get("final_notional") or 0.0)
+                remaining_bp = max(0.0, remaining_bp - spent)
         result = CycleResult(
             cycle_id=cycle_id, candidates_in=len(candidates),
             traded=sum(1 for r in receipts if r.outcome is Outcome.TRADED),

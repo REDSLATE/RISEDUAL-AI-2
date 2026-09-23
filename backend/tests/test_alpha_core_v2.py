@@ -291,6 +291,32 @@ async def test_accounting_invariant_mixed_cycle():
 
 
 @pytest.mark.asyncio
+async def test_cycle_running_buying_power_never_overcommits():
+    # With no position-count cap, a cycle must not fire more orders than the
+    # account can pay for. Each accepted order decrements the running buying
+    # power, so successive allocations taper and the aggregate stays within
+    # available capital (had we frozen the snapshot, 3 x 50% = 150 > 100).
+    snaps = [
+        Snapshot("AAA", 10.0, prev_close=9.8, pct_change=2.0, rvol=2.0),
+        Snapshot("DDD", 10.0, prev_close=9.8, pct_change=2.0, rvol=2.0),
+        Snapshot("EEE", 10.0, prev_close=9.8, pct_change=2.0, rvol=2.0),
+    ]
+    b = FakeBroker(equity=100.0, buying_power=100.0, positions=[],
+                   exec_price=10.0, submit_result=_filled)
+    cfg = _cfg(universe=["AAA", "DDD", "EEE"], alloc_pct=0.5, cash_reserve=0.0)
+    eng = CoreV2Engine(b, ReceiptStore(":memory:"), cfg, source=FakeSource(snaps))
+    res = await eng.run_cycle(live=True)
+    assert res.balanced
+    traded = [r for r in res.receipts if r.outcome is Outcome.TRADED]
+    assert len(traded) >= 2
+    notionals = [float(r.sizing["final_notional"]) for r in traded]
+    # Core guarantee: aggregate committed capital never exceeds what was available.
+    assert sum(notionals) <= 100.0 + 1e-6
+    # Tapering proves the decrement (a frozen snapshot would size every trade equal).
+    assert notionals[0] > notionals[1]
+
+
+@pytest.mark.asyncio
 async def test_engine_exception_still_terminal_no_vanish():
     class WeirdBroker(FakeBroker):
         def submit(self, symbol, qty, side="buy"):
