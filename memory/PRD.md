@@ -6395,3 +6395,10 @@ Per operator spec: parallel with Public.com · US equities + options schema · l
 - Confirmed `load_dotenv` has no `override=True`, so prod deploy-panel secrets take precedence (operator sets `RISEDUAL_EMIT_INTENTS_TO_MC=0` there).
 - Platform guidance (support): committed .env reaches prod as fallback; recommended operator also add `ALPHA_CORE_V2=1` to deploy-panel Custom Keys for instant panel-level disarm of the live-trading flag.
 - Keep `RISEDUAL_PUBLIC_LIVE_EXEC=0` (Legacy off). No thresholds/allocation/freshness/chasing changes made.
+
+## 2026-06 — Fix: V2 could not read prod's Public connection (cred-resolver schema mismatch)
+- Symptom: prod `alpha-v2/preflight` = BLOCKED "Public broker not connected"; health `broker_reachable:false, account:null`. Preview passed (preview Mongo has a plaintext `{broker_id:public,status:connected,api_key,api_secret}` row; prod does not).
+- Root cause: prod's Public connection is the `/api/broker/connect` panel record (ENCRYPTED `api_key_enc`/`api_secret_enc`, `is_active:true`, explicit `account_id`) — but the shared resolver `_aresolve_connect_creds` (used by both Legacy live-exec and V2) only queried the plaintext `status:connected` shape.
+- Fix: unified `_aresolve_connect_creds` (services/public_equity_live_executor.py) to resolve in priority: (1) env `PUBLIC_API_KEY`+`PUBLIC_ACCOUNT_ID`, (2) plaintext `status:connected` row, (3) encrypted panel record via `decrypt_value` (prefers explicit `account_id` field for the account). Added `_decrypt_or_none` helper. Updated preflight failure message.
+- Tests: NEW `tests/test_public_creds_resolution.py` (env / plaintext / encrypted-panel round-trip / none) — 4 pass. V2 suite still green; preview preflight still READY_TO_ARM.
+- ACTION: this fix landed AFTER the last prod deploy → operator must REDEPLOY to ship it, then re-run prod preflight to confirm `credentials_authentication: pass` + account 5LG34065 loads. No env vars required (existing panel connection will be read). Live trigger still HELD.

@@ -72,8 +72,9 @@ async def run_preflight(db: Any) -> dict:
         return verdict()
     if broker is None:
         add("credentials_authentication", "fail",
-            "Public broker not connected — no {broker_id:public,status:connected} "
-            "row in broker_connections (or key/secret missing)")
+            "Public broker not connected — no creds via env "
+            "(PUBLIC_API_KEY/PUBLIC_ACCOUNT_ID), no {broker_id:public,"
+            "status:connected} row, and no active /api/broker/connect record")
         return verdict()
 
     acct = broker.get_account()

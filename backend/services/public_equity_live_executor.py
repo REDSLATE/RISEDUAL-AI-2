@@ -611,29 +611,79 @@ def _resolve_connect_creds(db: Any) -> Optional[tuple[str, str]]:
     return None  # placeholder; real lookup in async helper below
 
 
-async def _aresolve_connect_creds(db: Any) -> Optional[tuple[str, str]]:
-    """Async version of :func:`_resolve_connect_creds`. Pulls the most
-    recent active Public.com connection record.
+def _decrypt_or_none(enc: Any) -> str:
+    """Decrypt a Fernet-encrypted broker credential; '' on missing/failure.
+
+    Reuses the broker-connect panel's encryption (CREDENTIAL_ENC_KEY /
+    legacy JWT_SECRET) so V2 can read what the UI stored.
     """
+    if not enc:
+        return ""
+    try:
+        from routes.broker import decrypt_value
+        return (decrypt_value(str(enc)) or "").strip()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[public-live] credential decrypt failed: %s", exc)
+        return ""
+
+
+async def _aresolve_connect_creds(db: Any) -> Optional[tuple[str, str]]:
+    """Resolve Public.com ``(secret_key, account_id)`` from whichever source
+    the operator actually used, in priority order:
+
+      1. env ``PUBLIC_API_KEY`` + ``PUBLIC_ACCOUNT_ID`` (matches
+         market_data_pool / reconcilers — the canonical prod path)
+      2. a plaintext ``broker_connections`` row
+         ``{broker_id:public, status:connected}`` (seeded/legacy V2 shape)
+      3. the ``/api/broker/connect`` panel record
+         ``{broker_id:public, is_active:true}`` with ENCRYPTED
+         ``api_key_enc`` / ``api_secret_enc`` — this is what the broker-connect
+         UI writes, and what prod actually holds.
+
+    Returns ``None`` only when Public is genuinely not connected anywhere.
+    """
+    # 1. Environment (highest priority, no DB needed).
+    env_key = (os.environ.get("PUBLIC_API_KEY") or "").strip()
+    env_acct = (os.environ.get("PUBLIC_ACCOUNT_ID") or "").strip()
+    if env_key and env_acct:
+        return env_key, env_acct
+
     if db is None:
         return None
+
     try:
+        # 2. Plaintext "connected" row.
         row = await db.broker_connections.find_one(
             {"broker_id": "public", "status": "connected"},
             {"_id": 0, "api_key": 1, "api_secret": 1},
         )
+        if row:
+            secret_key = (row.get("api_key") or "").strip()
+            account_id = (row.get("api_secret") or "").strip()
+            if secret_key and account_id:
+                return secret_key, account_id
+
+        # 3. Broker-connect panel record — encrypted fields. Public stores the
+        #    API secret in api_key(_enc) and the account id in api_secret(_enc);
+        #    account_id is also mirrored to a dedicated field on validate.
+        panel = await db.broker_connections.find_one(
+            {"broker_id": "public", "is_active": True},
+            sort=[("connected_at", -1)],
+        )
+        if panel:
+            secret_key = (_decrypt_or_none(panel.get("api_key_enc"))
+                          or (panel.get("api_key") or "").strip())
+            account_id = ((panel.get("account_id") or "").strip()
+                          or _decrypt_or_none(panel.get("api_secret_enc"))
+                          or (panel.get("api_secret") or "").strip())
+            if secret_key and account_id:
+                return secret_key, account_id
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "[public-live] broker_connections lookup failed: %s", exc,
         )
         return None
-    if not row:
-        return None
-    secret_key = (row.get("api_key") or "").strip()
-    account_id = (row.get("api_secret") or "").strip()
-    if not secret_key or not account_id:
-        return None
-    return secret_key, account_id
+    return None
 
 
 def _public_client(secret_key: str, account_id: str):
