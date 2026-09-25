@@ -6423,3 +6423,10 @@ Fixes (all tested, 77 targeted tests green, ruff clean on changed files):
 New tests: `tests/test_alpha_core_v2_review_fixes.py` (parse_ts/None, inf-age, unknown-status→accepted, engine blocks missing-ts, lock is single-flight). Removed unused `Any` import in contracts.py.
 
 ACTION: these fixes are NOT yet in prod (came after last publish) → operator must RE-PUBLISH, then run prod `alpha-v2/health` + `alpha-v2/preflight` to confirm creds resolve + READY_TO_ARM. Live canary trigger still HELD.
+
+## 2026-06 — RCA: prod broker_reachable:false = prod/preview DB split (deployer read-only diagnosis)
+- Deployer RCA (run 621e3bd0): root cause (b). Prod DB_NAME = `risedual-trading-tradealgo_db` (deployment secret), NOT preview's `risedual_db`. The operator's working plaintext Public row lives in preview's risedual_db; prod's broker_connections has only kraken + alpaca, NO public row. Resolver runs latest 3-source code, finds nothing, returns None → broker_reachable:false. Ruled out: code IS live; CREDENTIAL_ENC_KEY+JWT_SECRET present & working; no decrypt/auth errors. RCA doc: /app/deployer-agent-docs/RCA_621e3bd0-30ca-4467-a5f4-42fb615371bd.MD
+- Prod armed + sizing confirmed live (enabled:true, alloc_pct 0.03, allocation_base available_buying_power, per_trade_risk_cap 25, position_count_limit null).
+- FIX ENABLED (code side): added empty `PUBLIC_API_KEY=` + `PUBLIC_ACCOUNT_ID=` slots to backend/.env so the deploy panel exposes them. Resolver checks env FIRST (source #1), so setting these in prod secrets makes broker_reachable true regardless of DB. Verified empty slots are safe no-ops in preview (still READY_TO_ARM via preview DB row).
+- OPERATOR ACTION (pending): Option A (recommended) set PUBLIC_API_KEY + PUBLIC_ACCOUNT_ID(=5LG34065) in Deployment Panel Secrets + redeploy; OR Option B re-run /api/broker/connect on the LIVE prod app. Then verify prod health broker_reachable:true + preflight READY_TO_ARM. Live canary still HELD.
+- KEY LEARNING: prod and preview are SEPARATE Mongo DBs; preview-app data never reaches prod.
