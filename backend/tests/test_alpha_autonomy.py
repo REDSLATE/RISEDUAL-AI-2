@@ -23,6 +23,10 @@ class _FakeEngine:
     def __init__(self):
         self.calls = []
 
+    async def reconcile_outstanding(self):
+        self.calls.append("reconcile")
+        return {"ok": True, "pending": 0, "finalized": 0}
+
     async def run_cycle(self, live):
         self.calls.append(live)
         return _FakeCycle()
@@ -80,7 +84,7 @@ async def test_tick_halt_runs_no_cycle(monkeypatch):
     eng = _FakeEngine()
     ctrl = AutonomyController(lambda: _ret(eng), cfg=_FakeCfg(True))
     r = await ctrl.tick()
-    assert r["ran"] is False and eng.calls == []
+    assert r["ran"] is False and eng.calls == ["reconcile"]
 
 
 @pytest.mark.asyncio
@@ -90,7 +94,7 @@ async def test_tick_observe_runs_dry(monkeypatch):
     eng = _FakeEngine()
     ctrl = AutonomyController(lambda: _ret(eng), cfg=_FakeCfg(True))
     r = await ctrl.tick()
-    assert r["ran"] is True and r["live"] is False and eng.calls == [False]
+    assert r["ran"] is True and r["live"] is False and eng.calls == ["reconcile", False]
 
 
 @pytest.mark.asyncio
@@ -100,7 +104,7 @@ async def test_tick_autonomous_without_arm_runs_dry(monkeypatch):
     eng = _FakeEngine()
     ctrl = AutonomyController(lambda: _ret(eng), cfg=_FakeCfg(True))
     r = await ctrl.tick()
-    assert r["ran"] is True and r["live"] is False and eng.calls == [False]
+    assert r["ran"] is True and r["live"] is False and eng.calls == ["reconcile", False]
 
 
 @pytest.mark.asyncio
@@ -111,7 +115,7 @@ async def test_tick_live_only_when_fully_armed(monkeypatch):
     eng = _FakeEngine()
     ctrl = AutonomyController(lambda: _ret(eng), cfg=_FakeCfg(True))
     r = await ctrl.tick()
-    assert r["live"] is True and eng.calls == [True]
+    assert r["live"] is True and eng.calls == ["reconcile", True]
 
 
 @pytest.mark.asyncio

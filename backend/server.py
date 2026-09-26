@@ -1015,11 +1015,33 @@ async def startup_event():
             f"[alpha_inprocess_sidecar] startup skipped (non-critical): {e}"
         )
 
+    # Alpha Core v2 scheduled autonomy worker (2026-06). Default OFF
+    # (ALPHA_AUTONOMY_WORKER). Starts DRY reconcile + advisory-shadow cycles;
+    # NEVER arms live entries. Shares the admin route's process-wide order lock
+    # and a cross-process file lease so only one engine can ever submit.
+    global _alpha_v2_worker_task, _alpha_v2_worker_stop
+    try:
+        from services.alpha_core_v2.worker import run_worker, worker_enabled
+        if worker_enabled():
+            from routes.admin_alpha_v2 import _live_cycle_lock
+            _alpha_v2_worker_stop = asyncio.Event()
+            _alpha_v2_worker_task = asyncio.create_task(
+                run_worker(db, stop=_alpha_v2_worker_stop,
+                           order_lock=_live_cycle_lock)
+            )
+            logger.info("[alpha-v2-worker] startup: launched")
+        else:
+            logger.info("[alpha-v2-worker] startup: disabled (ALPHA_AUTONOMY_WORKER unset)")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[alpha-v2-worker] startup skipped (non-critical): {e}")
+
     logger.info(f"=== RISEDUAL AI STARTUP COMPLETE — {len(app.routes)} routes registered ===")
 
 
 _monorepo_heartbeat_task: asyncio.Task | None = None
 _mc_inbox_task: asyncio.Task | None = None
+_alpha_v2_worker_task: asyncio.Task | None = None
+_alpha_v2_worker_stop: asyncio.Event | None = None
 
 
 async def _monorepo_register_artifacts_at_startup():
@@ -2223,6 +2245,15 @@ async def shutdown_db_client():
         await _alpha_sov.stop()
     except Exception as e:  # noqa: BLE001
         logger.debug(f"[alpha_inprocess_sidecar] shutdown cleanup: {e}")
+    # Alpha Core v2 worker — signal stop + await so the lease is released and no
+    # "pending task" warning is logged.
+    try:
+        if _alpha_v2_worker_stop is not None:
+            _alpha_v2_worker_stop.set()
+        if _alpha_v2_worker_task is not None:
+            await _alpha_v2_worker_task
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"[alpha-v2-worker] shutdown cleanup: {e}")
     # MC check-in periodic loop — cancel cleanly to avoid an asyncio
     # warning about a pending task on shutdown.
     try:

@@ -122,6 +122,24 @@ class ReceiptStore:
             )
             self._conn.commit()
 
+    def last_entry_price(self, symbol: str) -> float:
+        """Most recent broker fill/execution price for an OPEN entry on this
+        symbol. Used by the exit policy to anchor stop/target. Returns 0.0 when
+        unknown (caller must treat 0.0 as 'no anchor' and skip exit math)."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT payload FROM receipts WHERE symbol=? AND outcome='TRADED' "
+                "ORDER BY created_ns DESC LIMIT 20", (symbol,),
+            ).fetchall()
+        for r in rows:
+            d = json.loads(r["payload"])
+            if d.get("action") == "close":
+                continue
+            price = float(d.get("fill_price") or 0.0) or float(d.get("execution_price") or 0.0)
+            if price > 0:
+                return price
+        return 0.0
+
     def counts(self) -> dict:
         with self._lock:
             rows = self._conn.execute(

@@ -4,6 +4,28 @@ Historic implementation log, newest-first within each section. Recent entries (l
 live in [PRD.md](./PRD.md#3-whats-been-implemented-latest-first); older entries are archived
 here. Roll an entry from PRD.md → CHANGELOG.md once it's >30 days old or PRD.md crosses 700 lines.
 
+
+## 2026-06-26 — Alpha V2 × existing Sovereign shadow integration (SHADOW-ONLY, nothing armed)
+- Landed the operator's `alpha_v2_sovereign_worker_patch`: `sovereign.py` +
+  `sovereign_bridge.py` (RISE reference model, kept OFF behind `ALPHA_SOVEREIGN_MODEL=rise`),
+  additive engine sovereign hook, and autonomy reconcile-before-every-tick (incl. HALT).
+- NEW `services/alpha_core_v2/sovereign_shadow.py`: ACTIVE advisory gate that bridges to the
+  EXISTING shadow — reads learned weights READ-ONLY from `/app/data/sovereign/alpha/state.json`,
+  runs the existing `wild_adaptive_core_v2.run_adaptive_core`, maps BUY→proceed / HOLD·SELL→veto.
+  Does NOT write to state.json (avoids clobbering the crypto sidecar's learning loop) → ONE shadow.
+- NEW `exit_policy.py`: deterministic stop / take-profit / trailing / max-hold protection + runner
+  (broker-authoritative close). OFF unless `ALPHA_V2_EXIT_POLICY=1`.
+- NEW `worker.py`: scheduled loop with cross-process single-worker file lease
+  (`/tmp/alpha_v2_worker.lock`) + shared route order-lock; runs DRY + advisory shadow + exit policy.
+  OFF unless `ALPHA_AUTONOMY_WORKER=1`. Wired into server lifespan start/stop.
+- `receipts.py`: added `last_entry_price()` for the exit policy anchor.
+- Provenance verified: state.json persists (atomic write, survives restarts); weights are still
+  DEFAULT identity weights and outcomes are crypto-paper dominated → shadow is a default prior,
+  NOT a trained equity edge (must review before enforce). Provider role / weights never grant order authority.
+- Enforcement double-locked: gate blocks only when `ALPHA_SOVEREIGN_ENFORCE=1` AND cycle is live-armed.
+- Tests: 58 passed (autonomy, shadow gate, exit policy, worker lease + core v2 regression). Backend boots
+  clean, worker disabled by default. No deploy, no live arming. Details: `memory/alpha_v2_sovereign_integration.md`.
+
 ## 4. What's Been Implemented (cumulative)
 
 ### RISEDUAL System Atlas — fire-and-forget integration (Feb 2026)

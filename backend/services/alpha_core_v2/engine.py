@@ -37,11 +37,17 @@ logger = logging.getLogger(__name__)
 
 class CoreV2Engine:
     def __init__(self, broker: BrokerPort, store: ReceiptStore, config: Config,
-                 source: Optional[DataSource] = None):
+                 source: Optional[DataSource] = None, sovereign_gate=None,
+                 sovereign_enforce: bool = False):
         self.broker = broker
         self.store = store
         self.config = config
         self.source = source or MarketDataPoolSource()
+        # Optional advisory Sovereign veto. Injected by the worker only; the
+        # manual /run-cycle route builds the engine WITHOUT a gate so existing
+        # manual cycles are unaffected. The gate can only VETO (never submit).
+        self.sovereign_gate = sovereign_gate
+        self.sovereign_enforce = sovereign_enforce
         # Per-symbol execution lock + in-flight idempotency key. Together
         # they guarantee two candidates for the same symbol arriving nearly
         # simultaneously produce AT MOST ONE broker submission — the lock
@@ -74,6 +80,26 @@ class CoreV2Engine:
             return self._receipt(cycle_id, cand, Outcome.BLOCKED, Stage.DECIDE,
                                   f"below_confidence_floor:{cand.confidence:.2f}<"
                                   f"{cfg.confidence_floor:.2f}")
+
+        # SOVEREIGN — advisory veto (optional, worker-only). Advisory by
+        # default: a HOLD is logged but does NOT stop the candidate. It only
+        # blocks when sovereign_enforce AND this is a live cycle — i.e. an
+        # operator has separately armed enforcement on a live autonomous run.
+        if self.sovereign_gate is not None:
+            try:
+                proposal = await self.sovereign_gate(cand)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[core-v2:sovereign] %s unavailable: %s", cand.symbol, exc)
+                if self.sovereign_enforce and live:
+                    return self._receipt(cycle_id, cand, Outcome.FAILED, Stage.DECIDE,
+                                         f"sovereign_unavailable:{str(exc)[:120]}")
+            else:
+                logger.info("[core-v2:sovereign] %s shadow=%s action=%s vetoes=%s",
+                            cand.symbol, not (self.sovereign_enforce and live),
+                            proposal.action, proposal.vetoes)
+                if self.sovereign_enforce and live and (proposal.action != "BUY" or proposal.vetoes):
+                    return self._receipt(cycle_id, cand, Outcome.BLOCKED, Stage.DECIDE,
+                                         "sovereign_hold:" + ",".join(proposal.vetoes)[:180])
         # ACCOUNT — broker truth (fetched once per cycle, checked before lock).
         if not account.ok:
             return self._receipt(cycle_id, cand, Outcome.FAILED, Stage.ACCOUNT,

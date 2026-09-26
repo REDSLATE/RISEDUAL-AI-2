@@ -132,14 +132,22 @@ class AutonomyController:
         base = state.as_dict()
         base["mc_independent"] = True
 
-        if state.authority is Authority.HALT:
-            return {**base, "ran": False, "reason": "HALT — no new cycles"}
-
         engine = await self._engine_factory()
         if engine is None:
             return {**base, "ran": False,
                     "reason": "engine unavailable (broker not connected)"}
 
-        live = state.execute_live()  # False unless every doctrine gate holds
+        # Broker-authoritative reconciliation runs BEFORE every decision —
+        # including under HALT — so open positions are always squared against
+        # the broker even when new entries are revoked.
+        reconciliation = await engine.reconcile_outstanding()
+        if not reconciliation.get("ok"):
+            return {**base, "ran": False, "reconciliation": reconciliation,
+                    "reason": "broker reconciliation unavailable"}
+        if state.authority is Authority.HALT:
+            return {**base, "ran": False, "reconciliation": reconciliation,
+                    "reason": "HALT — no new cycles"}
+        live = state.execute_live()
         result = await engine.run_cycle(live=live)
-        return {**base, "ran": True, "live": live, "cycle": result.to_dict()}
+        return {**base, "ran": True, "live": live,
+                "reconciliation": reconciliation, "cycle": result.to_dict()}
