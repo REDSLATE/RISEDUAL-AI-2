@@ -96,6 +96,27 @@ async def preflight(request: Request) -> dict:
     return await run_preflight(db)
 
 
+@router.get("/autonomy")
+async def autonomy_status(request: Request) -> dict:
+    """Read-only Alpha-native autonomy state (above Core v2, MC-independent).
+
+    Reports execution authority, provider roles (metadata only), the explicit
+    live arm, and the effective live decision. NO order is placed.
+    """
+    await _require_owner(request)
+    from services.alpha_core_v2.autonomy import load_state
+    st = load_state(_config())
+    out = st.as_dict()
+    out["mc_independent"] = True
+    out["note"] = (
+        "Authority is separate from provider role and from Core v2 arming. A "
+        "live autonomous order requires authority in {toehold,autonomous} AND "
+        "ALPHA_AUTONOMY_LIVE=1 AND ALPHA_CORE_V2=1. Provider PRIMARY never grants "
+        "trading authority. When execute_live=false the loop runs Core v2 DRY only."
+    )
+    return out
+
+
 @router.get("/receipts")
 async def receipts(request: Request, limit: int = Query(50, ge=1, le=500)) -> dict:
     await _require_owner(request)
