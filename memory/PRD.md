@@ -6430,3 +6430,18 @@ ACTION: these fixes are NOT yet in prod (came after last publish) → operator m
 - FIX ENABLED (code side): added empty `PUBLIC_API_KEY=` + `PUBLIC_ACCOUNT_ID=` slots to backend/.env so the deploy panel exposes them. Resolver checks env FIRST (source #1), so setting these in prod secrets makes broker_reachable true regardless of DB. Verified empty slots are safe no-ops in preview (still READY_TO_ARM via preview DB row).
 - OPERATOR ACTION (pending): Option A (recommended) set PUBLIC_API_KEY + PUBLIC_ACCOUNT_ID(=5LG34065) in Deployment Panel Secrets + redeploy; OR Option B re-run /api/broker/connect on the LIVE prod app. Then verify prod health broker_reachable:true + preflight READY_TO_ARM. Live canary still HELD.
 - KEY LEARNING: prod and preview are SEPARATE Mongo DBs; preview-app data never reaches prod.
+
+## 2026-06 — Canary plan locked (Option A) + session-aware freshness backlog
+DECISION (operator): First Core v2 live canary = Monday REGULAR session. Core v2 UNCHANGED; do NOT widen the 15s quote_max_age_s gate. Keep the acceptance test focused: candidate → sizing(3%) → Public order → ACK/fill → broker position → reconciliation. Trigger HELD until Monday RTH + explicit go.
+
+Prod state at lock: enabled:true, broker_reachable:true (acct 5LG34065, bp ~$242.61), preflight READY_TO_ARM (only warning = market-closed stale quote, expected; market genuinely closed Fri 8pm→Sun 8pm ET weekend gap). Canary size ≈ 3% → ~$7.22 (0.0094 SPY @ ~$768).
+
+SAFETY FLAG (open, operator to action in deploy panel): prod `RISEDUAL_PUBLIC_LIVE_EXEC=1`. Legacy is off ONLY via the ALPHA_CORE_V2=1 interlock; if v2 is ever disarmed, Legacy (microcap-bleeder, MEDS still held) would go live. Recommend setting RISEDUAL_PUBLIC_LIVE_EXEC=0 in prod secrets for defense-in-depth.
+
+P1 BACKLOG (AFTER canary succeeds) — Session-aware 24/5 freshness (do NOT just bump quote_max_age_s):
+  - REGULAR (9:30-16:00 ET): 15s baseline (unchanged).
+  - PRE/POST (4:00-9:30, 16:00-20:00 ET): tolerate slower last-trade updates BUT require usable bid/ask + acceptable spread.
+  - OVERNIGHT (20:00-04:00 ET): do NOT use last-trade age alone — a 90s-old last trade can coexist with a current actionable book. Use broker current bid/ask timestamp/depth + spread + eligibility.
+  - CLOSED (weekend Fri8pm-Sun8pm ET + holidays): no execution attempts.
+  - Rationale: the AAPL case where an old last-trade was misread as stale market data when the session itself explained the lack of prints. Public 24/5 = Sun 8pm→Fri 8pm ET, eligible securities only.
+  - Also validate: does Public get_quote return fresh OVERNIGHT timestamps, and which universe names are extended-hours eligible (SPY yes; microcaps often not).
