@@ -87,19 +87,26 @@ class ExitPolicyRunner:
 
     Broker-authoritative: positions and the execution quote come from the
     broker; entry comes from the receipt store; exit is via
-    ``engine.close_position`` (sells the broker's reported qty)."""
+    ``engine.close_position`` (sells the broker's reported qty).
 
-    def __init__(self, engine) -> None:
-        self.engine = engine
+    State (high-watermark + first-seen clock) lives on the instance and
+    therefore persists across ticks WITHIN a process. Construct ONE runner and
+    reuse it across ticks (the worker does). On a process RESTART this state
+    resets: stop/target still work (entry comes from the persistent receipt
+    store), but the trailing-stop peak restarts from the next observed price and
+    the max-hold clock restarts from first re-observation. This is documented,
+    not hidden."""
+
+    def __init__(self) -> None:
         self._peak: dict[str, float] = {}
         self._first_seen: dict[str, float] = {}
 
-    async def run(self, *, force: bool = False) -> dict:
+    async def run(self, engine, *, force: bool = False) -> dict:
         if not force and not policy_enabled():
             return {"ok": True, "ran": False, "reason": "exit_policy_disabled"}
         cfg = ExitConfig.load()
         try:
-            positions = self.engine.broker.get_positions()
+            positions = engine.broker.get_positions()
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "reason": f"positions_unavailable:{str(exc)[:120]}"}
 
@@ -116,8 +123,8 @@ class ExitPolicyRunner:
             if p.qty <= 0:
                 continue
             sym = p.symbol
-            entry = self.engine.store.last_entry_price(sym)
-            quote = self.engine.broker.get_execution_quote(sym)
+            entry = engine.store.last_entry_price(sym)
+            quote = engine.broker.get_execution_quote(sym)
             current = float(quote.price) if quote is not None else 0.0
             if current > 0:
                 self._peak[sym] = max(self._peak.get(sym, current), current)
@@ -130,7 +137,7 @@ class ExitPolicyRunner:
             rec = {"symbol": sym, "entry": entry, "current": current,
                    "decision": decision.reason, "exited": False}
             if decision.should_exit:
-                r = await self.engine.close_position(sym, reason=f"exit_policy:{decision.reason}")
+                r = await engine.close_position(sym, reason=f"exit_policy:{decision.reason}")
                 rec["exited"] = (r.outcome.value == "TRADED")
                 rec["close_outcome"] = r.outcome.value
                 self._peak.pop(sym, None)

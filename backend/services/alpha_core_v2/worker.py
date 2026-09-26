@@ -140,6 +140,7 @@ async def run_worker(db: Any, *, stop: asyncio.Event, order_lock: asyncio.Lock,
         )
 
     controller = AutonomyController(engine_factory)
+    exit_runner = ExitPolicyRunner()  # persists watermark/clock across ticks
     try:
         while not stop.is_set():
             if not lease.renew():
@@ -153,8 +154,7 @@ async def run_worker(db: Any, *, stop: asyncio.Event, order_lock: asyncio.Lock,
                     if policy_enabled():
                         engine = await engine_factory()
                         if engine is not None:
-                            exit_result = await ExitPolicyRunner(engine).run()
-                            outcome["exit_policy"] = exit_result
+                            outcome["exit_policy"] = await exit_runner.run(engine)
                 if not outcome.get("ran"):
                     log.info("[alpha-v2-worker] tick skipped: %s", outcome.get("reason"))
                 else:

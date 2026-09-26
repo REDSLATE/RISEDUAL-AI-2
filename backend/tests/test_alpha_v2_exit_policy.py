@@ -94,7 +94,7 @@ class _Engine:
 async def test_runner_disabled_by_default(monkeypatch):
     monkeypatch.delenv("ALPHA_V2_EXIT_POLICY", raising=False)
     eng = _Engine([PositionState("AAA", 1.0)], entry=100.0, price=50.0)
-    r = await ExitPolicyRunner(eng).run()
+    r = await ExitPolicyRunner().run(eng)
     assert r["ran"] is False and not eng.closed
 
 
@@ -102,7 +102,7 @@ async def test_runner_disabled_by_default(monkeypatch):
 async def test_runner_exits_on_stop(monkeypatch):
     monkeypatch.setenv("ALPHA_V2_STOP_PCT", "0.02")
     eng = _Engine([PositionState("AAA", 1.0)], entry=100.0, price=90.0)  # -10%
-    r = await ExitPolicyRunner(eng).run(force=True)
+    r = await ExitPolicyRunner().run(eng, force=True)
     assert r["ran"] is True
     assert eng.closed and eng.closed[0][0] == "AAA"
     assert r["actions"][0]["exited"] is True
@@ -111,6 +111,24 @@ async def test_runner_exits_on_stop(monkeypatch):
 @pytest.mark.asyncio
 async def test_runner_holds_when_no_anchor(monkeypatch):
     eng = _Engine([PositionState("AAA", 1.0)], entry=0.0, price=90.0)
-    r = await ExitPolicyRunner(eng).run(force=True)
+    r = await ExitPolicyRunner().run(eng, force=True)
     assert r["ran"] is True and not eng.closed
     assert r["actions"][0]["decision"] == "no_anchor"
+
+
+@pytest.mark.asyncio
+async def test_runner_trailing_peak_persists_across_ticks(monkeypatch):
+    monkeypatch.setenv("ALPHA_V2_TRAIL_PCT", "0.02")
+    monkeypatch.setenv("ALPHA_V2_STOP_PCT", "0")
+    monkeypatch.setenv("ALPHA_V2_TAKE_PROFIT_PCT", "0")
+    monkeypatch.setenv("ALPHA_V2_MAX_HOLD_S", "0")
+    runner = ExitPolicyRunner()
+    pos = [PositionState("AAA", 1.0)]
+    # Tick 1: price peaks at 110 (well above entry 100) — no exit yet.
+    eng1 = _Engine(pos, entry=100.0, price=110.0)
+    r1 = await runner.run(eng1, force=True)
+    assert r1["actions"][0]["decision"] == "hold"
+    # Tick 2 (SAME runner): price slips to 107 (>2% off the 110 peak) → exit.
+    eng2 = _Engine(pos, entry=100.0, price=107.0)
+    r2 = await runner.run(eng2, force=True)
+    assert eng2.closed and r2["actions"][0]["decision"].startswith("trailing_stop")
