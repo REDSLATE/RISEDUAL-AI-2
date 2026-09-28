@@ -5,6 +5,13 @@ live in [PRD.md](./PRD.md#3-whats-been-implemented-latest-first); older entries 
 here. Roll an entry from PRD.md → CHANGELOG.md once it's >30 days old or PRD.md crosses 700 lines.
 
 
+## 2026-06-26 — Core v2 LIVE canary SUCCESS (first real-money V2 order)
+- Ran POST /api/admin/alpha-v2/run-cycle?live=true in regular hours on real Public account 5LG34065 (operator-confirmed), on the preview backend wired to that live account.
+- Preflight READY_TO_ARM (SPY quote 2.9s fresh → RTH confirmed). Order: NVDA 0.0316 sh @ $230.06 ≈ $7.27 (3% of $242.61 BP), order_id 1ab22ff0-a673-49a2-907b-82ee6767ba36.
+- Full chain proven: entry → ACK (accepted) → fill (filled) → broker position reconciliation (position_reconciled=true, reconciled_position_qty=0.0316, status=open). Cycle balanced (2 in = 1 TRADED + 1 BLOCKED[AAPL below confidence floor] + 0 FAILED).
+- Independent broker confirm: NVDA now in positions; BP $242.61→$235.34 (−$7.27). Legacy exec OFF throughout → attributable to V2 alone.
+
+
 ## 2026-06-26 — Alpha V2 × existing Sovereign shadow integration (SHADOW-ONLY, nothing armed)
 - Landed the operator's `alpha_v2_sovereign_worker_patch`: `sovereign.py` +
   `sovereign_bridge.py` (RISE reference model, kept OFF behind `ALPHA_SOVEREIGN_MODEL=rise`),
