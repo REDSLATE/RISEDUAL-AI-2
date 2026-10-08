@@ -22,7 +22,9 @@ class BrokerPort(Protocol):
     def get_account(self) -> AccountState: ...
     def get_positions(self) -> list[PositionState]: ...
     def get_execution_quote(self, symbol: str) -> Optional[ExecutionQuote]: ...
-    def submit(self, symbol: str, qty: float, side: str = "buy") -> OrderResult: ...
+    def get_open_orders(self, symbol: str) -> list[dict]: ...
+    def submit(self, symbol: str, qty: float, side: str = "buy", *,
+               client_order_id: str | None = None, close: bool = False) -> OrderResult: ...
     def get_order(self, order_id: str) -> OrderResult: ...
 
 
@@ -41,7 +43,7 @@ def classify_status(raw_status: str) -> str:
     if s in _ACCEPTED:
         return "accepted"
     if s in _DEAD:
-        return "rejected"
+        return "cancelled" if s == "canceled" else s
     return "unknown"
 
 
@@ -96,6 +98,8 @@ class PublicBroker:
     def get_account(self) -> AccountState:
         try:
             a = self._c.get_account() or {}
+            if not a:
+                raise RuntimeError("public_account_unavailable")
             bp = float(a.get("buying_power") or 0.0)
             eq = float(a.get("equity") or bp or 0.0)
             cash = float(a.get("cash") or bp or 0.0)
@@ -107,7 +111,7 @@ class PublicBroker:
     def get_positions(self) -> list[PositionState]:
         # Raises on failure — the engine treats an unknown holdings state as
         # FAIL-CLOSED (never opens blind).
-        raw = self._c.get_positions() or []
+        raw = self._c.get_positions(strict=True)
         out: list[PositionState] = []
         for p in raw:
             sym = (p.get("symbol") or p.get("instrument") or "").upper()
@@ -139,10 +143,37 @@ class PublicBroker:
             source=str(q.get("source") or "public"),
         )
 
-    def submit(self, symbol: str, qty: float, side: str = "buy") -> OrderResult:
+    def get_open_orders(self, symbol: str) -> list[dict]:
+        orders = self._c.get_orders(status="open", strict=True)
+        return [o for o in orders
+                if (o.get("instrument", {}).get("symbol") or o.get("symbol") or "").upper()
+                == symbol.upper()]
+
+    def submit(self, symbol: str, qty: float, side: str = "buy", *,
+               client_order_id: str | None = None, close: bool = False) -> OrderResult:
+        # Core routes and the scheduled exit worker must obey the same
+        # hardware/session interlocks as the legacy executor.
+        try:
+            from services import alpha_hardware_kill_switch as hw
+            from services.public_equity_live_executor import (
+                _rth_only_enabled, _in_regular_session,
+            )
+            tripped, reason = hw.check()
+            if tripped:
+                return OrderResult(False, status="rejected", requested_qty=qty,
+                                   error=f"hw_kill_switch_tripped:{reason}")
+            if _rth_only_enabled() and not _in_regular_session():
+                return OrderResult(False, status="rejected", requested_qty=qty,
+                                   error="market_closed")
+        except Exception as exc:
+            return OrderResult(False, status="rejected", requested_qty=qty,
+                               error=f"execution_interlock_unknown:{str(exc)[:120]}")
         try:
             resp = self._c.place_order(
                 symbol=symbol, qty=qty, side=side, order_type="market",
+                client_order_id=client_order_id,
+                open_close_indicator="CLOSE" if close else "OPEN",
+                use_margin=True if close and side.lower() == "buy" else None,
             )
         except Exception as exc:  # noqa: BLE001
             return OrderResult(ok=False, requested_qty=qty,
@@ -160,7 +191,9 @@ class PublicBroker:
                                error=f"get_order_exception:{str(exc)[:140]}")
         if not resp:
             return OrderResult(ok=False, order_id=order_id, error="order_not_found")
-        return _normalize_order(resp, requested_qty=0.0)
+        result = _normalize_order(resp, requested_qty=0.0)
+        result.order_id = result.order_id or order_id
+        return result
 
 
 def _normalize_order(resp: dict, *, requested_qty: float) -> OrderResult:
@@ -179,7 +212,7 @@ def _normalize_order(resp: dict, *, requested_qty: float) -> OrderResult:
         resp.get("fillPrice") or resp.get("fill_price") or resp.get("avgPrice")
         or resp.get("averagePrice") or resp.get("price") or 0.0
     )
-    ok = status in ("filled", "partially_filled", "accepted") and bool(oid)
+    ok = status in ("filled", "partially_filled", "accepted") and bool(oid) and not resp.get("error")
     return OrderResult(
         ok=ok, order_id=str(oid) if oid else None, status=status,
         filled_qty=filled, fill_price=price, requested_qty=requested_qty,

@@ -8,7 +8,7 @@ Covers:
     * BUY against an open short → router flips to close_short (BUY_TO_COVER),
       never opens a new long
     * SELL against an open long produces a SELL order, not a SHORT
-    * Partial fill on close → row stays open with residual, status=partial_closed
+    * Partial fills and acknowledgements stay pending until broker reconciliation
     * close_in_flight idempotency blocks concurrent re-fires
     * Broker qty overrides Mongo-believed qty when they diverge
 """
@@ -23,8 +23,11 @@ from services.public_equity_live_executor import maybe_route_live
 
 
 @pytest.fixture(autouse=True)
-def _base_env(monkeypatch):
+def _base_env(monkeypatch, tmp_path):
     """Enable live-exec + disable time-of-day / capability gates."""
+    monkeypatch.setenv("ALPHA_V2_DB", str(tmp_path / "receipts.sqlite"))
+    from services import alpha_hardware_kill_switch
+    monkeypatch.setattr(alpha_hardware_kill_switch, "check", lambda: (False, None))
     monkeypatch.setenv("RISEDUAL_PUBLIC_LIVE_EXEC", "1")
     monkeypatch.setenv("PUBLIC_LIVE_RTH_ONLY", "0")
     monkeypatch.setenv("PUBLIC_LIVE_CONFIDENCE_FLOOR", "0.0")
@@ -44,6 +47,12 @@ class _FakeColl:
     async def find_one(self, _filter, _proj=None, **kw):
         self.find_one_calls.append(dict(_filter))
         return self._find_one_response
+
+    def find(self, _filter):
+        async def rows():
+            if False:
+                yield None
+        return rows()
 
     async def insert_one(self, doc):
         self.docs.append(doc)
@@ -73,6 +82,7 @@ def _make_client(*, positions=None, order_response=None, account=None):
         "Authorization": "Bearer TOK", "Content-Type": "application/json",
     }
     c.get_positions.return_value = positions or []
+    c.get_orders.return_value = []
     c.get_account.return_value = account or {
         "id": "ACCT", "cash": 500.0, "buying_power": 500.0, "equity": 500.0,
     }
@@ -117,8 +127,8 @@ async def test_sell_closes_long_uses_broker_qty(monkeypatch):
     assert out["side"] == "SELL"
     assert out["size"] == 1.8              # broker qty won, not Mongo's 2.3
     assert out["filled_qty"] == 1.8
-    assert out["remaining_qty"] == 0.0
-    assert out["status"] == "closed"
+    assert out["remaining_qty"] == 1.8  # pre-submit holdings, not a fabricated flat
+    assert out["status"] == "close_pending"
     # Broker was asked to SELL at the broker qty.
     kwargs = client.place_order.call_args.kwargs
     assert kwargs["side"] == "sell"
@@ -171,12 +181,13 @@ async def test_explicit_buy_to_cover_closes_short(monkeypatch):
     assert out["direction"] == "SHORT"
     assert out["side"] == "BUY"
     assert out["size"] == 3.0
-    assert out["status"] == "closed"
+    assert out["status"] == "close_pending"
     # REST helper was called with the right shape: BUY + CLOSE.
-    assert submit_calls, "submit_short_order should have been called"
-    assert submit_calls[0]["side"] == "BUY"
-    assert submit_calls[0]["open_close"] == "CLOSE"
-    assert submit_calls[0]["qty"] == 3
+    kw = client.place_order.call_args.kwargs
+    assert kw["side"] == "buy"
+    assert kw["open_close_indicator"] == "CLOSE"
+    assert kw["use_margin"] is True
+    assert kw["qty"] == 3
 
 
 # ── BUY signal against existing short: router flips to close_short ─
@@ -220,15 +231,9 @@ async def test_buy_against_open_short_covers_never_opens_long(monkeypatch):
 
     assert out is not None
     assert out["intent_kind"] == "close_short"
-    # REST helper hit with BUY + CLOSE, whole-share qty from the
-    # broker-reported short position — never a fractional open-long qty.
-    assert submit_calls[0]["side"] == "BUY"
-    assert submit_calls[0]["open_close"] == "CLOSE"
-    # If this were mistakenly routed as OPEN_LONG, qty would be
-    # notional/mark = 25/200 = 0.125. Anti-regression: assert 2.
-    assert submit_calls[0]["qty"] == 2
-    # place_order (long path) MUST NOT have been called at all.
-    client.place_order.assert_not_called()
+    kw = client.place_order.call_args.kwargs
+    assert kw["side"] == "buy" and kw["open_close_indicator"] == "CLOSE"
+    assert kw["qty"] == 2  # covering existing exposure, never a new long
 
 
 # ── SELL against no position + shorts disabled → short_signal_only ─
@@ -313,20 +318,14 @@ async def test_partial_close_marks_row_partial(monkeypatch):
         })
 
     assert out is not None
-    assert out["status"] == "partial_closed"
+    assert out["status"] == "close_pending"
     assert out["filled_qty"] == 3.0
-    assert out["remaining_qty"] == 2.0
+    assert out["remaining_qty"] == 5.0  # holdings are authoritative on the next poll
     assert out["closed_at"] is None
-    # The Mongo update must have set partial_closed + close_partial=True.
-    close_update_calls = [
-        c for c in db.equity_live_trades.update_one_calls
-        if "close_partial" in c[1].get("$set", {})
-    ]
-    assert close_update_calls, "expected a partial-close update"
-    _f, upd = close_update_calls[0]
-    assert upd["$set"]["close_partial"] is True
-    assert upd["$set"]["status"] == "partial_closed"
-    assert upd["$set"]["close_remaining_qty"] == 2.0
+    updates = [c[1]["$set"] for c in db.equity_live_trades.update_one_calls]
+    assert updates[-1]["close_pending"] is True
+    assert updates[-1]["close_filled_qty"] == 3.0
+    assert "closed_at" not in updates[-1]
 
 
 # ── close_in_flight idempotency ────────────────────────────────────
@@ -363,9 +362,8 @@ async def test_close_in_flight_blocks_concurrent_close(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_close_in_flight_stale_clears_after_window(monkeypatch):
-    """After the 120s stale window, a wedged close_in_flight flag must
-    no longer block a fresh re-fire."""
+async def test_close_in_flight_never_expires_without_broker_reconciliation(monkeypatch):
+    """Elapsed time cannot prove an order failed or permit a second close."""
     db = _FakeDB()
     db.broker_connections._find_one_response = {
         "api_key": "sk", "api_secret": "acct"
@@ -392,9 +390,8 @@ async def test_close_in_flight_stale_clears_after_window(monkeypatch):
             "symbol": "AAPL", "direction": "SELL", "confidence": 0.8,
         })
 
-    assert out is not None
-    assert out["status"] == "closed"
-    client.place_order.assert_called_once()
+    assert out is None
+    client.place_order.assert_not_called()
 
 
 # ── open_long against existing short is refused (no auto-reverse) ──

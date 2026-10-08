@@ -879,7 +879,7 @@ async def maybe_route_live(
                 _sk, _acct = _early_creds
                 _client_probe = _public_client(_sk, _acct)
                 if _client_probe is not None:
-                    _positions = _client_probe.get_positions() or []
+                    _positions = _client_probe.get_positions(strict=True)
                     for _p in _positions:
                         if (_p.get("symbol") or "").upper() == symbol:
                             try:
@@ -893,11 +893,10 @@ async def maybe_route_live(
                             _early_broker_position_side = _side
                             _early_broker_position_qty = abs(_qty)
                             break
-        except Exception as _pos_exc:  # noqa: BLE001
-            logger.debug(
-                "[public-live] early-position probe failed for %s: %s",
-                symbol, _pos_exc,
-            )
+        except Exception as _pos_exc:
+            await _log_skip(db, symbol=symbol, reason="broker_position_unknown",
+                            intent=intent, detail={"error": str(_pos_exc)[:120]})
+            return None
 
     _cls = _classify_intent(
         direction=_direction_upper,
@@ -929,6 +928,46 @@ async def maybe_route_live(
     # Router-derived close qty (broker-authoritative). Only meaningful
     # for close_* kinds; opens overwrite this via notional sizing below.
     router_close_qty: float = float(_cls.close_qty or 0.0)
+
+    if intent_kind in ("close_long", "close_short"):
+        # Exits bypass entry-only confidence, allowlist, evidence and sizing
+        # gates, but retain the live/session/hardware gates above.
+        try:
+            from services.public_exit_lifecycle import route_close
+            creds = await _aresolve_connect_creds(db)
+            client = _public_client(*creds) if creds else None
+            if client is None:
+                raise RuntimeError("public_client_unavailable")
+            return await route_close(db, client, symbol, kind=intent_kind,
+                                     reason=str(intent.get("exit_reason") or _cls.reason))
+        except Exception as exc:
+            await _log_skip(db, symbol=symbol, reason="close_lifecycle_unknown",
+                            intent=intent, detail={"error": str(exc)[:160]})
+            return None
+
+    # A pending close remains a blocker even if a lagging portfolio snapshot
+    # is flat. Entries also respect broker orders placed outside this process.
+    try:
+        from services.alpha_core_v2.config import Config
+        from services.alpha_core_v2.receipts import ReceiptStore
+        store = ReceiptStore(Config.load().db_path)
+        pending = any(d["symbol"] == symbol for d in store.outstanding_orders())
+        creds = await _aresolve_connect_creds(db)
+        client = _public_client(*creds) if creds else None
+        if client is None:
+            raise RuntimeError("public_client_unavailable")
+        orders = client.get_orders(status="open", strict=True)
+        broker_pending = any(
+            (o.get("instrument", {}).get("symbol") or o.get("symbol") or "").upper() == symbol
+            for o in orders
+        )
+        if pending or broker_pending:
+            await _log_skip(db, symbol=symbol, reason="broker_order_in_flight", intent=intent)
+            return None
+    except Exception as exc:
+        await _log_skip(db, symbol=symbol, reason="broker_orders_unknown", intent=intent,
+                        detail={"error": str(exc)[:120]})
+        return None
 
     # P1-A — open_short is now supported via a direct-REST path
     # (``services.public_short_executor``) that speaks Public's current
@@ -1726,6 +1765,7 @@ async def maybe_route_live(
         else:
             resp = client.place_order(
                 symbol=symbol, qty=qty, side=order_side, order_type="market",
+                client_order_id=client_order_id, open_close_indicator="OPEN",
             )
     except Exception as exc:  # noqa: BLE001
         _ack_ms = (time.time_ns() - _submit_start_ns) // 1_000_000
@@ -1869,120 +1909,6 @@ async def maybe_route_live(
     except Exception:  # noqa: BLE001
         pass
     trade_id = str(uuid.uuid4())
-    if intent_kind in ("close_long", "close_short"):
-        # CLOSE lifecycle (P1-B):
-        # - close_long  : SELL_TO_CLOSE on a LONG position
-        # - close_short : BUY_TO_COVER on a SHORT position
-        #
-        # Partial-fill detection: Public's synchronous response carries
-        # ``filled_qty`` / ``filledQty`` / ``qty`` fields depending on
-        # adapter version. If the fill is short of ``qty``, we mark the
-        # row as ``partial_closed`` and keep ``status=open`` with a
-        # residual quantity so the fill writer / reconciler can pick up
-        # the remainder on the next sweep. This avoids the historical
-        # bug where a partial close silently marked the row as fully
-        # closed even though real exposure remained at the broker.
-        try:
-            _filled_qty_raw = (
-                resp.get("filled_qty")
-                or resp.get("filledQty")
-                or resp.get("fillQuantity")
-                or resp.get("qty")
-                or qty
-            )
-            _filled_qty = float(_filled_qty_raw or 0.0)
-        except (TypeError, ValueError):
-            _filled_qty = qty
-        # Cap filled_qty at requested qty (defensive — a broker can't
-        # over-fill an order).
-        if _filled_qty > qty:
-            _filled_qty = qty
-        _remaining_qty = max(qty - _filled_qty, 0.0)
-        _is_partial = _remaining_qty > 1e-6 and _filled_qty > 0
-
-        _close_reason = (
-            "alpha_sell_signal" if intent_kind == "close_long"
-            else "alpha_cover_signal"
-        )
-        _row_direction = "LONG" if intent_kind == "close_long" else "SHORT"
-        _row_side = "SELL" if intent_kind == "close_long" else "BUY"
-
-        close_doc: dict[str, Any] = {
-            "close_price": mark,
-            "close_order_id": order_id,
-            "close_reason": _close_reason,
-            "close_intent_kind": intent_kind,
-            "close_filled_qty": _filled_qty,
-            "close_requested_qty": qty,
-        }
-        if _is_partial:
-            close_doc.update({
-                "status": "partial_closed",
-                "close_partial": True,
-                "close_remaining_qty": _remaining_qty,
-            })
-        else:
-            close_doc.update({
-                "status": "closed",
-                "closed_at": datetime.now(timezone.utc),
-                "close_partial": False,
-            })
-
-        if db is not None and existing_row is not None:
-            try:
-                # Clear the in-flight flag as part of the same update
-                # so a concurrent re-fire can't slip in while we write.
-                await db.equity_live_trades.update_one(
-                    {"_id": existing_row["_id"]},
-                    {
-                        "$set": close_doc,
-                        "$unset": {
-                            "close_in_flight_at": "",
-                            "close_in_flight_client_order_id": "",
-                        },
-                    },
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.error(
-                    "[public-live] CRITICAL — %s order placed but Mongo "
-                    "close-update failed symbol=%s order_id=%s: %s",
-                    intent_kind, symbol, order_id, exc,
-                )
-        logger.info(
-            "[public-live] %s symbol=%s filled=%.6f/%.6f @ $%.2f "
-            "order_id=%s%s",
-            "PARTIAL_CLOSE" if _is_partial else "CLOSE",
-            symbol, _filled_qty, qty, mark, order_id,
-            (" (residual=%.6f)" % _remaining_qty) if _is_partial else "",
-        )
-        try:
-            from services import atlas_bridge as _atlas
-            _atlas.transition_async(
-                _atlas_intent_id, "terminal",
-                reason_code="close_partial" if _is_partial else "close_filled",
-            )
-        except Exception:  # noqa: BLE001
-            pass
-        return {
-            "trade_id": existing_row.get("trade_id") if existing_row else trade_id,
-            "broker_id": "public",
-            "symbol": symbol,
-            "direction": _row_direction,
-            "side": _row_side,
-            "intent_kind": intent_kind,
-            "size": qty,
-            "filled_qty": _filled_qty,
-            "remaining_qty": _remaining_qty,
-            "close_price": mark,
-            "status": "partial_closed" if _is_partial else "closed",
-            "broker_order_id": order_id,
-            "closed_at": (
-                None if _is_partial else datetime.now(timezone.utc)
-            ),
-            "confidence": float(intent.get("confidence") or 0.0),
-            "source_signal": intent.get("source_signal"),
-        }
-
     # OPEN path — open_long or open_short (v2.2 P1-A). Row schema
     # mirrors the historical open_long shape; direction/side vary.
     _open_direction = "LONG" if intent_kind == "open_long" else "SHORT"

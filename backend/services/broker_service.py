@@ -1016,25 +1016,28 @@ class PublicTradingService:
             })
             return None
 
-    def get_positions(self) -> list[dict]:
+    def get_positions(self, *, strict: bool = False) -> list[dict]:
         try:
             headers = self._auth_headers()
             if headers is None:
-                return []
+                raise RuntimeError("public_auth_unavailable")
             r = requests.get(
                 f"{self.base_url}/trading/{self.account_id}/portfolio/v2",
                 headers=headers, timeout=10,
             )
             r.raise_for_status()
             positions = []
-            for p in r.json().get("positions", []):
+            payload = r.json()
+            if not isinstance(payload, dict) or not isinstance(payload.get("positions"), list):
+                raise ValueError("public_positions_missing")
+            for p in payload["positions"]:
                 inst = p.get("instrument") or {}
                 last_price_dict = p.get("lastPrice") or {}
                 gain = p.get("instrumentGain") or {}
                 try:
                     qty = float(p.get("quantity") or 0.0)
                 except (TypeError, ValueError):
-                    qty = 0.0
+                    raise ValueError("public_position_quantity_invalid")
                 try:
                     last_price = float(last_price_dict.get("lastPrice") or 0.0)
                 except (TypeError, ValueError):
@@ -1051,6 +1054,9 @@ class PublicTradingService:
                     unrealized_plpc = float(gain.get("gainPercentage") or 0.0)
                 except (TypeError, ValueError):
                     unrealized_plpc = 0.0
+                import math
+                if not math.isfinite(qty) or not inst.get("symbol"):
+                    raise ValueError("public_position_invalid")
                 positions.append({
                     "symbol": inst.get("symbol", ""),
                     "qty": abs(qty),
@@ -1069,11 +1075,16 @@ class PublicTradingService:
                 "context": "broker_public",
                 "method": "get_positions",
             })
+            if strict:
+                raise
             return []
 
     def place_order(self, symbol: str, qty: float, side: str, order_type: str = "market",
                     time_in_force: str = "day", limit_price: Optional[float] = None,
-                    stop_price: Optional[float] = None) -> Optional[dict]:
+                    stop_price: Optional[float] = None, *,
+                    client_order_id: Optional[str] = None,
+                    open_close_indicator: Optional[str] = None,
+                    use_margin: Optional[bool] = None) -> Optional[dict]:
         """Place a Public.com equity order.
 
         Discovered via live API probing (2026-06-26 — Friday open).
@@ -1105,7 +1116,8 @@ class PublicTradingService:
                 return None
             headers["User-Agent"] = "public-dev-docs"
             acc_id = self.account_id
-            client_order_id = str(uuid.uuid4())
+            client_order_id = client_order_id or str(uuid.uuid4())
+            uuid.UUID(client_order_id)
             # Map TIF aliases → Public.com enum.
             tif_raw = (time_in_force or "day").upper()
             tif_map = {
@@ -1127,6 +1139,12 @@ class PublicTradingService:
                 "expiration": {"timeInForce": tif},
                 "orderId": client_order_id,
             }
+            if use_margin is not None:
+                data["useMargin"] = use_margin
+            if open_close_indicator is not None:
+                if open_close_indicator not in ("OPEN", "CLOSE"):
+                    raise ValueError("invalid_open_close_indicator")
+                data["openCloseIndicator"] = open_close_indicator
             if limit_price and (order_type or "").upper() != "MARKET":
                 data["limitPrice"] = str(limit_price)
             if stop_price:
@@ -1144,7 +1162,9 @@ class PublicTradingService:
                     "[broker_public] place_order %s %s qty=%s rejected "
                     "%d: %s", symbol, side, qty, r.status_code, body,
                 )
-                return None
+                return {"id": client_order_id,
+                        "status": "rejected" if 400 <= r.status_code < 500 and r.status_code not in (408, 409, 429) else "unknown",
+                        "error": f"http_{r.status_code}"}
             result = r.json() if r.content else {}
             # Response shape: ``orderId`` is the broker-side id, but
             # we also fall back to our client id so the caller always
@@ -1163,24 +1183,33 @@ class PublicTradingService:
                 "method": "place_order",
                 "symbol": symbol,
             })
-            return None
+            return {"id": client_order_id, "status": "unknown", "error": str(e)[:160]}
 
-    def get_orders(self, status: str = "all", limit: int = 50) -> list[dict]:
+    def get_orders(self, status: str = "all", limit: int = 50, *,
+                   strict: bool = False) -> list[dict]:
         try:
             headers = self._auth_headers()
             if headers is None:
-                return []
-            r = requests.get(f"{self.base_url}/trading/account",
-                             headers=headers, timeout=10)
+                raise RuntimeError("public_auth_unavailable")
+            r = requests.get(
+                f"{self.base_url}/trading/{self.account_id}/portfolio/v2",
+                headers=headers, timeout=10,
+            )
             r.raise_for_status()
-            return r.json().get("orders", [])[:limit]
+            payload = r.json()
+            if not isinstance(payload, dict) or not isinstance(payload.get("orders"), list):
+                raise ValueError("public_orders_missing")
+            orders = payload["orders"]
+            if status == "open":
+                terminal = {"FILLED", "CANCELLED", "CANCELED", "REJECTED", "EXPIRED"}
+                # Unknown/replaced/pending-cancel orders remain blockers.
+                return [o for o in orders if str(o.get("status") or "").upper() not in terminal]
+            return orders[:limit]
         except Exception as e:
-            log_error(logger, {
-                "error": str(e),
-                "type": type(e).__name__,
-                "context": "broker_public",
-                "method": "get_orders",
-            })
+            log_error(logger, {"error": str(e), "context": "broker_public",
+                               "method": "get_orders"})
+            if strict:
+                raise
             return []
 
     def get_order(self, order_id: str) -> Optional[dict]:

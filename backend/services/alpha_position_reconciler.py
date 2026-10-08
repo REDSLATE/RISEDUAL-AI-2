@@ -80,7 +80,7 @@ async def reconcile_symbol(db: Any, client: Any, symbol: str) -> dict:
     if client is None:
         return {"ok": False, "held": None, "qty": 0.0, "reconciled": 0}
     try:
-        positions = client.get_positions() or []
+        positions = client.get_positions(strict=True)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[position-reconciler] get_positions failed for %s: %s", symbol, exc)
         return {"ok": False, "held": None, "qty": 0.0, "reconciled": 0}
@@ -101,7 +101,7 @@ async def reconcile_all(db: Any, client: Any) -> dict:
     if db is None or client is None:
         return {"ok": False, "checked": 0, "reconciled": 0, "held": []}
     try:
-        positions = client.get_positions() or []
+        positions = client.get_positions(strict=True)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[position-reconciler] full sweep get_positions failed: %s", exc)
         return {"ok": False, "checked": 0, "reconciled": 0, "held": []}
@@ -157,6 +157,10 @@ async def reconcile_open_positions_with_broker(
         if not creds:
             return {"ok": False, "reason": "no_public_creds"}
         client = _public_client(creds[0], creds[1])
+        from services.public_exit_lifecycle import reconcile_exits
+        exits = await reconcile_exits(db, client)
+        if not exits.get("ok"):
+            return exits
         return await reconcile_all(db, client)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[position-reconciler] reconcile_open_positions failed: %s", exc)

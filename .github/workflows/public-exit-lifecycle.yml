@@ -1,0 +1,34 @@
+name: Public exit lifecycle
+on:
+  pull_request:
+    paths:
+      - 'backend/**/*.py'
+      - '.github/workflows/public-exit-lifecycle.yml'
+  push:
+    branches: ['codex/repair-public-exit-lifecycle']
+permissions:
+  contents: read
+jobs:
+  offline-exit-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install isolated test dependencies
+        run: python -m pip install pytest==9.1.1 pytest-asyncio==1.4.0 requests==2.34.2
+      - name: Run offline broker and direction contracts
+        env:
+          PYTHONPATH: backend
+        run: >-
+          python -m pytest --noconftest -q
+          backend/tests/test_public_exit_lifecycle_repair.py
+          backend/tests/test_public_executor_exits.py
+          backend/tests/test_alpha_core_v2.py
+          backend/tests/test_alpha_v2_exit_policy.py
+          backend/tests/test_alpha_autonomy.py
+          backend/tests/test_alpha_exit_router.py
+          backend/tests/test_public_short_executor.py
+          backend/tests/test_no_local_direction_tuples.py

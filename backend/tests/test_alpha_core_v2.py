@@ -58,7 +58,10 @@ class FakeBroker:
         return ExecutionQuote(symbol=symbol, price=Decimal(str(self._exec_price)),
                               timestamp=ts, source="fake")
 
-    def submit(self, symbol, qty, side="buy"):
+    def get_open_orders(self, symbol):
+        return []
+
+    def submit(self, symbol, qty, side="buy", **kwargs):
         self.submitted.append((symbol, qty, side))
         if callable(self._submit_result):
             return self._submit_result(symbol, qty)
@@ -321,7 +324,7 @@ async def test_cycle_running_buying_power_never_overcommits():
 @pytest.mark.asyncio
 async def test_engine_exception_still_terminal_no_vanish():
     class WeirdBroker(FakeBroker):
-        def submit(self, symbol, qty, side="buy"):
+        def submit(self, symbol, qty, side="buy", **kwargs):
             raise ValueError("kaboom")
     b = WeirdBroker(positions=[], equity=1000.0, buying_power=1000.0)
     snaps = [Snapshot("AAA", 250.0, prev_close=245.0, pct_change=2.0, rvol=2.0)]

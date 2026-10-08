@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+import uuid
 from dataclasses import replace
 from typing import Optional
 
@@ -110,10 +111,18 @@ class CoreV2Engine:
         async with self._symbol_lock(cand.symbol):
             # IDEMPOTENCY — an outstanding successful submit this process
             # (broker may not yet report the position) blocks a second one.
-            if cand.symbol in self._inflight:
+            if cand.symbol in self._inflight or self._pending(cand.symbol):
                 return self._receipt(cycle_id, cand, Outcome.BLOCKED, Stage.ORDER,
                                      "concurrent_duplicate",
-                                     order_id=self._inflight[cand.symbol])
+                                     order_id=self._inflight.get(cand.symbol))
+
+            try:
+                if self.broker.get_open_orders(cand.symbol):
+                    return self._receipt(cycle_id, cand, Outcome.BLOCKED, Stage.ORDER,
+                                         "broker_order_in_flight")
+            except Exception as exc:
+                return self._receipt(cycle_id, cand, Outcome.FAILED, Stage.ORDER,
+                                     f"broker_orders_unknown:{str(exc)[:120]}")
 
             # POSITION — broker authoritative. Fail closed on unknown state.
             try:
@@ -200,79 +209,89 @@ class CoreV2Engine:
 
             # ORDER — submit fractional. Reserve the idempotency key on success
             # BEFORE releasing the lock so a racing sibling cannot also submit.
-            result = self.broker.submit(cand.symbol, plan.quantity, "buy")
-            if not result.ok:
-                return self._receipt(cycle_id, cand, Outcome.FAILED, Stage.ORDER,
-                                     result.error or "order_failed",
-                                     sizing=plan.to_dict(), requested_qty=plan.quantity,
-                                     order_id=result.order_id,
-                                     order_status=result.status, **qmeta)
-            self._inflight[cand.symbol] = result.order_id or "pending"
+            return self._submit_reserved(
+                cycle_id, cand, qty=plan.quantity, side="buy", action="open",
+                sizing=plan.to_dict(), **qmeta,
+            )
+    def _pending(self, symbol: str) -> bool:
+        return any(d["symbol"] == symbol for d in self.store.outstanding_orders())
 
-        # CONFIRM — broker fact #1 (order ACK / fill). Position reconciliation
-        # (fact #2) is deferred to reconcile_outstanding(), by design.
-        return self._receipt(
-            cycle_id, cand, Outcome.TRADED, Stage.CONFIRM,
-            "filled" if result.status in ("filled", "partially_filled")
-            else "accepted_pending_fill",
-            broker_held=False, equity=account.equity,
-            buying_power=account.buying_power, reconciled_phantom=reconciled,
-            execution_price=exec_price, execution_quote_source=quote.source,
-            execution_quote_age_s=round(age, 3), sizing=plan.to_dict(),
-            requested_qty=plan.quantity, order_id=result.order_id,
-            order_status=result.status, order_acknowledged=True,
-            broker_reported_fill_qty=result.filled_qty, fill_price=result.fill_price,
-            position_reconciled=False, position_status="pending",
-        )
+    def _submit_reserved(self, cycle_id: str, cand: Candidate, *, qty: float,
+                         side: str, action: str, **meta) -> Receipt:
+        # The persisted UUID is the actual Public orderId, including on timeout.
+        r = Receipt(new_id("rcpt"), cycle_id, cand.symbol, time.time_ns(),
+                    Outcome.FAILED, Stage.ORDER, reason="submission_unconfirmed",
+                    action=action, order_id=str(uuid.uuid4()), requested_qty=qty,
+                    order_status="submitting",
+                    position_status="closing" if action == "close" else "pending",
+                    **meta)
+        if not self.store.reserve_order(r):
+            return self._receipt(cycle_id, cand, Outcome.BLOCKED, Stage.ORDER,
+                                 "close_in_flight" if action == "close" else "concurrent_duplicate",
+                                 action=action)
+        try:
+            result = self.broker.submit(cand.symbol, qty, side,
+                                        client_order_id=r.order_id, close=action == "close")
+        except Exception as exc:
+            r.reason = f"submission_unknown:{str(exc)[:120]}"
+            self.store.save(r)
+            return r
+        # Never discard our reserved UUID when an ACK is absent.
+        r.order_id = result.order_id or r.order_id
+        r.order_status = result.status or "unknown"
+        r.broker_reported_fill_qty = result.filled_qty
+        r.fill_price = result.fill_price
+        r.order_acknowledged = result.ok
+        r.outcome = Outcome.TRADED if result.ok else Outcome.FAILED
+        r.stage_reached = Stage.CONFIRM if result.ok else Stage.ORDER
+        r.reason = ("close_accepted_pending" if action == "close" else "accepted_pending_fill") if result.ok else (result.error or "submission_unknown")
+        if result.status in ("rejected", "cancelled", "expired", "failed"):
+            r.position_reconciled = True
+            r.position_status = "open" if meta.get("broker_held") else "reconciled_flat"
+        elif action == "close":
+            self._closing.add(cand.symbol)
+        else:
+            self._inflight[cand.symbol] = r.order_id
+        self.store.save(r)
+        return r
 
-    async def close_position(self, symbol: str, *, reason: str = "operator") -> Receipt:
-        """Exit a position — broker-authoritative. Sells the qty Public
-        actually reports (never what the ledger 'thinks'). One terminal per
-        call: TRADED (close submitted) | BLOCKED (nothing to close / in flight)
-        | FAILED (broker error)."""
+    async def close_position(self, symbol: str, *, reason: str = "operator",
+                             expected_side: str = "long") -> Receipt:
+        """Close existing exposure only; ACK and partial fill remain pending.
+
+        No entry confidence or buying-power gate applies. A durable reservation
+        and broker open-order check prevent reversal or double close.
+        """
         symbol = (symbol or "").upper()
         cid = new_id("close")
         cand = Candidate(symbol=symbol, mark=0.0, score=0.0, pattern="",
                          confidence=0.0, reason=reason)
-
         async with self._symbol_lock(symbol):
-            if symbol in self._closing:
+            if symbol in self._closing or self._pending(symbol):
                 return self._receipt(cid, cand, Outcome.BLOCKED, Stage.ORDER,
                                      "close_in_flight", action="close")
-            # Broker truth: what do we actually hold?
             try:
+                if self.broker.get_open_orders(symbol):
+                    return self._receipt(cid, cand, Outcome.BLOCKED, Stage.ORDER,
+                                         "broker_order_in_flight", action="close")
                 positions = self.broker.get_positions()
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 return self._receipt(cid, cand, Outcome.FAILED, Stage.POSITION,
                                      f"broker_position_unknown:{str(exc)[:120]}",
                                      action="close", broker_held=None)
-            held = next((p for p in positions
-                         if p.symbol == symbol and p.qty > 0), None)
+            held = next((p for p in positions if p.symbol == symbol and p.qty > 0), None)
             if held is None:
-                # Nothing to sell — reconcile any stale 'open' store rows flat.
                 self.store.mark_reconciled_flat(symbol)
                 return self._receipt(cid, cand, Outcome.BLOCKED, Stage.POSITION,
-                                     "already_flat", action="close",
-                                     broker_held=False, position_status="reconciled_flat")
-            result = self.broker.submit(symbol, held.qty, "sell")
-            if not result.ok:
-                return self._receipt(cid, cand, Outcome.FAILED, Stage.ORDER,
-                                     result.error or "close_failed", action="close",
-                                     broker_held=True, broker_qty=held.qty,
-                                     requested_qty=held.qty, order_id=result.order_id,
-                                     order_status=result.status)
-            self._closing.add(symbol)
-
-        return self._receipt(
-            cid, cand, Outcome.TRADED, Stage.CONFIRM,
-            "close_filled" if result.status in ("filled", "partially_filled")
-            else "close_accepted_pending", action="close",
-            broker_held=True, broker_qty=held.qty, requested_qty=held.qty,
-            order_id=result.order_id, order_status=result.status,
-            order_acknowledged=True, broker_reported_fill_qty=result.filled_qty,
-            fill_price=result.fill_price, position_reconciled=False,
-            position_status="closing",
-        )
+                                     "already_flat", action="close", broker_held=False,
+                                     position_status="reconciled_flat")
+            if expected_side not in {"long": "sell", "short": "buy"} or held.side != expected_side:
+                return self._receipt(cid, cand, Outcome.BLOCKED, Stage.POSITION,
+                                     "position_side_mismatch", action="close")
+            return self._submit_reserved(
+                cid, cand, qty=held.qty, side="sell" if expected_side == "long" else "buy",
+                action="close", broker_held=True, broker_qty=held.qty,
+            )
 
     async def close_all_positions(self, *, reason: str = "operator") -> dict:
         """Flatten every position the broker reports. Returns per-symbol outcomes."""
@@ -334,38 +353,39 @@ class CoreV2Engine:
         return result
 
     async def reconcile_outstanding(self) -> dict:
-        """Restart-safe: establish the resulting POSITION (broker fact #2) for
-        TRADED receipts whose position isn't reconciled, by re-asking the broker
-        for the order + current holdings."""
+        """Poll cumulative broker fills; partial/unknown orders retain locks.
+
+        Orders become terminal first, then the position snapshot must reflect
+        the result. Rejected exits never fabricate a flat position.
+        """
         pending = self.store.outstanding_orders()
-        try:
-            held = {p.symbol: p.qty for p in self.broker.get_positions()}
-        except Exception as exc:  # noqa: BLE001
-            return {"ok": False, "reason": f"positions_unavailable:{str(exc)[:120]}"}
         finalized = 0
         for d in pending:
-            oid = d.get("order_id")
-            if not oid:
-                continue
-            res = self.broker.get_order(oid)
             sym = d["symbol"]
-            if res.status in ("filled", "partially_filled") and res.filled_qty > 0:
-                pos_qty = held.get(sym, 0.0)
+            async with self._symbol_lock(sym):
+                try:
+                    res = self.broker.get_order(d["order_id"])
+                    positions = self.broker.get_positions()  # AFTER order status
+                except Exception as exc:
+                    return {"ok": False, "reason": f"reconciliation_unknown:{str(exc)[:120]}"}
+                if res is None:
+                    continue
+                pos_qty = sum(p.qty for p in positions if p.symbol == sym)
+                closing = d.get("action") == "close"
+                terminal = res.status in ("filled", "rejected", "cancelled", "expired", "failed")
+                # Full fill plus a lagging holdings snapshot is not reconciled.
+                consistent = (pos_qty <= 1e-9 if closing else pos_qty > 0) if res.status == "filled" else True
+                done = terminal and consistent
+                state = ("open" if pos_qty > 0 else "reconciled_flat") if done else ("closing" if closing else "pending")
                 self.store.update_reconciliation(
-                    d["receipt_id"], position_reconciled=True,
-                    reconciled_position_qty=pos_qty, order_status=res.status,
-                    position_status="open" if pos_qty > 0 else "reconciled_flat",
+                    d["receipt_id"], position_reconciled=done,
+                    reconciled_position_qty=pos_qty, order_status=res.status or "unknown",
+                    position_status=state, filled_qty=res.filled_qty, fill_price=res.fill_price,
                 )
-                self._inflight.pop(sym, None)
-                self._closing.discard(sym)
-                finalized += 1
-            elif res.status == "rejected":
-                self.store.update_reconciliation(
-                    d["receipt_id"], position_reconciled=True,
-                    reconciled_position_qty=0.0, order_status="rejected",
-                    position_status="reconciled_flat",
-                )
-                self._inflight.pop(sym, None)
-                self._closing.discard(sym)
-                finalized += 1
+                if done:
+                    if closing and pos_qty <= 1e-9:
+                        self.store.mark_reconciled_flat(sym)
+                    self._inflight.pop(sym, None)
+                    self._closing.discard(sym)
+                    finalized += 1
         return {"ok": True, "pending": len(pending), "finalized": finalized}
