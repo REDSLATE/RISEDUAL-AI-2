@@ -1035,7 +1035,9 @@ class PublicTradingService:
                 last_price_dict = p.get("lastPrice") or {}
                 gain = p.get("instrumentGain") or {}
                 try:
-                    qty = float(p.get("quantity") or 0.0)
+                    if p.get("quantity") is None:
+                        raise ValueError("public_position_quantity_missing")
+                    qty = float(p["quantity"])
                 except (TypeError, ValueError):
                     raise ValueError("public_position_quantity_invalid")
                 try:
@@ -1106,10 +1108,11 @@ class PublicTradingService:
         Public rejects sub-dollar orders with HTTP 400 code 128.
 
         Returns ``{"id": orderId, "status": "submitted", "symbol": ...}``
-        on success, ``None`` on any failure (auth, HTTP, broker
-        rejection). Errors are logged with the broker's response body
-        so operators can see exactly why a fill was rejected.
+        on success. HTTP rejections and transport failures preserve the client
+        UUID with rejected/unknown status for reconciliation. Auth failure before
+        submission returns None. Submission acknowledgement is never a fill.
         """
+        track_failure = client_order_id is not None
         try:
             headers = self._auth_headers()
             if headers is None:
@@ -1162,6 +1165,8 @@ class PublicTradingService:
                     "[broker_public] place_order %s %s qty=%s rejected "
                     "%d: %s", symbol, side, qty, r.status_code, body,
                 )
+                if not track_failure:
+                    return None
                 return {"id": client_order_id,
                         "status": "rejected" if 400 <= r.status_code < 500 and r.status_code not in (408, 409, 429) else "unknown",
                         "error": f"http_{r.status_code}"}
@@ -1183,6 +1188,8 @@ class PublicTradingService:
                 "method": "place_order",
                 "symbol": symbol,
             })
+            if not track_failure:
+                return None
             return {"id": client_order_id, "status": "unknown", "error": str(e)[:160]}
 
     def get_orders(self, status: str = "all", limit: int = 50, *,

@@ -394,3 +394,23 @@ def test_public_adapter_session_guard_blocks_http(monkeypatch):
     result = PublicBroker(client).submit("AAA", 1, "sell", close=True)
     assert not result.ok and result.error == "market_closed"
     client.place_order.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_phantom_sweep_excludes_pending_and_old_unknown_closes():
+    from services.alpha_position_reconciler import _close_phantom_rows
+    from unittest.mock import AsyncMock
+    collection = SimpleNamespace(update_many=AsyncMock(return_value=SimpleNamespace(modified_count=0)))
+    await _close_phantom_rows(SimpleNamespace(equity_live_trades=collection), "AAA")
+    query = collection.update_many.call_args.args[0]
+    assert query["close_pending"] == {"$ne": True}
+    assert query["close_in_flight_at"] == {"$exists": False}
+
+
+@pytest.mark.asyncio
+async def test_reserved_entry_preserves_signal_provenance():
+    b = FakeBroker(submit_result=lambda s, q: OrderResult(True, "entry-id", "accepted"))
+    e = engine(b)
+    r = await e._process("c", _cand(conf=.9), b.get_account(), live=True)
+    assert r.confidence == .9 and r.pattern == "p" and r.score == .9
+    assert r.mark == 250

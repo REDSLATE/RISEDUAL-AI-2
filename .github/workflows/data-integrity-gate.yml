@@ -37,42 +37,20 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: .github/workflows/data-integrity-gate.yml
 
-      - name: Install backend test deps
-        working-directory: backend
-        run: |
-          python -m pip install --upgrade pip
-          # PyTorch CPU wheel index is added as an extra index so any
-          # transitive `torch` dep resolves to the CPU build instead
-          # of pulling the multi-GB CUDA wheel — keeps the runner fast
-          # and avoids OOM on free-tier CI. Harmless when nothing in
-          # requirements.txt actually pulls torch (the resolver just
-          # ignores the extra index).
-          #
-          # The second extra-index is the Emergent CDN, which is
-          # where `emergentintegrations` is served. PyPI returns 404
-          # for that package by design (it's an internal SDK), so
-          # without this line CI fails with:
-          #   "ERROR: No matching distribution found for emergentintegrations"
-          pip install \
-            --extra-index-url https://download.pytorch.org/whl/cpu \
-            --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/ \
-            -r requirements.txt
-          # Belt-and-braces: pytest is pinned in requirements.txt
-          # already, but keeping this line guarantees CI never breaks
-          # if someone reorders the requirements file or adds a
-          # constraint that delays pytest resolution.
-          pip install pytest
+      - name: Install structural-test dependencies
+        run: >-
+          python -m pip install pytest==9.1.1 requests==2.34.2 yfinance==1.2.1
 
       - name: Run direction-tuple lint
         working-directory: backend
         env:
           PYTHONPATH: .
-        run: python -m pytest tests/test_no_local_direction_tuples.py -v --no-header
+        run: python -m pytest --noconftest tests/test_no_local_direction_tuples.py -v --no-header
 
       - name: Run direction-grading regression
         working-directory: backend
         env:
           PYTHONPATH: .
-        run: python -m pytest tests/test_strong_direction_grading.py -v --no-header
+        run: python -m pytest --noconftest tests/test_strong_direction_grading.py -v --no-header

@@ -1871,6 +1871,24 @@ async def maybe_route_live(
         )
         return None
 
+    # The client preserves the actual UUID on HTTP/transport failures. An
+    # unknown result is not an ACK or rejection: leave the watchdog pending
+    # so its existing broker reconciliation can resolve that same order ID.
+    if resp.get("error"):
+        if str(resp.get("status") or "").lower() == "rejected":
+            try:
+                from services import alpha_broker_event_watchdog as _watchdog
+                _watchdog.record_event(
+                    broker="public", client_order_id=client_order_id,
+                    event=_watchdog.Event.REJECTED, detail=str(resp["error"]),
+                )
+            except Exception:
+                pass
+        await _log_skip(db, symbol=symbol, reason="broker_submission_unconfirmed",
+                        intent=intent, detail={"client_order_id": client_order_id,
+                                               "error": str(resp["error"])[:160]})
+        return None
+
     order_id = resp.get("id") or ""
     # Map Public.com's sync status into a normalized watchdog event.
     # Cancels the 5s stale timer — sync ACK means the broker received it.

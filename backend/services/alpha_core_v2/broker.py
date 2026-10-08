@@ -135,7 +135,7 @@ class PublicBroker:
             price = Decimal(str(q.get("price") or q.get("last") or "0"))
         except (InvalidOperation, TypeError, ValueError):
             return None
-        if price <= 0:
+        if not price.is_finite() or price <= 0:
             return None
         return ExecutionQuote(
             symbol=symbol.upper(), price=price,

@@ -55,7 +55,9 @@ async def _close_phantom_rows(db: Any, symbol: str) -> int:
     now = datetime.now(timezone.utc)
     try:
         res = await db.equity_live_trades.update_many(
-            {"symbol": symbol, "status": "open", "broker_id": "public"},
+            {"symbol": symbol, "status": "open", "broker_id": "public",
+             "close_pending": {"$ne": True},
+             "close_in_flight_at": {"$exists": False}},
             {"$set": {
                 "status": "closed",
                 "close_reason": "broker_reconciled_missing",

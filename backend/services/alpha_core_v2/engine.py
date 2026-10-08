@@ -207,12 +207,12 @@ class CoreV2Engine:
                                      "core_v2_disabled", sizing=plan.to_dict(),
                                      requested_qty=plan.quantity, **qmeta)
 
-            # ORDER — submit fractional. Reserve the idempotency key on success
-            # BEFORE releasing the lock so a racing sibling cannot also submit.
+            # Commit the UUID before HTTP; a lost ACK must not permit a retry.
             return self._submit_reserved(
                 cycle_id, cand, qty=plan.quantity, side="buy", action="open",
                 sizing=plan.to_dict(), **qmeta,
             )
+
     def _pending(self, symbol: str) -> bool:
         return any(d["symbol"] == symbol for d in self.store.outstanding_orders())
 
@@ -221,7 +221,9 @@ class CoreV2Engine:
         # The persisted UUID is the actual Public orderId, including on timeout.
         r = Receipt(new_id("rcpt"), cycle_id, cand.symbol, time.time_ns(),
                     Outcome.FAILED, Stage.ORDER, reason="submission_unconfirmed",
-                    action=action, order_id=str(uuid.uuid4()), requested_qty=qty,
+                    action=action, pattern=cand.pattern, score=cand.score,
+                    confidence=cand.confidence, mark=cand.mark,
+                    order_id=str(uuid.uuid4()), requested_qty=qty,
                     order_status="submitting",
                     position_status="closing" if action == "close" else "pending",
                     **meta)
@@ -245,6 +247,8 @@ class CoreV2Engine:
         r.outcome = Outcome.TRADED if result.ok else Outcome.FAILED
         r.stage_reached = Stage.CONFIRM if result.ok else Stage.ORDER
         r.reason = ("close_accepted_pending" if action == "close" else "accepted_pending_fill") if result.ok else (result.error or "submission_unknown")
+        if action == "close":
+            r.reason += ":" + cand.reason
         if result.status in ("rejected", "cancelled", "expired", "failed"):
             r.position_reconciled = True
             r.position_status = "open" if meta.get("broker_held") else "reconciled_flat"
