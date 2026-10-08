@@ -61,6 +61,15 @@ DIRECTION_TOKENS = frozenset({
 # accompanied by a one-line justification — anyone who adds a new
 # entry without one fails review.
 ALLOWLIST: dict[str, str] = {
+    "services/alpha_exit_router.py": (
+        "Pure position-aware execution boundary: distinguishes SELL (may close long) "
+        "from SHORT (open-short intent), includes STRONG/WEAK verdict variants, "
+        "and validates broker LONG/BUY and SHORT/SELL aliases."
+    ),
+    "services/public_short_executor.py": (
+        "Public REST orderSide validator accepts only BUY/SELL wire enums; "
+        "AI verdict tokens must never be accepted as broker order sides."
+    ),
     # Vendored RISEDUAL System Atlas package — its models.py accepts
     # only the post-canonicalised BUY/SELL execution direction set as
     # the broker-side fingerprint. Cannot import canonical_ai_dir

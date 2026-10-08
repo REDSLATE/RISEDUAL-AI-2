@@ -57,13 +57,24 @@ class _Quote:
     def __init__(self, price):
         self.price = Decimal(str(price))
 
+    def age_seconds(self):
+        return 0.0
+
 
 class _Store:
     def __init__(self, entry):
-        self._entry = entry
+        from services.alpha_core_v2.receipts import ReceiptStore
+        import time
+        self._store = ReceiptStore(":memory:")
+        self._store.save(Receipt("entry", "c", "AAA", time.time_ns(), Outcome.TRADED,
+                                 Stage.RECONCILE, action="open", fill_price=entry,
+                                 position_status="open", position_reconciled=True))
 
-    def last_entry_price(self, symbol):
-        return self._entry
+    def entry_anchor(self, symbol):
+        return self._store.entry_anchor(symbol)
+
+    def track_exit(self, *args):
+        return self._store.track_exit(*args)
 
 
 class _Broker:
@@ -80,6 +91,8 @@ class _Broker:
 
 class _Engine:
     def __init__(self, positions, entry, price):
+        from services.alpha_core_v2.config import Config
+        self.config = Config.load()
         self.broker = _Broker(positions, price)
         self.store = _Store(entry)
         self.closed = []
@@ -105,7 +118,8 @@ async def test_runner_exits_on_stop(monkeypatch):
     r = await ExitPolicyRunner().run(eng, force=True)
     assert r["ran"] is True
     assert eng.closed and eng.closed[0][0] == "AAA"
-    assert r["actions"][0]["exited"] is True
+    assert r["actions"][0]["close_submitted"] is True
+    assert r["actions"][0]["exited"] is False
 
 
 @pytest.mark.asyncio
@@ -130,5 +144,6 @@ async def test_runner_trailing_peak_persists_across_ticks(monkeypatch):
     assert r1["actions"][0]["decision"] == "hold"
     # Tick 2 (SAME runner): price slips to 107 (>2% off the 110 peak) → exit.
     eng2 = _Engine(pos, entry=100.0, price=107.0)
+    eng2.store = eng1.store
     r2 = await runner.run(eng2, force=True)
     assert eng2.closed and r2["actions"][0]["decision"].startswith("trailing_stop")

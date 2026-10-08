@@ -11,10 +11,9 @@ still a live SELL order, so treat enabling this as a live action reviewed by the
 operator.
 
 Anchors & limits:
-  * entry price  — the broker fill price of the open V2 entry (receipt store).
-  * high-watermark & first-seen time — tracked in-process by the runner. On a
-    restart these reset; the stop/target still work off entry price, only the
-    trailing-stop peak and max-hold clock restart. Documented, not hidden.
+  * entry price comes from a reconciled broker fill, never a discovery quote.
+  * high-watermark and hold clock persist in SQLite, keyed to the entry receipt.
+  * missing/stale quotes and short positions cannot trigger a long exit.
 """
 from __future__ import annotations
 
@@ -89,17 +88,9 @@ class ExitPolicyRunner:
     broker; entry comes from the receipt store; exit is via
     ``engine.close_position`` (sells the broker's reported qty).
 
-    State (high-watermark + first-seen clock) lives on the instance and
-    therefore persists across ticks WITHIN a process. Construct ONE runner and
-    reuse it across ticks (the worker does). On a process RESTART this state
-    resets: stop/target still work (entry comes from the persistent receipt
-    store), but the trailing-stop peak restarts from the next observed price and
-    the max-hold clock restarts from first re-observation. This is documented,
-    not hidden."""
-
-    def __init__(self) -> None:
-        self._peak: dict[str, float] = {}
-        self._first_seen: dict[str, float] = {}
+    Watermark and hold clock live in the receipt store and survive worker
+    recreation and process restarts. A new entry receipt resets both.
+    """
 
     async def run(self, engine, *, force: bool = False) -> dict:
         if not force and not policy_enabled():
@@ -110,38 +101,39 @@ class ExitPolicyRunner:
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "reason": f"positions_unavailable:{str(exc)[:120]}"}
 
-        held_symbols = {p.symbol for p in positions if p.qty > 0}
-        # Drop tracking for positions that no longer exist.
-        for sym in list(self._peak):
-            if sym not in held_symbols:
-                self._peak.pop(sym, None)
-                self._first_seen.pop(sym, None)
-
         now = time.time()
         actions = []
         for p in positions:
-            if p.qty <= 0:
+            if p.qty <= 0 or p.side != "long":
                 continue
             sym = p.symbol
-            entry = engine.store.last_entry_price(sym)
+            anchor = engine.store.entry_anchor(sym)
+            entry = float(anchor.get("fill_price") or 0.0) if anchor else 0.0
             quote = engine.broker.get_execution_quote(sym)
-            current = float(quote.price) if quote is not None else 0.0
-            if current > 0:
-                self._peak[sym] = max(self._peak.get(sym, current), current)
-            self._first_seen.setdefault(sym, now)
+            max_age = engine.config.quote_max_age_s
+            if quote is None or quote.age_seconds() > max_age:
+                actions.append({"symbol": sym, "decision": "execution_quote_unavailable_or_stale",
+                                "exited": False, "close_submitted": False})
+                continue
+            current = float(quote.price)
+            if anchor and current > 0:
+                peak, first = engine.store.track_exit(
+                    sym, anchor["receipt_id"], current, now, anchor["created_ns"] / 1e9,
+                )
+            else:
+                peak, first = current, now
             decision = decide_exit(
                 entry=entry, current=current,
-                high_watermark=self._peak.get(sym, current),
-                held_seconds=now - self._first_seen[sym], cfg=cfg,
+                high_watermark=peak,
+                held_seconds=now - first, cfg=cfg,
             )
             rec = {"symbol": sym, "entry": entry, "current": current,
                    "decision": decision.reason, "exited": False}
             if decision.should_exit:
                 r = await engine.close_position(sym, reason=f"exit_policy:{decision.reason}")
-                rec["exited"] = (r.outcome.value == "TRADED")
+                rec["close_submitted"] = (r.outcome.value == "TRADED")
+                rec["exited"] = bool(r.position_reconciled and r.position_status == "reconciled_flat")
                 rec["close_outcome"] = r.outcome.value
-                self._peak.pop(sym, None)
-                self._first_seen.pop(sym, None)
                 logger.info("[exit-policy] %s -> %s (%s)", sym, r.outcome.value, decision.reason)
             actions.append(rec)
         return {"ok": True, "ran": True, "positions": len(actions), "actions": actions}
